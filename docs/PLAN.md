@@ -13,7 +13,10 @@ exports the result as DXF and STEP.
 | Geometry model | Full 2D: axles move on an arc about the limb pivot; string and cable tangent points solved at every draw step |
 | STEP content | Track curves as B-splines plus an extruded cam body (planar faces, extruded B-spline side faces), no grooves |
 | Stack | Plain JavaScript ES modules with JSDoc types, Vite, Vitest, Playwright |
-| Units | SI internally; UI switchable between in/mm and N/lbf |
+| Units | SI internally; defaults: draw length in in, force in N, part dimensions in mm; each quantity switchable (in/mm, N/lbf) |
+| Force curve editor | Free points: double-click adds, right-click removes, drag moves; first point fixed at brace height with 0 N, last point at full draw; peak and let-off sliders rescale the curve |
+| String plan | Bow layout drawing: side view of string and both cables at brace and full draw, with tangent points, axle positions and lengths |
+| Pages deployment | On every push to `main`; tags produce releases with a build archive |
 
 ## Model
 
@@ -51,8 +54,8 @@ balance.
 - Geometry: axle-to-axle length, brace height, draw length, riser length,
   limb length, limb pivot position, limb angle at brace
 - Force: peak draw weight, let-off (% or holding weight), valley width, wall
-  type (cable stop or limb stop), force curve editor with draggable control
-  points and monotone cubic (Fritsch–Carlson) interpolation, presets
+  type (cable stop or limb stop), force curve editor (free points, monotone
+  cubic Fritsch–Carlson interpolation), presets
 - Limbs: linear stiffness (N/mm) or force-deflection table
 - Cam: rotation range (180–320°), string diameter, groove width and depth,
   cam thickness, minimum track radius
@@ -60,8 +63,8 @@ balance.
 ## Outputs
 
 - Cam profile view with rotation animation
-- Bow layout at brace and full draw ("string plan") with string and cable
-  lengths
+- String plan: bow layout at brace and full draw with string and cable
+  lengths, tangent points and axle positions; exported as its own DXF layer
 - Achieved force curve over target, stored energy (J), achieved let-off, cam
   rotation against draw, curvature check
 - DXF export (ASCII, one layer per track and per string-plan element; SPLINE
@@ -95,9 +98,10 @@ All on Node.js 24 with `actions/checkout@v6`, `actions/cache@v6`,
 `actions/upload-artifact@v7`.
 
 - CI: lint, unit tests, coverage, `--check` that fails when the README
-  coverage figure drifts
+  coverage figure drifts; on push to `main` also builds and deploys to
+  GitHub Pages
 - Docs CI: pushes `docs/` to the GitHub wiki
-- Release CI on tags: build, deploy to GitHub Pages, attach build archive
+- Release CI on tags: build, create a GitHub release, attach build archive
 
 ## Delivery slices
 
