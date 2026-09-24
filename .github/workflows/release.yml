@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    # The called workflow declares a Pages deploy job that runs only on pushes
+    # to main; its permissions must still be grantable by this caller.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+  release:
+    name: release
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check tag matches package version
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $expected"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run build
+      - name: Pack build archive
+        run: |
+          name="compound-cam-calc-${GITHUB_REF_NAME}"
+          cp -r dist "$name"
+          zip -r "$name.zip" "$name"
+          echo "ARCHIVE=$name.zip" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-archive
+          path: ${{ env.ARCHIVE }}
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$ARCHIVE" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
