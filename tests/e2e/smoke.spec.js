@@ -21,6 +21,28 @@ test('page has no detectable accessibility violations', async ({ page }) => {
   expect(results.violations).toEqual([]);
 });
 
+test.describe('dark colour scheme', () => {
+  test.use({ colorScheme: 'dark' });
+
+  test('page has no detectable accessibility violations', async ({ page }) => {
+    await page.goto('./');
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations).toEqual([]);
+  });
+});
+
+for (const width of [320, 360]) {
+  test.describe(`${width} px viewport`, () => {
+    test.use({ viewport: { width, height: 640 } });
+
+    test('page has no horizontal scroll', async ({ page }) => {
+      await page.goto('./');
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(0);
+    });
+  });
+}
+
 test('page has no horizontal scroll', async ({ page }) => {
   await page.goto('./');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

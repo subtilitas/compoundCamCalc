@@ -20,20 +20,21 @@ export default [
     },
   },
   {
+    // Browser globals only outside the pure modules, so no-undef reports any
+    // DOM use in src/core, src/state and src/export.
     files: ['src/**/*.js'],
+    ignores: pureDirs,
     languageOptions: {
       globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
     },
   },
   {
     files: pureDirs,
-    languageOptions: {
-      globals: {},
-    },
     rules: {
       'no-restricted-globals': [
         'error',
         { name: 'window', message: 'Pure modules must not use the DOM.' },
+        { name: 'self', message: 'Pure modules must not use the DOM.' },
         { name: 'document', message: 'Pure modules must not use the DOM.' },
         { name: 'localStorage', message: 'Pure modules must not use browser storage.' },
         { name: 'navigator', message: 'Pure modules must not use the DOM.' },
@@ -41,6 +42,13 @@ export default [
       'no-restricted-imports': [
         'error',
         { patterns: [{ group: ['**/ui/**', '**/worker/**'], message: 'Pure modules must not import UI or worker code.' }] },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'ImportExpression[source.value=/\\/(ui|worker)\\//]',
+          message: 'Pure modules must not import UI or worker code.',
+        },
       ],
     },
   },

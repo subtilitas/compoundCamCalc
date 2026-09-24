@@ -38,7 +38,9 @@ export function replaceBlock(readme, block) {
   if (i < 0 || j < 0 || j < i) {
     throw new Error(`README.md must contain ${START} followed by ${END}`);
   }
-  return `${readme.slice(0, i + START.length)}\n${block}\n${readme.slice(j)}`;
+  // Keep the file's line ending (a Windows checkout may use CRLF).
+  const eol = readme.includes('\r\n') ? '\r\n' : '\n';
+  return `${readme.slice(0, i + START.length)}${eol}${block}${eol}${readme.slice(j)}`;
 }
 
 /**

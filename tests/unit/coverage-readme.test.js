@@ -24,6 +24,11 @@ describe('replaceBlock', () => {
     expect(replaceBlock(readme, 'new')).toBe(`a\n${START}\nnew\n${END}\nb`);
   });
 
+  it('keeps CRLF line endings', () => {
+    const readme = `a\r\n${START}\r\nold\r\n${END}\r\nb`;
+    expect(replaceBlock(readme, 'new')).toBe(`a\r\n${START}\r\nnew\r\n${END}\r\nb`);
+  });
+
   it('throws when markers are missing', () => {
     expect(() => replaceBlock('no markers', 'x')).toThrow(/must contain/);
   });

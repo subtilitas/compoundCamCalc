@@ -31,11 +31,18 @@ export const UNITS = Object.freeze({
  * @returns {number}
  */
 function factor(quantity, unit) {
-  const table = UNITS[quantity];
-  if (!table) throw new Error(`Unknown quantity "${quantity}"`);
-  const f = table[unit];
-  if (f === undefined) throw new Error(`Unknown unit "${unit}" for ${quantity}`);
-  return f;
+  const table = unitTable(quantity);
+  if (!Object.hasOwn(table, unit)) throw new Error(`Unknown unit "${unit}" for ${quantity}`);
+  return table[unit];
+}
+
+/**
+ * @param {string} quantity
+ * @returns {Readonly<Record<string, number>>}
+ */
+function unitTable(quantity) {
+  if (!Object.hasOwn(UNITS, quantity)) throw new Error(`Unknown quantity "${quantity}"`);
+  return UNITS[quantity];
 }
 
 /**
@@ -62,14 +69,17 @@ export function fromSI(value, quantity, unit) {
 
 /**
  * Parse a number typed by a user. Accepts a decimal point or a decimal comma
- * and surrounding white space. Returns NaN for anything else.
+ * and surrounding white space. Thousands separators are not supported: "1,000"
+ * reads as 1.0. Returns NaN for anything else, including values that overflow
+ * to infinity.
  * @param {string} text
  * @returns {number}
  */
 export function parseNumber(text) {
-  const s = String(text).trim().replace(/\s+/g, '');
+  const s = String(text).trim();
   if (!/^[+-]?(\d+([.,]\d*)?|[.,]\d+)([eE][+-]?\d+)?$/.test(s)) return NaN;
-  return Number(s.replace(',', '.'));
+  const value = Number(s.replace(',', '.'));
+  return Number.isFinite(value) ? value : NaN;
 }
 
 /**
@@ -82,8 +92,7 @@ export function parseNumber(text) {
  */
 export function parseQuantity(text, quantity, defaultUnit) {
   const s = String(text).trim();
-  const table = UNITS[quantity];
-  if (!table) throw new Error(`Unknown quantity "${quantity}"`);
+  const table = unitTable(quantity);
   const units = Object.keys(table).sort((a, b) => b.length - a.length);
   for (const unit of units) {
     if (s.endsWith(unit)) {

@@ -1,11 +1,15 @@
 # Compound Cam Calculator
 
 Web app that designs the string track and the power-cable track of a twin-cam
-compound bow from a target draw force curve. It runs in the browser without a
-server and is hosted on GitHub Pages: <https://subtilitas.github.io/compoundCamCalc/>.
+compound bow. Input: bow geometry, limb stiffness and the draw force curve the
+bow should have. Output: the cam track shapes, the string and cable lengths,
+and cam plate files for CAD and CNC work (DXF and STEP). It runs in the
+browser without a server and is hosted on GitHub Pages:
+<https://subtilitas.github.io/compoundCamCalc/>.
 
-Status: under construction. The page is a stub; the plan in
-[docs/PLAN.md](docs/PLAN.md) lists the delivery slices.
+Status: not usable yet. The live page is a placeholder; the calculator is
+built in stages listed in [docs/PLAN.md](docs/PLAN.md). Changes are recorded
+in [CHANGELOG.md](CHANGELOG.md).
 
 ## Coverage
 
@@ -17,7 +21,7 @@ UI code is covered by the Playwright tests and is not part of this figure.
 
 ## Development
 
-Requires Node.js 24 (Node.js 22.12 or later works for local use).
+Requires Node.js 24. Node.js 22.13 or a later 22.x release also works for local use.
 
 ```bash
 npm ci

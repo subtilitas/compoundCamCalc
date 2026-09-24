@@ -18,6 +18,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
+    color-scheme: dark;
     --bg: #121514;
     --surface: #1b1f1e;
     --text: #e6eae8;
@@ -30,7 +31,12 @@
   }
 }
 
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
 :root[data-theme='dark'] {
+  color-scheme: dark;
   --bg: #121514;
   --surface: #1b1f1e;
   --text: #e6eae8;
@@ -77,6 +83,7 @@ body {
 .app-main {
   flex: 1;
   display: grid;
+  align-content: start;
   gap: var(--gap);
 }
 
@@ -86,6 +93,10 @@ body {
   border-radius: var(--radius);
   padding: var(--gap);
   min-width: 0;
+}
+
+.panel p {
+  max-width: 70ch;
 }
 
 .panel h2 {
