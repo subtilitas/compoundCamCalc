@@ -221,12 +221,18 @@ Explicit per sample, no marching (`src/core/inverse.js`):
   peak), peak start (rise fraction of the power stroke, default 46 %), peak
   end (30 % of the way to the valley), let-off transition point (halfway,
   67 % of the drop), valley start and full draw (default valley width
-  1.2 in); the flat part at full draw is adjusted until
-  the measured valley width matches the requested one as closely as the
-  let-off, rise and power stroke allow (the let-off transition sets a
-  smallest width, about 1.20 in at 75 % let-off on the default bow; at a
-  let-off ≤ 5 % the valley spans peak to full draw). The valley field names
-  the reached width when it differs by more than 1 %.
+  1.2 in); the flat part at full draw is adjusted until the measured valley
+  width matches the requested one. When the flat part is at its minimum of
+  0.1 in and the valley is still more than 1 % too wide, the transition
+  point moves on the straight line towards the valley start, so the last
+  part of the drop keeps its mean slope, until the width matches. Close to
+  the valley start the drop becomes one S-shaped segment and the valley
+  widens again, so the generator has a smallest width: on the default bow
+  about 0.49 in at 75 % let-off, 0.46 in at 80 %, 0.68 in at 50 % and
+  1.54 in at 20 % (rise 46 %); at a let-off ≤ 5 % the valley spans peak to
+  full draw. The valley field names the reached width when it differs by
+  more than 1 %. The default curve keeps its transition point halfway: its
+  valley is 1.2036 in, 0.3 % above the request.
 - Walls are vertical in the rigid model; the wall position is x_f. A cable
   stop post is placed on the cable span at θ(x_f).
 
@@ -269,11 +275,17 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   energy at those points.
 - Refinement of the diagnostics: the ideal track follows every wiggle of the
   interpolant between the points and often bends the wrong way over a few
-  degrees. A fitted cam whose achieved force stays within 1.5 % of the peak
-  (at least 2 N) of the target everywhere, with the draw energy within
-  0.5 %, meets the target; the violations of the ideal track are then kept
-  in `fit.idealIssues` and are no diagnostics. Larger differences are
-  reported as `cable-radius` or `cable-clearance`.
+  degrees, most at the corners of the curve (peak start and end, let-off
+  transition). A convex cam rounds these corners: on the default preset the
+  largest force difference stays at 3.7 N to 3.9 N for 22 to 90 spline
+  intervals. A fitted cam whose achieved force stays within 3 % of the peak
+  (8.0 N at 267 N, at least 2 N) of the target everywhere, with the draw
+  energy within 0.5 %, meets the target; the violations of the ideal track
+  are then kept in `fit.idealIssues` and are no diagnostics. Larger
+  differences are reported as `cable-radius` or `cable-clearance`. Of 45
+  edits of the default (peak 250 N to 290 N, rise 43 % to 50 %, valley
+  1.0 in to 1.5 in), 41 meet 3 % of the peak and 2 meet 1.5 %; the largest
+  draw energy difference is 0.14 J against a tolerance of at least 0.42 J.
 - Codes: `invalid-input`, `brace-tension`, `cable-lever`, `slack-cable`,
   `nonpositive-force`, `cable-fold`, `limb-rotation`, `limb-energy`,
   `target-shape`, `string-radius`, `string-clearance`, `string-wrap`,
@@ -502,35 +514,82 @@ length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter
 diagnostics:
 
 - Limb: stiffness mode, 2.6 N/mm, preload travel 192 mm, axle travel
-  78 mm, rotation limit 30°; achieved axle travel 77.5 mm.
-- String track: eccentric circle, radius 45 mm, offset 22 mm towards −122°.
+  78 mm, rotation limit 30°; achieved axle travel 77.5 mm. The limb is soft
+  and heavily preloaded: the preload travel turns the 11 in lever 39° from
+  unstrung to brace, and the limb pushes on the axle with 499 N at brace
+  and 701 N at full draw. These values are not checked against measured
+  limbs; the repository has no limb data.
+- String track: eccentric circle, radius 45 mm, offset 22 mm towards −122°;
+  string lever arm 63.6 mm at full draw.
+- Hub: bore 8 mm, wall 3 mm; the cable lever arm stays at or above
+  p_min = 4 + 3 + 1.25 = 8.25 mm.
 - Curve: the generator defaults above (rise 46 %, valley 1.2 in).
 - Result (full resolution): achieved peak 270.1 N, let-off 74.9 %, draw
   energy 93.0 J, limb energy 188.8 J, cam rotation 224°, largest cam
   dimension 98 mm, smallest cable radius of curvature 5.0 mm (the limit);
-  the fitted cam follows the target within 3.7 N (tolerance 4.0 N) and
+  the fitted cam follows the target within 3.7 N (tolerance 8.0 N) and
   0.01 J.
+- Edits: peak 250, 260, 275 and 285 N, rise 44 %, 48 % and 50 %, and
+  valley 0.9 in and 1.5 in each build with zero diagnostics (a unit test);
+  the largest force difference is 6.0 N at peak 250 N (tolerance 7.5 N).
+  Of the 45 edits of peak 250 N to 290 N, rise 43 % to 50 % and valley
+  1.0 in to 1.5 in, 41 build with zero diagnostics.
 
-Let-off 80 % is not the default because no tested combination of limb and
-string track builds a cam within the fit tolerance and with a draw energy of
-90 J or more. Two limits act together (symbols as in docs/model.md). The
-limb balance E1'(α) = T_s·s_a + T_c·c_a with T_c > 0 bounds the string
-tension by T_s < E1'/s_a, so an early rise of the force needs a large limb
-moment early in the draw. At full draw the cable lever arm
-p_c = p_s·c_a·T_s / (E1' − T_s·s_a) must stay at or above 8.25 mm (bore
-radius, wall and cable radius); with the low string tension of the holding force this bounds the
-limb moment at full draw from above, E1'_f ≤ T_s·(s_a + p_s·c_a / 8.25 mm).
-A stiff limb, whose moment grows along the draw, then has little moment
-early. A soft, heavily preloaded limb keeps the moment nearly constant and
-gives the most early string tension, yet the peak still comes late and the
-draw energy stays near 90 J. A search over limb stiffness, preload, string
-groove radius, offset and phase and the generator fractions gives, for the
-best combination at each let-off: 80 % at most 90 J with a 4.2 N force
-difference (above the 4.0 N tolerance), 78 % 91 J with 4.3 N, 76 % to 77 %
-within 98 % to 99 % of the tolerance, 75 % 93 J with 3.7 N (93 % of the
-tolerance), 70 % 1.9 N. Let-off 75 % is the closest value with a margin. A
-lower let-off, a stiffer limb with more axle travel or a larger cam relaxes
-the limits.
+Let-off ceiling (symbols as in docs/model.md, L the let-off). At full draw
+the string carries the low holding force, F_hold = (1 − L)·F_peak =
+2·T_s,f·sin φ_f,
+and the cable lever arm p_c = p_s·c_a·T_s / (E1' − T_s·s_a) must stay at or
+above p_min. This bounds the limb moment at full draw from above,
+E1'_f ≤ T_s,f·(s_a + p_s,f·c_a/p_min). At a fixed draw energy
+W = k·s_f·(s_f + 2·s_0) (both limbs) the limb force at the axle at full
+draw is k·(s_0 + s_f) = W·(s_0 + s_f)/(s_f·(s_f + 2·s_0)); it falls with
+more axle travel s_f and more preload travel s_0. With the lever geometry
+of this bow the balance gives an approximate lower bound on the axle
+travel,
+
+```
+s_f ≳ η·S·sin φ_f / ((1 − L)·(2·p_s,f/p_min + 1)) · (s_0 + s_f)/(s_0 + s_f/2)
+```
+
+with η = W/(F_peak·S) = 0.66, power stroke S = 527 mm and φ_f = 52°: 78 mm
+at 75 % (the model gives 77.5 mm), about 100 mm at 80 % and about 140 mm at
+85 %. On four tuned 80 % states the bound lies within 3 % of the model
+(model 77.6 mm to 101 mm, bound 78.8 mm to 103 mm).
+
+- The main levers are p_min (bore and wall) and the string lever arm at
+  full draw p_s,f: both enter as p_s,f/p_min.
+- At a fixed draw energy a softer, more preloaded limb with more axle
+  travel raises the let-off, and a stiffer one lowers it. With the default
+  string groove and hub the achieved let-off follows the limb force at the
+  axle at full draw: 10 N/mm with 60 mm preload (1142 N) reaches 61.5 % for
+  a 75 % target; 2.6 N/mm with 192 mm (699 N) and 4 N/mm with 84 mm
+  (694 N) reach 76.2 % and 76.3 % for an 80 % target; 1.8 N/mm with 200 mm
+  (543 N) reaches 80.8 %.
+- A lower let-off also relaxes the limit.
+
+Let-off 80 % builds with zero diagnostics and at least 90 J of draw energy,
+but not with the margins of 75 %:
+
+- Default limb, groove and hub: 76.2 % achieved, 15.5 N from the target.
+- Default hub, limb 2.1 N/mm with 191 mm preload, groove radius 44.3 mm,
+  offset 24.2 mm towards −117.4°, rise 47.2 %: 79.5 %, 91.2 J, 4.4 N
+  (tolerance 8.0 N), 91 mm axle travel, 122 mm cam. The nine edits above
+  build (largest 6.7 N), but 28 of the 45 edits do (largest cam 177 mm);
+  tuned for the 45 edits as well, 33 of 45 (2.07 N/mm, 93 mm axle travel,
+  127 mm cam).
+- Default hub with the cam at most 105 mm and the axle travel at most
+  85 mm: at best 6.9 N (86 % of the tolerance), and up to 93 % of the
+  tolerance on the nine edits, with a 48 mm groove radius and a 73.8 mm
+  string lever arm at full draw.
+- Bore 6.35 mm and wall 2 mm (p_min 6.43 mm), limb 2.575 N/mm with 191 mm
+  preload, groove radius 43.1 mm, offset 22 mm towards −120.75°, valley
+  1.18 in: 79.6 %, 91.9 J, 3.85 N, 77.6 mm axle travel, 95 mm cam; the nine
+  edits build (largest 6.9 N) and 38 of the 45 edits do. This needs a
+  smaller axle and bushing than the default hub.
+
+Let-off 75 % is the default: among the states with the default hub it has
+the smallest cam, the shortest axle travel and the most edits within the
+tolerance (41 of 45).
 
 ## Limitations
 

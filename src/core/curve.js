@@ -36,6 +36,8 @@ export const MIN_LET_OFF = 1e-6;
  *   start and valley start.
  * - transitionF: the let-off transition point sits halfway between plateau end
  *   and valley start, at this fraction of the drop from peak to holding weight.
+ *   For a valley narrower than the flat part alone allows, the point moves
+ *   on the straight line towards the valley start (see {@link generateCurve}).
  * - riseFraction: rise from brace to peak as a fraction of the power stroke.
  * - valleyWidth: target valley width in m (1.2 in).
  * The values give the default preset a cam that the solver builds without
@@ -112,14 +114,16 @@ function denseGrid(knots, a, b) {
  * @param {(x: number) => number} f
  * @param {number} a
  * @param {number} b
+ * @param {number} [tolerance] bracket length at which the search stops
+ *   (default 1e-9)
  * @returns {{ x: number, value: number }}
  */
-function goldenMin(f, a, b) {
+function goldenMin(f, a, b, tolerance = X_TOLERANCE) {
   let c = b - GOLDEN * (b - a);
   let d = a + GOLDEN * (b - a);
   let fc = f(c);
   let fd = f(d);
-  while (b - a > X_TOLERANCE) {
+  while (b - a > tolerance) {
     if (fc <= fd) {
       b = d;
       d = c;
@@ -255,9 +259,9 @@ export function pointMetrics(points) {
  * @property {number} peak peak force (N)
  * @property {number} letOff 0 to 0.95
  * @property {number} [riseFraction] rise from brace to peak start as a
- *   fraction of the power stroke, 0.1 to 0.6 (default 0.3)
+ *   fraction of the power stroke, 0.1 to 0.6 (default 0.46)
  * @property {number} [valleyWidth] target valley width as measured by
- *   {@link curveMetrics} (m, default 1.25 in)
+ *   {@link curveMetrics} (m, default 1.2 in)
  */
 
 /**
@@ -269,30 +273,55 @@ function clamp(v, lo, hi) {
   return Math.min(Math.max(v, lo), hi);
 }
 
+/** Relative valley width excess that makes the generator move the transition point: 1 %. */
+const VALLEY_TOLERANCE = 0.01;
+/** Samples of the transition span factor scanned for a bracket. */
+const TRANSITION_SCAN = 16;
+/** Largest number of Illinois steps of the transition span search. */
+const TRANSITION_STEPS = 30;
+/** Tolerance of the transition span factor in the root search. */
+const TRANSITION_TOLERANCE = 1e-9;
+/** Tolerance of the transition span factor of the narrowest valley. */
+const NARROWEST_TOLERANCE = 1e-6;
+
+/**
+ * Plateau end and valley start of the parametric curve for a given flat
+ * valley length.
+ * @param {GeneratorInput} input
+ * @param {number} flat length of the flat part at full draw (m)
+ */
+function valleyStartAndPlateauEnd(input, flat) {
+  const riseFraction = input.riseFraction ?? GENERATOR_DEFAULTS.riseFraction;
+  const xPeakStart = input.xBrace + riseFraction * (input.xFull - input.xBrace);
+  const xValleyStart = input.xFull - flat;
+  return { xPeakStart, xValleyStart, xPeakEnd: xPeakStart + GENERATOR_DEFAULTS.plateau * (xValleyStart - xPeakStart) };
+}
+
 /**
  * Seven points of a parametric force curve for a given flat valley length.
  * @param {GeneratorInput} input
  * @param {number} flat length of the flat part at full draw (m)
+ * @param {number} [tau] transition span factor, 0 to 1: the transition
+ *   point sits tau/2 of the way back from valley start to plateau end, at
+ *   tau·transitionF of the drop above the holding weight. It moves on the
+ *   straight line from its default position (tau = 1, halfway) to the
+ *   valley start (tau = 0).
  * @returns {CurvePoint[]}
  */
-function curvePoints(input, flat) {
-  const { xBrace, xFull, peak } = input;
-  const riseFraction = input.riseFraction ?? GENERATOR_DEFAULTS.riseFraction;
+function curvePoints(input, flat, tau = 1) {
+  const { xBrace, peak } = input;
   const hold = Math.max(peak * (1 - input.letOff), MIN_FORCE);
-  const stroke = xFull - xBrace;
   const G = GENERATOR_DEFAULTS;
-  const xPeakStart = xBrace + riseFraction * stroke;
-  const xValleyStart = xFull - flat;
-  const xPeakEnd = xPeakStart + G.plateau * (xValleyStart - xPeakStart);
-  const xTransition = 0.5 * (xPeakEnd + xValleyStart);
+  const { xPeakStart, xValleyStart, xPeakEnd } = valleyStartAndPlateauEnd(input, flat);
+  const xTransition = xValleyStart - tau * 0.5 * (xValleyStart - xPeakEnd);
   return [
     { x: xBrace, F: 0 },
     { x: xBrace + G.rampX * (xPeakStart - xBrace), F: G.rampF * peak },
     { x: xPeakStart, F: peak },
     { x: xPeakEnd, F: peak },
-    { x: xTransition, F: hold + G.transitionF * (peak - hold) },
+    { x: xTransition, F: hold + tau * G.transitionF * (peak - hold) },
     { x: xValleyStart, F: hold },
-    { x: xFull, F: hold },
+    { x: input.xFull, F: hold },
   ];
 }
 
@@ -300,9 +329,20 @@ function curvePoints(input, flat) {
  * Parametric force curve: brace (x_b, 0), ramp point, peak start, peak end,
  * let-off transition point, valley start and full draw (x_f, holding weight).
  * The fractions are in {@link GENERATOR_DEFAULTS}. The flat part at full
- * draw is adjusted in four secant steps so that the measured valley width
+ * draw is adjusted in up to four steps so that the measured valley width
  * matches the requested one; it stays between 0.1 in and half the distance
- * from peak start to full draw.
+ * from peak start to full draw. When the flat part is at 0.1 in and the
+ * valley is still more than 1 % wider than requested, the transition point
+ * moves on the straight line towards the valley start, so the last part of
+ * the let-off drop keeps its mean slope. The valley narrows as the
+ * transition span factor tau falls from 1 and widens again near the valley
+ * start, where the drop becomes one S-shaped segment; tau stays at or above
+ * the value that keeps the transition point 0.1 in before the valley start.
+ * A scan of 16 steps from tau = 1 down finds the first bracket and the
+ * Illinois method (at most 30 steps) the largest tau whose valley matches.
+ * Without a bracket the curve takes the narrowest valley, found by
+ * golden-section search: on the default bow about 0.49 in at 75 % let-off,
+ * 0.46 in at 80 % and 1.54 in at 20 %.
  * @param {GeneratorInput} input
  * @returns {CurvePoint[]}
  */
@@ -327,7 +367,70 @@ export function generateCurve(input) {
     if (Math.abs(next - flat) < X_TOLERANCE) break;
     flat = next;
   }
-  return curvePoints(args, flat);
+  if (flat > flatMin) return curvePoints(args, flat);
+  /** @param {number} tau */
+  const excess = (tau) => pointMetrics(curvePoints(args, flat, tau)).valleyWidth - target;
+  let b = 1;
+  let fb = excess(b);
+  if (!(fb > VALLEY_TOLERANCE * target)) return curvePoints(args, flat);
+  // The valley narrows as tau falls from 1 and widens again close to the
+  // valley start, where the drop turns into one S-shaped segment. Scan from
+  // tau = 1 down to the smallest tau for the first bracket [a, b] with
+  // excess(a) ≤ 0 < excess(b).
+  const { xValleyStart, xPeakEnd } = valleyStartAndPlateauEnd(args, flat);
+  const tauMin = Math.min((2 * MIN_GAP) / (xValleyStart - xPeakEnd), 1);
+  let best = b;
+  let fBest = fb;
+  for (let k = 1; k <= TRANSITION_SCAN; k++) {
+    const a = 1 - (k / TRANSITION_SCAN) * (1 - tauMin);
+    const fa = excess(a);
+    if (fa <= 0) return curvePoints(args, flat, transitionRoot(excess, a, fa, b, fb));
+    if (fa < fBest) {
+      best = a;
+      fBest = fa;
+    }
+    b = a;
+    fb = fa;
+  }
+  // No bracket on the scan: the narrowest valley, by golden-section search
+  // around the best scan point. When it is narrower than requested, the
+  // root lies between it and the scan point above.
+  const h = (1 - tauMin) / TRANSITION_SCAN;
+  const upper = Math.min(best + h, 1);
+  const narrowest = goldenMin(excess, Math.max(best - h, tauMin), upper, NARROWEST_TOLERANCE);
+  if (narrowest.value <= 0) return curvePoints(args, flat, transitionRoot(excess, narrowest.x, narrowest.value, upper, excess(upper)));
+  return curvePoints(args, flat, narrowest.value < fBest ? narrowest.x : best);
+}
+
+/**
+ * Root of f in [a, b] with f(a) ≤ 0 < f(b), by the Illinois method.
+ * @param {(tau: number) => number} f
+ * @param {number} a
+ * @param {number} fa
+ * @param {number} b
+ * @param {number} fb
+ */
+function transitionRoot(f, a, fa, b, fb) {
+  if (fa === 0) return a;
+  // ga and gb are the secant weights; the Illinois step halves the weight
+  // of an end that stays twice in a row.
+  let [ga, gb] = [fa, fb];
+  let side = 0;
+  for (let it = 0; it < TRANSITION_STEPS && b - a > TRANSITION_TOLERANCE; it++) {
+    const tau = b - (gb * (b - a)) / (gb - ga);
+    const value = f(tau);
+    if (Math.abs(value) <= X_TOLERANCE) return tau;
+    if (value > 0) {
+      [b, fb, gb] = [tau, value, value];
+      if (side > 0) ga *= 0.5;
+      side = 1;
+    } else {
+      [a, fa, ga] = [tau, value, value];
+      if (side < 0) gb *= 0.5;
+      side = -1;
+    }
+  }
+  return Math.abs(fa) < Math.abs(fb) ? a : b;
 }
 
 /**

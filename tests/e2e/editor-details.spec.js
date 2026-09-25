@@ -235,7 +235,7 @@ test.describe('settings', () => {
     await letOff.fill('20');
     await letOff.press('Enter');
     await expect(message).toHaveText(/^Valley width is limited to \d+\.\d\d in by the let-off, rise and power stroke$/);
-    await expect(page.getByTestId('field-valley')).toHaveValue('1.25');
+    await expect(page.getByTestId('field-valley')).toHaveValue('1.20');
   });
 
   test('peak and let-off fields name a custom curve outside their ranges', async ({ page }) => {

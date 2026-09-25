@@ -137,7 +137,7 @@ export const FIELDS = Object.freeze({
   'curve.params.riseFraction': { label: 'Rise to peak', quantity: 'ratio', unit: '%', min: 0.1, max: 0.6 },
   'curve.params.valleyWidth': { label: 'Valley width', quantity: 'length', unit: 'in', min: 0.1 * INCH, max: 6 * INCH },
   'limb.stiffness': { label: 'Limb stiffness', quantity: 'stiffness', unit: 'N/mm', min: 1e3, max: 1e6 },
-  'limb.preloadTravel': { label: 'Limb preload travel', quantity: 'length', unit: 'mm', min: 0, max: 200 * MM },
+  'limb.preloadTravel': { label: 'Limb preload travel', quantity: 'length', unit: 'mm', min: 0, max: 400 * MM },
   'limb.travel': { label: 'Limb travel', quantity: 'length', unit: 'mm', min: 1 * MM, max: 200 * MM },
   'limb.maxRotation': { label: 'Maximum limb rotation', quantity: 'angle', unit: 'deg', min: 1 * DEG, max: 60 * DEG },
   'stringTrack.radius': { label: 'String track radius', quantity: 'length', unit: 'mm', min: 5 * MM, max: 100 * MM },

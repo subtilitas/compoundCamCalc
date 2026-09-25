@@ -24,7 +24,10 @@ All notable changes are listed here. Versions follow semantic versioning.
   towards 0 fails; non-finite prescribed values are rejected.
 - Force curve model (`src/core/curve.js`): peak, holding weight, let-off,
   valley width (5 % band), draw energy and power stroke; parametric
-  generator with seven points; move, add and remove point operations with a
+  generator with seven points whose let-off transition point moves on the
+  straight line towards the valley start for a narrow valley (smallest
+  width about 0.49 in at 75 % let-off on the default bow, 1.54 in at 20 %);
+  move, add and remove point operations with a
   0.1 in (2.54 mm) minimum gap and a 1 N to 5000 N force range; peak scaling
   and a let-off mapping that stays invertible down to 0 %.
 - Project state (`src/state/`): schema version 1 in SI units with
@@ -89,7 +92,11 @@ All notable changes are listed here. Versions follow semantic versioning.
   tolerance, and returns `invalid` for mismatched sizes or non-finite
   data; the fit programmes of 600 random near-default states end with the
   constraints met to 1e-10 of the row scale. The fit returns `invalid` for
-  non-finite or out-of-range input instead of throwing.
+  non-finite or out-of-range input instead of throwing. A fitted cam whose
+  force stays within 3 % of the peak (at least 2 N) and whose draw energy
+  stays within 0.5 % of the target meets it; 41 of 45 edits of the default
+  preset (peak 250 N to 290 N, rise 43 % to 50 %, valley 1.0 in to 1.5 in)
+  do.
 - Closed cam outline (`src/core/outline.js`): lead-in, closing blend,
   periodic cable track, groove bottom and flange offsets, string, cable and
   cable stop posts, timing marks, sampled outlines and the cam maximum
@@ -105,10 +112,15 @@ All notable changes are listed here. Versions follow semantic versioning.
   outlines, achieved force curve, tensions and metrics in about 17 ms
   (coarse) and 25 ms (full) for the default preset, with 19 diagnostic
   codes whose messages carry numbers and units and whose suggestions name
-  the input to change; never throws.
+  the input to change; never throws. `brace-tension` and `slack-cable` name
+  the limb preload travel while it stays within its range of 0 mm to
+  400 mm, otherwise the stiffness.
 - Default preset tuned so the solver builds its cam without diagnostics:
   let-off 75 %, limb 2.6 N/mm with 192 mm preload travel, eccentric string
   groove of radius 45 mm with 22 mm offset towards −122°, parametric
   generator with a gentle start (ramp point at 38 % of the peak) and a
-  later peak (rise 46 % of the power stroke); draw energy 93.0 J. Let-off
-  80 % misses the fit tolerance (`docs/PLAN.md`).
+  later peak (rise 46 % of the power stroke); draw energy 93.0 J, largest
+  force difference 3.7 N against the 8.0 N tolerance. Edits of peak
+  (250 N to 285 N), rise (44 % to 50 %) and valley (0.9 in, 1.5 in) also
+  build without diagnostics. Let-off 80 % builds with a softer limb and a
+  larger cam; `docs/PLAN.md` gives the full-draw bound and the numbers.

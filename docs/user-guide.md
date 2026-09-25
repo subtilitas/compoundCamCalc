@@ -106,12 +106,13 @@ focus moves to the next useful button.
 - **Peak draw force** and **Let-off**: sliders apply while moving; the text
   fields apply on Enter or when leaving the field.
 - **Rise to peak** (share of the power stroke) and **Valley width**: shape
-  of the generated curve. The smallest valley width the curve can reach
-  depends on the let-off, the rise and the power stroke: at a let-off of 80 %
-  on the default bow it is about 1.03 in, and at a let-off of 5 % or less the
-  valley covers the whole range from the peak to full draw. When the curve
-  misses the requested width by more than 1 %, a note under the field names
-  the width it reaches.
+  of the generated curve. For a narrow valley the let-off drop moves closer
+  to full draw. The smallest valley width the curve can reach depends on the
+  let-off, the rise and the power stroke: on the default bow it is about
+  0.49 in at a let-off of 75 %, 0.68 in at 50 % and 1.54 in at 20 %, and at
+  a let-off of 5 % or less the valley covers the whole range from the peak
+  to full draw. When the curve misses the requested width by more than 1 %,
+  a note under the field names the width it reaches.
 - **Units**: draw length in in, mm or cm; force in N or lbf; energy in J or
   ft·lbf. The model works in SI units (metre, newton, joule); the units only
   change the display and the default unit of typed values.

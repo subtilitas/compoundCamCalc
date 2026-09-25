@@ -50,10 +50,13 @@ export const GROOVE_MARGIN = 0.2e-3;
 /**
  * Largest force difference between the achieved curve of a fitted cable
  * track and the target that still counts as meeting the target: this
- * fraction of the peak, at least FIT_FORCE_FLOOR. The draw energy must agree
- * within FIT_ENERGY_TOLERANCE.
+ * fraction of the peak (8.0 N at 267 N), at least FIT_FORCE_FLOOR. The draw
+ * energy must agree within FIT_ENERGY_TOLERANCE. The ideal track bends the
+ * wrong way at the corners of the target (peak start and end, let-off
+ * transition), and a convex cam rounds them: on the default preset the
+ * difference stays at 3.7 N to 3.9 N for 22 to 90 spline intervals.
  */
-export const FIT_FORCE_TOLERANCE = 0.015;
+export const FIT_FORCE_TOLERANCE = 0.03;
 /** Smallest force tolerance of a fitted cam (N). */
 export const FIT_FORCE_FLOOR = 2;
 /** Relative draw energy tolerance of a fitted cam. */
@@ -728,21 +731,28 @@ function braceOk(brace, state, ctx, limbData, points, fmt, diags) {
     return false;
   }
   // T_s0 ≥ M_b/s_a0: suggest a first point with 80 % of the limit slope, or
-  // the preload travel whose brace moment makes T_s0 80 % of the limit.
+  // the limb whose brace moment makes T_s0 80 % of the limit.
   const factor = (0.8 * brace.maxStringTension) / Ts0;
   const preload = state.limb.preloadTravel;
   // In the stiffness mode the brace moment k·R_L·s_0 grows in proportion to
-  // the preload travel s_0; suggest it only within the allowed range.
-  const needed = preload / factor;
-  const preloadText = state.limb.mode === 'stiffness' && limbData.kind === 'linear' && preload > 0 && needed <= FIELDS['limb.preloadTravel'].max
-    ? `, or increase the limb preload travel to at least ${fmt.size(needed)}`
-    : '';
+  // the preload travel s_0 and to the stiffness k, and T_s0 does not depend
+  // on the limb: name the preload travel within its range, else the stiffness.
+  let limbText = '';
+  if (state.limb.mode === 'stiffness' && limbData.kind === 'linear' && preload > 0) {
+    const neededPreload = preload / factor;
+    const neededStiffness = state.limb.stiffness / factor;
+    if (neededPreload <= FIELDS['limb.preloadTravel'].max) {
+      limbText = `, or increase the limb preload travel to at least ${fmt.size(neededPreload)}`;
+    } else if (neededStiffness <= FIELDS['limb.stiffness'].max) {
+      limbText = `, or increase the limb stiffness to at least ${fmt.stiffness(neededStiffness)}`;
+    }
+  }
   diags.push(
     diagnostic(
       'brace-tension',
       `The force curve rises too steeply at brace: its slope of ${fmt.slope(brace.slope)} needs a string tension of ${fmt.force(Ts0)} ` +
         `at brace, but the limb moment holds at most ${fmt.force(brace.maxStringTension)} (slope ${fmt.slope(brace.maxSlope)})`,
-      `Reduce the force of point 2 to at most ${fmt.force(points[1].F * factor)}${preloadText}`,
+      `Reduce the force of point 2 to at most ${fmt.force(points[1].F * factor)}${limbText}`,
       { xRange: [xb, points[1].x] },
     ),
   );

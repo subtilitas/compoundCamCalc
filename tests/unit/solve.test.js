@@ -14,6 +14,7 @@ import { createSupport, stringTrackSupport } from '../../src/core/support.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
 import { FIELDS, validate } from '../../src/state/schema.js';
+import { reduce } from '../../src/state/store.js';
 
 /** @typedef {import('../../src/state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../../src/core/solve.js').SolveResult} SolveResult */
@@ -66,7 +67,7 @@ describe('solve: default preset', () => {
         `string wrap ${(m.stringWrap / DEG).toFixed(0)}°, cable wrap ${(m.cableWrap / DEG).toFixed(0)}°, ` +
         `string ${(m.stringLength / INCH).toFixed(2)} in, cable ${(m.cableLength / INCH).toFixed(2)} in, fit ${r.fit.used} (${r.fit.maxForceDifference.toFixed(2)} N)`,
     );
-    expect(Math.abs(m.peak / target.peak - 1)).toBeLessThan(FIT_FORCE_TOLERANCE);
+    expect(Math.abs(m.peak / target.peak - 1)).toBeLessThan(0.015);
     expect(Math.abs(m.letOff - target.letOff)).toBeLessThan(0.01);
     expect(m.drawEnergy).toBeGreaterThan(90);
     expect(m.drawEnergy).toBeLessThan(130);
@@ -90,10 +91,13 @@ describe('solve: default preset', () => {
     for (let i = 0; i < a.x.length; i++) worst = Math.max(worst, Math.abs(a.F[i] - t.F[i]));
     console.info(`default preset: achieved force within ${worst.toFixed(2)} N of the target (tolerance ${tolerance.toFixed(2)} N)`);
     expect(worst).toBeLessThanOrEqual(tolerance);
+    // The default keeps more than half the tolerance as margin.
+    expect(worst).toBeLessThan(0.5 * tolerance);
     expect(worst).toBeCloseTo(r.fit.maxForceDifference, 12);
     expect(r.fit.withinTolerance).toBe(true);
     expect(r.fit.idealIssues.length).toBeGreaterThan(0);
-    for (const m of r.fit.idealIssues) expect(m).toMatch(/by up to 3\.\d N, within the 4\.0 N tolerance \(peak \+/);
+    const within = new RegExp(`by up to \\d+\\.\\d N, within the ${tolerance.toFixed(1).replace('.', '\\.')} N tolerance \\(peak \\+`);
+    for (const m of r.fit.idealIssues) expect(m).toMatch(within);
     expect(Math.abs(r.fit.energyDifference)).toBeLessThan(0.005 * pointMetrics(state.curve.points).energy);
     // Both fit candidates keep the brace lever arm, so the brace slope is the target's.
     const limb = /** @type {import('../../src/core/limb.js').LimbData} */ (limbFromState(state.limb, state.geometry.limbLength).limb);
@@ -222,6 +226,33 @@ describe('solve: default preset', () => {
   });
 });
 
+describe('solve: edits around the default preset', () => {
+  // Peak 250 N to 285 N, rise 44 % to 50 % and valley 0.9 in and 1.5 in
+  // around the default (267 N, 46 %, 1.2 in): each fitted cam follows its
+  // target within the fit tolerance, so the default does not sit at the
+  // edge of the tolerance.
+  /** @type {[string, Partial<import('../../src/state/schema.js').CurveParams>][]} */
+  const edits = [
+    ['peak 250 N', { peak: 250 }], ['peak 260 N', { peak: 260 }], ['peak 275 N', { peak: 275 }], ['peak 285 N', { peak: 285 }],
+    ['rise 44 %', { riseFraction: 0.44 }], ['rise 48 %', { riseFraction: 0.48 }], ['rise 50 %', { riseFraction: 0.5 }],
+    ['valley 0.9 in', { valleyWidth: 0.9 * INCH }], ['valley 1.5 in', { valleyWidth: 1.5 * INCH }],
+  ];
+  it.each(edits)('solves the edit %s with status ok and no diagnostics', (_, params) => {
+    const s = reduce(defaultState(), { type: 'setCurveParams', params });
+    expect(s.curve.params).toMatchObject(params);
+    const r = solve(s);
+    expect(r.diagnostics).toEqual([]);
+    expect(r.status).toBe('ok');
+    const tolerance = Math.max(FIT_FORCE_TOLERANCE * pointMetrics(s.curve.points).peak, FIT_FORCE_FLOOR);
+    expect(r.fit.maxForceDifference).toBeLessThanOrEqual(tolerance);
+  });
+
+  it('reaches the requested valley width of 0.9 in', () => {
+    const s = reduce(defaultState(), { type: 'setCurveParams', params: { valleyWidth: 0.9 * INCH } });
+    expect(pointMetrics(s.curve.points).valleyWidth / (0.9 * INCH)).toBeCloseTo(1, 6);
+  });
+});
+
 describe('solve: diagnostics', () => {
   /**
    * @param {ProjectState} s
@@ -261,6 +292,37 @@ describe('solve: diagnostics', () => {
     expect(d.xRange?.[0]).toBe(defaultState().curve.points[0].x);
     const none = expectCode(modified((s) => (s.limb.preloadTravel = 0)), 'brace-tension');
     expect(none.d.suggestion).toMatch(/preload travel above 0 mm/);
+  });
+
+  it('brace-tension: names the preload travel up to 400 mm and otherwise the stiffness, each giving 80 % of the limit', () => {
+    /**
+     * Default limb (2.6 N/mm, 192 mm preload) with point 2 moved.
+     * @param {number} x position of point 2 from the grip (in)
+     * @param {number} F force of point 2 (N)
+     */
+    const steep = (x, F) => modified((s) => {
+      Object.assign(s.limb, { mode: 'stiffness', stiffness: 2.6e3, preloadTravel: 0.192 });
+      s.curve.mode = 'custom';
+      s.curve.points[1] = { x: x * INCH, F };
+    });
+    /** @param {ProjectState} s */
+    const ratio = (s) => {
+      const b = /** @type {any} */ (solve(s, { resolution: 'coarse' }).brace);
+      return b.stringTension / b.maxStringTension;
+    };
+    // Point 2 at 8.3 in and 130 N needs 283.4 mm of preload travel.
+    const preload = steep(8.3, 130);
+    const p = expectCode(preload, 'brace-tension');
+    const mm = Number(/** @type {RegExpMatchArray} */ (p.d.suggestion.match(/preload travel to at least (\d+\.\d) mm/))[1]);
+    expect(mm).toBeGreaterThan(200);
+    expect(mm).toBeLessThanOrEqual(FIELDS['limb.preloadTravel'].max * 1e3);
+    expect(ratio({ ...preload, limb: { ...preload.limb, preloadTravel: mm / 1e3 } })).toBeCloseTo(0.8, 3);
+    // Point 2 at 7.5 in and 150 N needs more than 400 mm: the stiffness is named.
+    const stiff = steep(7.5, 150);
+    const k = expectCode(stiff, 'brace-tension');
+    expect(k.d.suggestion).not.toMatch(/preload/);
+    const nmm = Number(/** @type {RegExpMatchArray} */ (k.d.suggestion.match(/limb stiffness to at least (\d+\.\d) N\/mm/))[1]);
+    expect(ratio({ ...stiff, limb: { ...stiff.limb, stiffness: nmm * 1e3 } })).toBeCloseTo(0.8, 2);
   });
 
   it('cable-lever: a limb lever at 90° at brace', () => {
@@ -311,12 +373,22 @@ describe('solve: diagnostics', () => {
 
   it('slack-cable and cable-fold: a limb too weak for the string tension before the peak', () => {
     const weak = modified((s) => {
+      Object.assign(s.stringTrack, { shape: 'eccentric', radius: 0.045, offset: 0.022, phase: -122 * DEG });
       s.limb.stiffness = 1000;
       s.limb.preloadTravel = 0.2;
     });
-    const { r, d } = expectCode(weak, 'slack-cable');
+    // 309.4 mm of preload travel is within its range, so the preload is named.
+    const preload = expectCode(weak, 'slack-cable');
+    expect(preload.d.suggestion).toMatch(/^Increase the limb preload travel to at least 309\.\d mm/);
+    // A 500 N peak needs more than the largest preload travel of 400 mm, so
+    // the stiffness is named.
+    const heavy = modified((s) => {
+      Object.assign(s, structuredClone(weak));
+      s.limb.preloadTravel = FIELDS['limb.preloadTravel'].max;
+      s.curve.params.peak = 500;
+    }, { regenerate: true });
+    const { r, d } = expectCode(heavy, 'slack-cable');
     expect(d.message).toMatch(/string tension of up to \d+ N between/);
-    // The preload is at its largest value, so the stiffness is named.
     expect(d.suggestion).toMatch(/limb stiffness to at least \d+\.\d N\/mm/);
     expect(codes(r)).toContain('cable-fold');
     const fold = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'cable-fold'));
@@ -324,25 +396,54 @@ describe('solve: diagnostics', () => {
     expect(fold.psiRange).not.toBeNull();
   });
 
-  it('target-shape and nonpositive-force: a first segment that the brace curvature bends below zero', () => {
+  it('target-shape and nonpositive-force: a brace curvature that bends a long, shallow first segment below zero', () => {
+    // A string groove with 46 mm offset on a 50 mm radius gives a brace
+    // curvature F''(x_b) that no monotone first segment can follow: point 2
+    // is 11.8 in from brace at 7 N and a local maximum, so its slope is 0.
     const s = modified((st) => {
+      Object.assign(st.limb, { mode: 'stiffness', stiffness: 2.6e3, preloadTravel: 0.192 });
+      Object.assign(st.stringTrack, { shape: 'eccentric', radius: 0.05, offset: 0.046, phase: -149 * DEG });
+      st.curve.mode = 'custom';
+      st.curve.points = [[6.5, 0], [18.3, 7], [18.6, 6], [22.9, 267], [27.25, 67]].map(([x, F]) => ({ x: x * INCH, F }));
+    });
+    expect(validate(s)).toEqual([]);
+    const { r, d } = expectCode(s, 'target-shape');
+    expect(d.message).toMatch(/N\/in² instead of/);
+    expect(/** @type {any} */ (r.brace).shapePreserved).toBe(false);
+    const negative = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'nonpositive-force'));
+    expect(negative.suggestion).toMatch(/point 2/);
+    const [from, to] = /** @type {[number, number]} */ (negative.xRange);
+    expect(from).toBeGreaterThan(s.curve.points[0].x);
+    expect(to).toBeLessThanOrEqual(s.curve.points[1].x);
+    expect(to - from).toBeGreaterThan(5 * INCH);
+  });
+
+  it('keeps a first segment monotone when the prescribed brace values allow it', () => {
+    // Point 2 at 3 N is a local maximum 2 in from brace. A string groove of
+    // radius 45 mm with 22 mm offset gives a brace curvature that a monotone
+    // first segment can follow: the prescribed-start search of the
+    // interpolant finds it.
+    const s = modified((st) => {
+      Object.assign(st.limb, { mode: 'stiffness', stiffness: 2.6e3, preloadTravel: 0.192 });
+      Object.assign(st.stringTrack, { shape: 'eccentric', radius: 0.045, offset: 0.022, phase: -122 * DEG });
       const [first] = st.curve.points;
       const last = /** @type {import('../../src/core/interp.js').CurvePoint} */ (st.curve.points.at(-1));
       st.curve.mode = 'custom';
       st.curve.points = [first, { x: first.x + 2 * INCH, F: 3 }, { x: first.x + 2.3 * INCH, F: 1 }, { x: first.x + 5.3 * INCH, F: 267 }, last];
     });
     expect(validate(s)).toEqual([]);
-    const { r, d } = expectCode(s, 'target-shape');
-    expect(d.message).toMatch(/N\/in² instead of/);
-    const negative = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'nonpositive-force'));
-    expect(negative.suggestion).toMatch(/point 2/);
-    expect(/** @type {[number, number]} */ (negative.xRange)[1]).toBeLessThanOrEqual(s.curve.points[1].x);
+    const r = solve(s, { resolution: 'coarse' });
+    expect(/** @type {any} */ (r.brace).shapePreserved).toBe(true);
+    expect(codes(r)).not.toContain('target-shape');
+    expect(codes(r)).not.toContain('nonpositive-force');
+    const t = /** @type {NonNullable<SolveResult['target']>} */ (r.target);
+    for (let i = 1; i < t.x.length; i++) expect(t.F[i]).toBeGreaterThan(0);
   });
 
-  it('cable-radius: a peak the cam cannot follow within the tolerance', () => {
-    const { r, d } = expectCode(modified((s) => (s.curve.params.peak = 290), { regenerate: true }), 'cable-radius');
+  it('cable-radius: a let-off the cam cannot follow within the tolerance', () => {
+    const { r, d } = expectCode(modified((s) => (s.curve.params.letOff = 0.78), { regenerate: true }), 'cable-radius');
     expect(d.message).toMatch(/radius of curvature of -\d+\.\d mm \(it would bend the wrong way\)/);
-    expect(d.message).toMatch(/differs from the target by up to \d+\.\d N, more than the 4\.\d N tolerance \(peak \+/);
+    expect(d.message).toMatch(/differs from the target by up to \d+\.\d N, more than the \d+\.\d N tolerance \(peak \+/);
     expect(r.fit.used).toBe(true);
     expect(r.fit.withinTolerance).toBe(false);
     // The fitted cam is still built and meets the radius limit.
