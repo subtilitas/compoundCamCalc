@@ -104,6 +104,14 @@ describe('constrained cable track fit', () => {
     const data = samples(() => 0.02, start, end, 100);
     // p(ψ_0) = 5 mm contradicts p ≥ 8 mm.
     expect(fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, startValue: 0.005 }).status).toBe('infeasible');
+    // Two different prescribed values of p(ψ_0): infeasible; equal values fit.
+    const ends = { start: [0.02, 0, 0], end: [0.02, 0, 0] };
+    const conflict = fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, startValue: 0.03, ends });
+    expect(conflict.status).toBe('infeasible');
+    expect(conflict.spline).toBeNull();
+    const agree = fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, startValue: 0.02, ends });
+    expect(agree.status).toBe('optimal');
+    expect(createSupport(/** @type {any} */ (agree.spline)).p(start)).toBeCloseTo(0.02, 12);
     expect(fitCableTrack({ ...data, start: end, end: start, rhoMin: 0.005, pMin: 0.008 }).status).toBe('invalid');
     expect(fitCableTrack({ psi: [1], p: [0.02], start, end, rhoMin: 0.005, pMin: 0.008 }).status).toBe('invalid');
     expect(fitCableTrack({ psi: [1, 2], p: [0.02], start, end, rhoMin: 0.005, pMin: 0.008 }).spline).toBeNull();

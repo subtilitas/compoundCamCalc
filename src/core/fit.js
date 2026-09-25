@@ -40,6 +40,9 @@ const EXCHANGE_ROUNDS = 10;
 /** Shortfall below a limit that the fitted track may keep: rounding (m). */
 const LIMIT_TOLERANCE = 1e-9;
 
+/** Largest difference between startValue and ends.start[0] that counts as one value (m). */
+const START_TOLERANCE = 1e-12;
+
 /** Largest number of knot intervals and of constraint points per interval. */
 const MAX_INTERVALS = 200;
 const MAX_GRID = 50;
@@ -53,7 +56,9 @@ const MAX_GRID = 50;
  * @property {number} rhoMin smallest radius of curvature (m)
  * @property {number} pMin smallest lever arm (m)
  * @property {number} [intervals] knot intervals, 1 to 200 (default: about one per 10°, 17 to 37)
- * @property {number} [startValue] prescribed p(ψ_0) (m)
+ * @property {number} [startValue] prescribed p(ψ_0) (m); with `ends`, the
+ *   two values of p(ψ_0) must agree to 1e-12 m, otherwise the fit is
+ *   infeasible
  * @property {{ psi: number, p: number, integral: number }[]} [through] points
  *   the track passes through: angle (rad) in (start, end], lever arm (m)
  *   and ∫ p dψ from ψ_0 (m·rad)
@@ -160,6 +165,10 @@ function fitChecked(input) {
     Array.isArray(through) &&
     through.every((q) => q !== null && q !== undefined && q.psi > start && q.psi <= end && Number.isFinite(q.p) && Number.isFinite(q.integral));
   if (!valid) return failed('invalid');
+  // Two prescribed values of p(ψ_0) that differ cannot both hold.
+  if (input.startValue !== undefined && input.ends && Math.abs(input.startValue - input.ends.start[0]) > START_TOLERANCE) {
+    return failed('infeasible');
+  }
   const knots = uniformKnots(start, end, intervals);
   const nv = intervals + 1;
   const n = nv + 2;

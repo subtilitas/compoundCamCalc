@@ -85,7 +85,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   concentric case to 6e-13 m.
 - Constrained fit of the cable track (`src/core/fit.js`): C2 spline by
   least squares with the limits on radius of curvature and lever arm and
-  with the target force and energy at the curve points, solved by a dense
+  with the target force and energy at the curve points (a start value
+  prescribed both alone and with the end conditions must agree to
+  1e-12 m, otherwise the fit is `infeasible`), solved by a dense
   dual active-set quadratic programming solver (`src/core/qp.js`). The
   solver treats a constraint as dependent when n constraints are active or
   its step is at rounding level, skips dependent equalities that hold and
@@ -138,7 +140,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   has the string outlines only; the metrics give the smallest radius of
   curvature and its limit for the string and the cable track separately;
   the string termination lies the residual wrap past the achieved
-  full-draw contact; `brace` holds the brace conditions and the
+  full-draw contact, the reported full-draw cable contact is the achieved
+  one, and the limb rotation is checked on the final cam as well as on the
+  ideal track; `brace` holds the brace conditions and the
   ends of the brace blend as ψ_c0, ψ_1 (rad) and x_1 (m). Without the fit
   the achieved curve equals the target from point 2 on within 1.3e-7 N
   (full) on a test cam. In the limb travel mode the stiffness passes

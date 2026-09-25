@@ -728,7 +728,10 @@ wrap. For a fitted cam the achieved full-draw contact replaces the ideal
 one (0.1° earlier for peak 250 N, rise 49 % and valley width 1.4 in), so
 the residual wrap holds at the achieved full draw; the contact angles do
 not depend on the termination, and a second forward solve gives the string
-length and the wrap checks.
+length and the wrap checks. The reported full-draw cable contact is the
+one of the final cam as well; the end of the active track, where the
+closing blend starts, is reported separately (0.021° apart on the default
+preset).
 
 - Groove bottom and flange edge: parallel curves of the pitch line,
   p − d/2 and p − d/2 + groove depth.
@@ -807,7 +810,7 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `slack-cable` | T_c ≤ 0 of the target after point 2: E1'(α) ≤ s_a·T_s, equivalently dθ/dx ≤ 0 | the preload travel that gives 25 % more limb moment when it stays within its range, otherwise the stiffness, or a later peak |
 | `nonpositive-force` | F ≤ 0 after brace | the force of point 2 or of the points in the range |
 | `cable-fold` | the ideal contact angle does not increase after point 2, or the contact at point 2 lies at or behind ψ_c0 (no brace blend joins them) | a lower or later point 2 for a fold at point 2 before the peak; less let-off only where the target force falls after the peak; otherwise spreading the force change |
-| `limb-rotation` | α_f above the maximum limb rotation | the stiffness (computed) or the limb travel, or the maximum rotation |
+| `limb-rotation` | α_f of the ideal track or of the final cam above the maximum limb rotation (the message shows up to 4 decimals, enough to tell the two apart) | the stiffness (computed) or the limb travel, or the maximum rotation |
 | `limb-energy` | a tabulated limb cannot store the work of the target | a longer limb table or a lower peak |
 | `target-shape` | the rebuilt target is not monotone on its first segment: no monotone setting of the free values at knots 0 and 1 exists (for example a string groove with 46 mm offset on a 50 mm radius, and point 2 at 7 N, 11.8 in from brace, as a local maximum: the first segment dips below 0 N) | point 2 |
 | `string-radius` | ρ of the string pitch line below ρ_lim | the string track radius (computed increase) or the ellipse axes |
@@ -896,6 +899,8 @@ Measured values are the largest errors over the tested samples.
 | Solve with rise 40 % at let-off 75 % and 65 %: no `closing-blend`, cam below 120 mm, closed track ρ ≥ ρ_lim | 1e-5 m | cam 114.0 mm and 113.4 mm |
 | Solve with a lead-in wrap of 0: no diagnostics, cable post at ψ_c0; minimum bend radius 20 mm with a lead-in wrap of 5° and 10°: `closing-blend`, `cable-radius`, `cable-clearance`, suggestion a 10 mm bend radius, which solves without diagnostics, while no larger string track does; lead-in trials k·5° down to exactly 0 | | passes |
 | Peak 250 N, rise 49 %, valley width 1.4 in (fitted cam, full solve): string termination at the achieved full-draw contact plus 30° to 1e-12 rad, string post at the termination, string length equal to a forward solve with that termination to 1e-12 m | | passes |
+| Maximum limb rotation 15.893° on the default preset (ideal track 15.8923°, fitted cam 15.8940°, coarse and full): `limb-rotation` alone, message with 3 decimals | | passes |
+| Constrained fit with p(ψ_0) prescribed twice: 0.03 m and 0.02 m infeasible, 0.02 m twice optimal with p(ψ_0) = 0.02 m to 1e-12 m | | passes |
 | Lead-in wrap 137.55° on the default preset (0.06° left to close, coarse and full): `closing-blend` alone, no cable track, achieved curve or metrics, string outlines only, suggestion a lead-in wrap of at most 105.0°, which solves without diagnostics; 100 random valid states: every solve without diagnostics has a cable track, an achieved curve and metrics | | passes |
 | `closing-blend` trials: point 2 at 12 in and 120 N names a 55.0 mm string track radius (full solve; 50 mm fails, 55 mm solves without diagnostics; the coarse solve runs no trials and names the force curve); a 45 mm × 35 mm ellipse with point 2 at 11 in and 100 N names both semi-axes 15 mm larger; point 2 at 10 in and 50 N names none, and each larger string track raises the largest force difference; trial states within the field range, the bend radius tried only when it sets ρ_lim | | passes |
 | Offsets, maximum dimension, termination and cable stop posts, timing marks | 5e-16 m to 1e-6 m | passes |

@@ -186,12 +186,14 @@ export const RESOLUTIONS = Object.freeze({
  * @property {{ stringPitch: SupportData | null, cablePitch: SupportData | null,
  *   grooves: { string: SupportData | null, cable: SupportData | null },
  *   flanges: { string: SupportData | null, cable: SupportData | null },
- *   cable: { psiStart: number, psiBrace: number, psiFull: number, blendLength: number, leadInRho: number,
- *     blendMinRho: number } | null,
+ *   cable: { psiStart: number, psiBrace: number, psiFull: number, activeEnd: number, blendLength: number,
+ *     leadInRho: number, blendMinRho: number } | null,
  *   string: { psiFull: number, psiEnd: number } | null }} tracks pitch lines
  *   as support data; cable: termination (brace contact − lead-in), brace
- *   contact of the built cam (ψ_c0 when the track keeps p(ψ_c0) = p_c0) and
- *   full-draw contact angle, arc of the closing blend (rad), radius of curvature
+ *   contact of the built cam (ψ_c0 when the track keeps p(ψ_c0) = p_c0),
+ *   full-draw contact angle of the forward model of the built cam, end of the
+ *   active track where the closing blend starts, arc of the closing blend
+ *   (rad), radius of curvature
  *   ρ_0 the lead-in settles to and smallest ρ of the closing blend (m);
  *   string: full-draw contact angle and termination (rad)
  * @property {SolveOutlines} outlines
@@ -710,9 +712,14 @@ function solveState(state, resolution, maxIterations, trials) {
   res.tracks.cablePitch = cablePitch;
   res.tracks.grooves.cable = cableOffsets.groove;
   res.tracks.flanges.cable = cableOffsets.flange;
+  // The achieved full-draw contact of a fitted cam differs from the end of
+  // the active track by up to about 0.1°; the closing blend starts at the
+  // latter.
+  const psiCFull = forward.psiC[forward.n - 1];
   res.tracks.cable = {
-    psiStart: closed.psiStart, psiBrace: closed.psiBrace, psiFull: closed.psiFull, blendLength: closed.blendLength,
-    leadInRho: closed.leadInRho, blendMinRho: closed.blendMinRho,
+    psiStart: closed.psiStart, psiBrace: closed.psiBrace,
+    psiFull: Number.isFinite(psiCFull) ? psiCFull : closed.psiFull, activeEnd: closed.psiFull,
+    blendLength: closed.blendLength, leadInRho: closed.leadInRho, blendMinRho: closed.blendMinRho,
   };
   checkCableClearance(cableSupport, closed, state, fmt, diags);
   res.achieved = {
@@ -721,6 +728,14 @@ function solveState(state, resolution, maxIterations, trials) {
     axleX: forward.axleX, axleY: forward.axleY, spanS: forward.spanS, spanC: forward.spanC,
   };
   forwardDiagnostics(forward, diags, fmt);
+  // A fitted cam can store more energy than the ideal track and turn the
+  // limbs further.
+  if (!diags.some((d) => d.code === 'limb-rotation')) {
+    const rotation = limbRotationDiagnostic(
+      forward.alpha[forward.n - 1], forward.x[forward.n - 1], forward.drawEnergy, state, ctx, limbData, fmt,
+    );
+    if (rotation) diags.push(rotation);
+  }
 
   // Outlines, posts, marks.
   const tOutline2 = now();
@@ -1092,31 +1107,47 @@ function checkIdeal(s, i1, state, ctx, limbData, targetMetrics, fmt, diags) {
       ),
     );
   }
-  const alphaFull = s.alpha[n - 1];
+  const rotation = limbRotationDiagnostic(s.alpha[n - 1], s.x[n - 1], targetMetrics.energy, state, ctx, limbData, fmt);
+  if (rotation) diags.push(rotation);
+}
+
+/**
+ * Diagnostic of a limb rotation from brace to full draw above the maximum
+ * limb rotation, or null.
+ * @param {number} alphaFull limb rotation at full draw α_f (rad)
+ * @param {number} xFull full-draw nock position (m)
+ * @param {number} energy draw energy the limbs store (J)
+ * @param {ProjectState} state
+ * @param {import('./inverse.js').InverseContext} ctx
+ * @param {import('./limb.js').LimbData} limbData
+ * @param {ReturnType<typeof formatter>} fmt
+ * @returns {SolveDiagnostic | null}
+ */
+function limbRotationDiagnostic(alphaFull, xFull, energy, state, ctx, limbData, fmt) {
   const maxRotation = state.limb.maxRotation;
-  if (alphaFull > maxRotation) {
-    const R = state.geometry.limbLength;
-    const a0 = ctx.limb.alpha0;
-    let suggestion;
-    if (state.limb.mode === 'stiffness' && limbData.kind === 'linear') {
-      // W/2 = ½·k_t·((α_max + α_0)² − α_0²).
-      const W = targetMetrics.energy;
-      const kt = W / ((maxRotation + a0) ** 2 - a0 ** 2);
-      suggestion = `Increase the limb stiffness to at least ${fmt.stiffness((1.02 * kt) / (R * R))}, or raise the maximum limb rotation to ${fmt.angle(alphaFull + 0.5 * DEG)}`;
-    } else if (state.limb.mode === 'travel') {
-      suggestion = `Reduce the limb travel to at most ${fmt.size(0.98 * maxRotation * R)}, or raise the maximum limb rotation to ${fmt.angle(alphaFull + 0.5 * DEG)}`;
-    } else {
-      suggestion = `Use a stiffer limb table, or raise the maximum limb rotation to ${fmt.angle(alphaFull + 0.5 * DEG)}`;
-    }
-    diags.push(
-      diagnostic(
-        'limb-rotation',
-        `The limbs turn ${fmt.angle(alphaFull)} from brace to full draw; the maximum limb rotation is ${fmt.angle(maxRotation)}`,
-        suggestion,
-        { xRange: [s.x[n - 1], s.x[n - 1]] },
-      ),
-    );
+  if (!(alphaFull > maxRotation)) return null;
+  const R = state.geometry.limbLength;
+  const a0 = ctx.limb.alpha0;
+  let suggestion;
+  if (state.limb.mode === 'stiffness' && limbData.kind === 'linear') {
+    // W/2 = ½·k_t·((α_max + α_0)² − α_0²).
+    const kt = energy / ((maxRotation + a0) ** 2 - a0 ** 2);
+    suggestion = `Increase the limb stiffness to at least ${fmt.stiffness((1.02 * kt) / (R * R))}, or raise the maximum limb rotation to ${fmt.angle(alphaFull + 0.5 * DEG)}`;
+  } else if (state.limb.mode === 'travel') {
+    suggestion = `Reduce the limb travel to at most ${fmt.size(0.98 * maxRotation * R)}, or raise the maximum limb rotation to ${fmt.angle(alphaFull + 0.5 * DEG)}`;
+  } else {
+    suggestion = `Use a stiffer limb table, or raise the maximum limb rotation to ${fmt.angle(alphaFull + 0.5 * DEG)}`;
   }
+  // Enough decimals to tell the rotation from the limit (up to 4).
+  const deg = (/** @type {number} */ v, /** @type {number} */ d) => `${(v / DEG).toFixed(d)}°`;
+  let digits = 1;
+  while (digits < 4 && deg(alphaFull, digits) === deg(maxRotation, digits)) digits++;
+  return diagnostic(
+    'limb-rotation',
+    `The limbs turn ${deg(alphaFull, digits)} from brace to full draw; the maximum limb rotation is ${deg(maxRotation, digits)}`,
+    suggestion,
+    { xRange: [xFull, xFull] },
+  );
 }
 
 /** Suggestion of a cable track problem between brace and point 3. */

@@ -205,6 +205,9 @@ describe('solve: default preset', () => {
     }
     expect(posts['string-post'].psi).toBeCloseTo(/** @type {any} */ (r.tracks.string).psiEnd, 15);
     expect(posts['cable-post'].psi).toBeCloseTo(/** @type {any} */ (r.tracks.cable).psiStart, 15);
+    // The reported full-draw cable contact is the one of the built cam.
+    expect(/** @type {any} */ (r.tracks.cable).psiFull).toBe(a.psiC[n - 1]);
+    expect(Math.abs(/** @type {any} */ (r.tracks.cable).psiFull - /** @type {any} */ (r.tracks.cable).activeEnd)).toBeLessThan(0.1 * DEG);
     // Cable stop: at full draw the free span passes the peg at r_peg + d/2.
     const stop = camToWorld(Of, a.theta[n - 1], posts['cable-stop']);
     const psiF = a.psiC[n - 1];
@@ -362,6 +365,15 @@ describe('solve: diagnostics', () => {
       s.limb.maxRotation = 10 * DEG;
     }), 'limb-rotation');
     expect(travel.d.suggestion).toMatch(/limb travel to at most/);
+    // The fitted default cam turns the limbs 15.8940°, the ideal track
+    // 15.8923°: a limit between the two holds for the ideal track only.
+    for (const resolution of /** @type {const} */ (['coarse', 'full'])) {
+      const between = expectCode(modified((s) => (s.limb.maxRotation = 15.893 * DEG)), 'limb-rotation', { resolution });
+      expect(codes(between.r)).toEqual(['limb-rotation']);
+      const alpha = /** @type {NonNullable<SolveResult['achieved']>} */ (between.r.achieved).alpha;
+      expect(alpha[alpha.length - 1]).toBeGreaterThan(15.893 * DEG);
+      expect(between.d.message).toMatch(/^The limbs turn 15\.894\d?° from brace to full draw; the maximum limb rotation is 15\.893\d?°$/);
+    }
   });
 
   it('limb-energy: a limb table whose force falls off before the draw energy is stored', () => {
