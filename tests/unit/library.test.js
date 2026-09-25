@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   FILE_MAX, NAME_MAX, canonicalText, deleteDesign, emptyLibrary, fileNameOf, findByName, isDirty, listDesigns,
-  nameOfFile, normalizeName, parseCurrent, parseLibrary, serializeCurrent, untitled, readProjectFile, renameDesign, saveDesign, serializeLibrary,
+  nameOfFile, normalizeName, pairStamp, parseCurrent, parseLibrary, serializeCurrent, untitled, readProjectFile, renameDesign, saveDesign, serializeLibrary,
 } from '../../src/state/library.js';
 import { drawRange } from '../../src/core/curve.js';
 import { defaultState } from '../../src/state/presets.js';
@@ -117,11 +117,27 @@ describe('design library', () => {
   });
 
   it('stores the current design and falls back to Untitled', () => {
+    const p = toJSON(SAMPLES[3].state());
     const c = /** @type {const} */ ({ id: null, name: 'Mini', source: 'unsaved', baseline: SAMPLES[3].state() });
-    expect(parseCurrent(serializeCurrent(c))).toEqual(c);
+    expect(parseCurrent(serializeCurrent(c, p), p)).toEqual(c);
     const saved = /** @type {const} */ ({ id: 'd1', name: 'Bow', source: 'saved', baseline: null });
-    expect(parseCurrent(serializeCurrent(saved))).toEqual(saved);
-    for (const bad of [null, '{', '[]', '{"name":"x","source":"odd"}', '{"name":"x","source":"saved"}']) expect(parseCurrent(bad)).toEqual(untitled());
-    expect(parseCurrent('{"name":"x","source":"unsaved","baseline":{"schemaVersion":9}}').baseline).toBeNull();
+    expect(parseCurrent(serializeCurrent(saved, p), p)).toEqual(saved);
+    for (const bad of [null, '{', '[]', '{"name":"x","source":"odd"}', '{"name":"x","source":"saved"}']) expect(parseCurrent(bad, p)).toEqual(untitled());
+    // Without a stored working copy the current design means nothing.
+    expect(parseCurrent(serializeCurrent(saved, p), null)).toEqual(untitled());
+    const odd = JSON.stringify({ name: 'x', source: 'unsaved', baseline: { schemaVersion: 9 }, pair: pairStamp(p) });
+    expect(parseCurrent(odd, p).baseline).toBeNull();
+  });
+
+  it('does not pair a working copy with the current design of another tab', () => {
+    // Tab A and B interleave: A's project, B's project, B's current, A's current.
+    const a = toJSON(SAMPLES[0].state());
+    const b = toJSON(SAMPLES[1].state());
+    const currentA = serializeCurrent({ id: 'dA', name: 'Bow A', source: 'saved', baseline: null }, a);
+    expect(parseCurrent(currentA, b)).toEqual({ id: null, name: 'Untitled', source: 'unsaved', baseline: null, orphan: true });
+    // A current design stored without a stamp is not trusted either.
+    expect(parseCurrent('{"id":"dA","name":"Bow A","source":"saved","baseline":null}', a).id).toBeNull();
+    expect(pairStamp('')).toBe('811c9dc5');
+    expect(pairStamp(a)).not.toBe(pairStamp(b));
   });
 });

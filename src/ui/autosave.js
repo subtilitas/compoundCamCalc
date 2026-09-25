@@ -23,8 +23,8 @@ export const SAVE_DELAY = 300;
 /**
  * Saved project, or the default preset. A notice explains why saved data
  * was not used; that data is copied to {@link BACKUP_KEY} first, because the
- * next change replaces it.
- * @returns {{ state: ProjectState, notice: string | null }}
+ * next change replaces it. text is the stored working copy, or null.
+ * @returns {{ state: ProjectState, notice: string | null, text: string | null }}
  */
 export function loadSaved() {
   /** @type {string | null} */
@@ -32,9 +32,9 @@ export function loadSaved() {
   try {
     text = window.localStorage.getItem(STORAGE_KEY);
   } catch {
-    return { state: defaultState(), notice: null };
+    return { state: defaultState(), notice: null, text: null };
   }
-  if (text === null) return { state: defaultState(), notice: null };
+  if (text === null) return { state: defaultState(), notice: null, text: null };
   const { state, errors } = fromJSON(text);
   if (errors.length > 0) {
     let kept = false;
@@ -47,10 +47,11 @@ export function loadSaved() {
     const copy = kept ? ` A copy of the saved data is kept in the browser under "${BACKUP_KEY}".` : '';
     return {
       state,
+      text: null,
       notice: `The saved project could not be loaded: ${errors[0].message}. The default project is shown instead.${copy} The next change replaces the saved project.`,
     };
   }
-  return { state, notice: null };
+  return { state, notice: null, text };
 }
 
 /**
@@ -68,11 +69,12 @@ export function loadCurrent() {
 /**
  * Save the store state after every change, debounced. A pending save is
  * written at once when the page is hidden or closed. The current design
- * text, when given, is written together with the working copy, so both
- * always come from one tab.
+ * text, when given, is written together with the working copy and gets
+ * that text to stamp it: two tabs saving at once can interleave their
+ * writes, and the stamp shows on load whether the pair belongs together.
  * @param {Store} store
  * @param {(status: 'pending' | 'saved' | 'error') => void} onStatus
- * @param {{ current?: () => string }} [options]
+ * @param {{ current?: (projectText: string) => string }} [options]
  * @returns {{ saveNow: () => boolean }} saveNow writes at once; false when storage refuses
  */
 export function startAutosave(store, onStatus, options = {}) {
@@ -88,8 +90,9 @@ export function startAutosave(store, onStatus, options = {}) {
     try {
       before.push([STORAGE_KEY, window.localStorage.getItem(STORAGE_KEY)]);
       if (options.current) before.push([CURRENT_KEY, window.localStorage.getItem(CURRENT_KEY)]);
-      window.localStorage.setItem(STORAGE_KEY, toJSON(store.getState()));
-      if (options.current) window.localStorage.setItem(CURRENT_KEY, options.current());
+      const text = toJSON(store.getState());
+      window.localStorage.setItem(STORAGE_KEY, text);
+      if (options.current) window.localStorage.setItem(CURRENT_KEY, options.current(text));
       onStatus('saved');
       return true;
     } catch {

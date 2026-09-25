@@ -245,9 +245,15 @@ export function createFileMenu(container, store, options) {
         : 'Browser storage is full: Save and Save as are off. Delete designs in Open… or use Save to file.';
   }
 
+  // Counts changes of the current design. An action that waited for the
+  // library lock applies its effect on the current design only when no
+  // other change came in between.
+  let epoch = 0;
+
   /** @param {Current} next */
   function setCurrent(next) {
     current = next;
+    epoch++;
     const ok = options.persist();
     render();
     return ok;
@@ -440,6 +446,7 @@ export function createFileMenu(container, store, options) {
    */
   async function saveUnder(name, id) {
     const state = store.getState();
+    const before = epoch;
     // Check the target again inside the lock: another tab may have renamed
     // or deleted it, or given its name to another design, since the dialog.
     const r = await withLibrary((lib) => {
@@ -458,6 +465,10 @@ export function createFileMenu(container, store, options) {
       return;
     }
     writable = true;
+    if (epoch !== before) {
+      say(`Saved "${name}". Another design was opened meanwhile and stays open.`);
+      return;
+    }
     const ok = setCurrent({ id: r.value, name, source: 'saved', baseline: null });
     say(ok ? `Saved "${name}"` : `Saved "${name}", but the working copy was not updated: browser storage is full. Use Save to file.`);
   }
@@ -477,13 +488,15 @@ export function createFileMenu(container, store, options) {
       return;
     }
     const lib = readLibrary();
+    const own = lib?.designs.find((d) => d.id === current.id);
     // Deleted meanwhile (another tab): ask for a name, which checks clashes.
-    if (!lib?.designs.some((d) => d.id === current.id)) {
+    if (!own) {
       void saveAs();
       return;
     }
     close();
-    await saveUnder(current.name, current.id);
+    // Renamed meanwhile (another tab): the library name counts.
+    await saveUnder(own.name, own.id);
     menuButton.focus();
   });
   saveAsBtn.addEventListener('click', () => void saveAs());
@@ -536,19 +549,19 @@ export function createFileMenu(container, store, options) {
             fill();
             return;
           }
-          if (current.id === e.id) setCurrent({ ...current, name: r.name });
+          let kept = true;
+          if (current.id === e.id) kept = setCurrent({ ...current, name: r.name });
           else if (r.replaceId !== null && r.replaceId === current.id) {
             // The open design was replaced: its inputs stay open, unsaved.
             const gone = listDesigns(done2.before).find((x) => x.id === r.replaceId);
-            setCurrent({ id: null, name: current.name, source: 'unsaved', baseline: gone?.state ?? null, orphan: true });
+            kept = setCurrent({ id: null, name: current.name, source: 'unsaved', baseline: gone?.state ?? null, orphan: true });
           }
-          say(`Renamed "${e.name}" to "${r.name}"`);
+          say(kept ? `Renamed "${e.name}" to "${r.name}"` : `Renamed "${e.name}" to "${r.name}", but the working copy was not updated: browser storage is full. Use Save to file.`);
           fill();
           /** @type {HTMLElement | null} */ (list.querySelector(`[aria-label="Rename ${CSS.escape(r.name)}"]`))?.focus();
         });
         del.addEventListener('click', async () => {
-          const isOpen = current.id === e.id;
-          const text = isOpen ? `Delete "${e.name}"? Its inputs stay open as an unsaved design.` : `Delete "${e.name}"?`;
+          const text = current.id === e.id ? `Delete "${e.name}"? Its inputs stay open as an unsaved design.` : `Delete "${e.name}"?`;
           if (!(await confirm(text, 'Delete', del))) return;
           const gone = await withLibrary((lib) => ({ library: deleteDesign(lib, e.id), value: listDesigns(lib).findIndex((x) => x.id === e.id) }));
           if (!gone.ok) {
@@ -557,7 +570,8 @@ export function createFileMenu(container, store, options) {
           }
           const index = gone.value ?? 0;
           writable = probeWrite();
-          if (isOpen) setCurrent({ id: null, name: e.name, source: 'unsaved', baseline: store.getState(), orphan: true });
+          // Checked after the lock: another design may have been opened while this one waited.
+          if (current.id === e.id) setCurrent({ id: null, name: e.name, source: 'unsaved', baseline: store.getState(), orphan: true });
           say(`Deleted "${e.name}"`);
           fill();
           const rows = [...list.querySelectorAll('[data-testid="design-open"]')];
@@ -680,8 +694,12 @@ export function createFileMenu(container, store, options) {
   });
   // A saved design deleted while the page was closed stays open, unsaved.
   const lib = readLibrary();
-  if (current.source === 'saved' && lib && !lib.designs.some((d) => d.id === current.id)) {
+  const stored = current.source === 'saved' && lib ? lib.designs.find((d) => d.id === current.id) : undefined;
+  if (current.source === 'saved' && lib && !stored) {
     current = { id: null, name: current.name, source: 'unsaved', baseline: store.getState(), orphan: true };
+  } else if (stored && stored.name !== current.name) {
+    // Renamed while the new name could not be stored with the working copy.
+    current = { ...current, name: stored.name };
   }
   render();
   return { current: () => current, render };

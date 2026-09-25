@@ -284,12 +284,31 @@ export function untitled() {
 }
 
 /**
+ * Stamp of the working copy text a current design was stored with:
+ * 32-bit FNV-1a, 8 hex digits.
+ * @param {string} text
+ */
+export function pairStamp(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
  * Parse the stored current design; anything unreadable gives Untitled.
+ * Two tabs that autosave at the same time can store the working copy of
+ * one with the current design of the other. A stamp that does not match
+ * the working copy text gives an unsaved design without a name, so Save
+ * never overwrites a design with inputs that are not its own.
  * @param {string | null} text
+ * @param {string | null} projectText stored working copy
  * @returns {Current}
  */
-export function parseCurrent(text) {
-  if (text === null) return untitled();
+export function parseCurrent(text, projectText) {
+  if (text === null || projectText === null) return untitled();
   /** @type {any} */
   let d;
   try {
@@ -300,6 +319,7 @@ export function parseCurrent(text) {
   if (!d || typeof d !== 'object' || typeof d.name !== 'string' || !['new', 'saved', 'unsaved'].includes(d.source)) return untitled();
   const id = d.source === 'saved' && typeof d.id === 'string' ? d.id : null;
   if (d.source === 'saved' && id === null) return untitled();
+  if (d.pair !== pairStamp(projectText)) return { id: null, name: 'Untitled', source: 'unsaved', baseline: null, orphan: true };
   const baseline = d.baseline === null || d.baseline === undefined ? null : readState(d.baseline).state;
   /** @type {Current} */
   const out = { id, name: normalizeName(d.name).name || 'Untitled', source: d.source, baseline };
@@ -309,8 +329,9 @@ export function parseCurrent(text) {
 
 /**
  * @param {Current} current
+ * @param {string} projectText working copy stored with it
  * @returns {string}
  */
-export function serializeCurrent(current) {
-  return JSON.stringify(current);
+export function serializeCurrent(current, projectText) {
+  return JSON.stringify({ ...current, pair: pairStamp(projectText) });
 }

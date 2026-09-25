@@ -112,9 +112,9 @@ export function startApp() {
   /** @type {{ saveNow: () => boolean } | null} */
   let autosave = null;
   const fileMenu = createFileMenu(byId('file-area', HTMLDivElement), store, {
-    // A notice about unreadable saved data means the working copy is the
+    // Unreadable saved data (text null) means the working copy is the
     // default design, whatever the stored current design says.
-    current: saved.notice ? parseCurrent(null) : parseCurrent(loadCurrent()),
+    current: parseCurrent(loadCurrent(), saved.text),
     persist: () => autosave?.saveNow() ?? false,
   });
 
@@ -381,5 +381,5 @@ export function startApp() {
       storageWarned = true;
       showNotice(notices, 'This browser does not allow saving. Changes are lost when the page is closed.');
     }
-  }, { current: () => serializeCurrent(fileMenu.current()) });
+  }, { current: (text) => serializeCurrent(fileMenu.current(), text) });
 }

@@ -574,10 +574,17 @@ Independent set; everything else is derived and shown read-only.
     reload restores the working copy with its name and marker. There is no
     leave-page prompt: the working copy is autosaved. Autosave writes the
     working copy and the current design together; when either write fails
-    it restores both. Library changes (save, rename, delete) read, change
-    and write the library under a Web Lock shared by all tabs, so two tabs
-    cannot overwrite each other's changes; a real write that fails turns
-    Save and Save as off until a write succeeds.
+    it restores both. The current design carries `pair`, a 32-bit FNV-1a
+    stamp of the working copy text it was written with: two tabs that
+    autosave at once can interleave their writes, and a stamp that does not
+    match on load gives an unsaved "Untitled" design that asks before it is
+    replaced. On load a saved design takes its name from the library.
+    Library changes (save, rename, delete) read, change and write the
+    library under a Web Lock shared by all tabs, so two tabs cannot
+    overwrite each other's changes; a real write that fails turns Save and
+    Save as off until a write succeeds. An action that waited for the lock
+    changes the current design only when no other design was opened
+    meanwhile.
   - Unsaved changes: `toJSON(state)` differs from the saved copy after
     `fromJSON` (key order normalised by `migrate`, including table rows).
     Recomputed after each change outside a gesture; undoing back to the

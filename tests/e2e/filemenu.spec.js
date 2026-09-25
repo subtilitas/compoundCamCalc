@@ -265,6 +265,45 @@ test.describe('File menu storage failures', () => {
     expect(await page.evaluate(() => localStorage.getItem('compoundCamCalc.project'))).toBe(before);
   });
 
+  test('a rename the working copy cannot store shows on reload and keeps Save working', async ({ page }) => {
+    await page.goto('./');
+    await saveAs(page, 'Bow A');
+    await page.evaluate(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'compoundCamCalc.current') throw new DOMException('full', 'QuotaExceededError');
+        set.call(this, key, value);
+      };
+    });
+    await menu(page, 'open');
+    await page.getByRole('button', { name: 'Rename Bow A' }).click();
+    await page.getByTestId('dialog-name').fill('Bow C');
+    await page.getByTestId('dialog-ok').click();
+    const openDialog = page.locator('dialog').filter({ has: page.getByTestId('design-list') });
+    await expect(openDialog.getByTestId('dialog-status')).toHaveText('Renamed "Bow A" to "Bow C", but the working copy was not updated: browser storage is full. Use Save to file.');
+    await page.reload();
+    await expect(page.getByTestId('design-name')).toHaveText('Bow C');
+    await changeAta(page, '34');
+    await menu(page, 'save');
+    await expect(page.getByTestId('file-status')).toHaveText('Saved "Bow C"');
+  });
+
+  test('a working copy stored by another tab is not paired with this design', async ({ page }) => {
+    await page.goto('./');
+    await saveAs(page, 'Bow A');
+    // Another tab's autosave wrote its working copy after this tab's current design.
+    await page.evaluate(() => {
+      const p = JSON.parse(localStorage.getItem('compoundCamCalc.project') ?? '{}');
+      p.geometry.ata += 0.01;
+      localStorage.setItem('compoundCamCalc.project', JSON.stringify(p));
+    });
+    await page.reload();
+    await expect(page.getByTestId('design-name')).toHaveText('Untitled');
+    await expect(page.getByTestId('design-marker')).toContainText('not saved');
+    await menu(page, 'save');
+    await expect(page.getByTestId('dialog-name')).toBeVisible();
+  });
+
   test('a save that storage refuses turns Save off', async ({ page }) => {
     await page.goto('./');
     await page.evaluate(() => {
@@ -365,6 +404,28 @@ test.describe('File menu with two tabs', () => {
     const designs = await page.evaluate(() => JSON.parse(localStorage.getItem('compoundCamCalc.designs') ?? '{}').designs);
     const c = designs.find((/** @type {{ name: string }} */ d) => d.name === 'Bow C');
     expect(c.state.geometry.ata).not.toBe(designs.find((/** @type {{ name: string }} */ d) => d.name === 'Bow B').state.geometry.ata);
+  });
+
+  test('a save that waits for the lock leaves a design opened meanwhile as it is', async ({ page }) => {
+    await page.goto('./');
+    await page.evaluate(() => {
+      const request = navigator.locks.request.bind(navigator.locks);
+      /** @type {any} */ (navigator.locks).request = async (/** @type {string} */ name, /** @type {() => unknown} */ run) => {
+        // Another tab holds the lock until the test releases it.
+        await new Promise((resolve) => { /** @type {any} */ (window).release = resolve; });
+        return request(name, run);
+      };
+    });
+    await menu(page, 'save-as');
+    await page.getByTestId('dialog-name').fill('Bow A');
+    await page.getByTestId('dialog-ok').click();
+    await menu(page, 'sample');
+    await page.getByTestId('sample-crossbow').click();
+    await expect(page.getByTestId('design-name')).toHaveText('Crossbow (169 lbf)');
+    await page.evaluate(() => /** @type {any} */ (window).release());
+    await expect(page.getByTestId('file-status')).toHaveText('Saved "Bow A". Another design was opened meanwhile and stays open.');
+    await expect(page.getByTestId('design-name')).toHaveText('Crossbow (169 lbf)');
+    await expect(page.getByTestId('design-marker')).toHaveText('(not saved)');
   });
 
   test('Open sample asks again when another tab deletes the open design meanwhile', async ({ page, context }) => {
