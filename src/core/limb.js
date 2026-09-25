@@ -67,15 +67,19 @@ export function linearLimb({ stiffness, preloadTravel, limbLength }) {
 /**
  * Stiffness k at the axle (N/m) that stores the draw energy W over the axle
  * travel s_f from brace to full draw, with preload travel s_0:
- * W = k·((s_f + s_0)² − s_0²). NaN unless W > 0, s_f > 0 and s_0 ≥ 0 are
- * finite.
+ * W = k·((s_f + s_0)² − s_0²) = k·s_f·(s_f + 2·s_0). NaN unless W > 0,
+ * s_f > 0 and s_0 ≥ 0 are finite and k is in the floating-point range.
  * @param {{ drawEnergy: number, travel: number, preloadTravel: number }} params (J, m, m)
  * @returns {number}
  */
 export function stiffnessForTravel({ drawEnergy, travel, preloadTravel }) {
   const valid = drawEnergy > 0 && Number.isFinite(drawEnergy) && travel > 0 && Number.isFinite(travel) && preloadTravel >= 0 && Number.isFinite(preloadTravel);
   if (!valid) return NaN;
-  const k = drawEnergy / ((travel + preloadTravel) ** 2 - preloadTravel ** 2);
+  // (s_f + s_0)² − s_0² = 2·s_f·h with h = s_0 + s_f/2, without subtracting
+  // two squares; the second order of division covers the other overflow.
+  const half = preloadTravel + travel / 2;
+  let k = drawEnergy / 2 / travel / half;
+  if (!(Number.isFinite(k) && k > 0)) k = drawEnergy / 2 / half / travel;
   return Number.isFinite(k) && k > 0 ? k : NaN;
 }
 
@@ -194,7 +198,8 @@ function linearMethods(d) {
     energyChange: (alpha) => 0.5 * kt * alpha * (alpha + 2 * a0),
     moment: (alpha) => kt * (alpha + a0),
     stiffness: (alpha) => (Number.isNaN(alpha) ? NaN : kt),
-    inverse: (energy) => (energy >= 0 && Number.isFinite(energy) ? Math.sqrt((2 * energy) / kt) - a0 : NaN),
+    // √2·√E/√k_t: each root stays in range, so 2·E cannot overflow first.
+    inverse: (energy) => (energy >= 0 && Number.isFinite(energy) ? Math.SQRT2 * (Math.sqrt(energy) / Math.sqrt(kt)) - a0 : NaN),
   };
 }
 
@@ -204,7 +209,7 @@ function linearMethods(d) {
  */
 function tableMethods(d) {
   const curve = fromCurveData(d.curve);
-  const { knots, values, slopes } = d.curve;
+  const { knots, values, slopes, coeffs } = d.curve;
   const n = knots.length - 1;
   const [q0, qn] = [knots[0], knots[n]];
   const total = curve.integral(q0, qn);
@@ -240,11 +245,45 @@ function tableMethods(d) {
    * @param {number} q
    */
   const toEnd = (q) => (q >= q0 ? curve.integral(q, qn) : line(values[0], slopes[0], q0, q, q0 - q) + total);
+  /**
+   * Index i of the table interval [q_i, q_(i+1)] that holds q, q0 ≤ q < qn.
+   * @param {number} q
+   */
+  const intervalOf = (q) => {
+    let lo = 0;
+    let hi = n - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (knots[mid] <= q) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  };
+  /**
+   * Integral of M over [s, s + len] inside interval i, from the Taylor
+   * expansion of the quintic about s. The length enters by itself, so a
+   * length below the floating-point spacing at s keeps its integral.
+   * @param {number} i
+   * @param {number} s
+   * @param {number} len
+   */
+  const within = (i, s, len) => {
+    const h = knots[i + 1] - knots[i];
+    const t = (s - knots[i]) / h;
+    const tau = len / h;
+    // Coefficients of q(t + u) in u, by repeated synthetic division.
+    const m = Array.from(coeffs.subarray(6 * i, 6 * i + 6));
+    for (let j = 0; j < 5; j++) for (let k = 4; k >= j; k--) m[k] += t * m[k + 1];
+    let sum = 0;
+    for (let j = 5; j >= 0; j--) sum = sum * tau + m[j] / (j + 1);
+    return len * sum;
+  };
   return {
     energy: (alpha) => W(alpha + a0),
     // E1(α) − E1(0) as the integral of M from brace, piece by piece; no piece
-    // subtracts two totals, and beyond the table the length is α itself, so a
-    // preload far larger than α keeps its draw energy. a0 ≥ q0 = 0 always.
+    // subtracts two totals, and the piece that starts at brace takes α (or
+    // its own length) directly, so a preload far larger than α keeps its
+    // draw energy. a0 ≥ q0 = 0 always.
     energyChange(alpha) {
       const q = alpha + a0;
       if (Number.isNaN(q)) return NaN;
@@ -252,9 +291,16 @@ function tableMethods(d) {
         if (q >= qn) return line(values[n], slopes[n], qn, a0, alpha);
         return -(toEnd(q) + line(values[n], slopes[n], qn, qn, a0 - qn));
       }
-      if (q > qn) return curve.integral(a0, qn) + line(values[n], slopes[n], qn, qn, q - qn);
-      if (q >= q0) return curve.integral(a0, q);
-      return -(curve.integral(q0, a0) + line(values[0], slopes[0], q0, q, q0 - q));
+      // Brace inside the table, in interval i.
+      const i = intervalOf(a0);
+      const [lo, hi] = [knots[i], knots[i + 1]];
+      if (q >= lo && q <= hi) return within(i, a0, alpha);
+      if (q > hi) {
+        const rest = q > qn ? curve.integral(hi, qn) + line(values[n], slopes[n], qn, qn, q - qn) : curve.integral(hi, q);
+        return within(i, a0, hi - a0) + rest;
+      }
+      const rest = q >= q0 ? curve.integral(q, lo) : curve.integral(q0, lo) + line(values[0], slopes[0], q0, q, q0 - q);
+      return -(within(i, lo, a0 - lo) + rest);
     },
     moment: (alpha) => M(alpha + a0),
     stiffness(alpha) {

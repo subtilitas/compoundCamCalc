@@ -52,13 +52,30 @@ describe('linear limb', () => {
     expect(limbEnergies(beyond, 0.1).drawEnergy).toBeGreaterThan(1e15);
   });
 
+  it('keeps a draw rotation below the floating-point spacing at brace', () => {
+    // Brace inside a table with large rotations: α + α_0 rounds to α_0.
+    const big = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 1e16, 2e16], moment: [0, 1e16, 2e16], alpha0: 1e16 }).limb));
+    expect(1e16 + 0.194).toBe(1e16);
+    expect(big.energyChange(0.194) / (0.194 * big.moment(0))).toBeCloseTo(1, 12);
+    expect(limbEnergies(big, 0.194).drawEnergy / (2 * 0.194 * 1e16)).toBeCloseTo(1, 12);
+    // A small table: α = 1e-18 rad at α_0 = 0.3 rad.
+    const small = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.2, 0.5], moment: [0, 100, 300], alpha0: 0.3 }).limb));
+    expect(small.energyChange(1e-18) / (1e-18 * small.moment(0))).toBeCloseTo(1, 12);
+    expect(small.energyChange(-1e-18) / (-1e-18 * small.moment(0))).toBeCloseTo(1, 12);
+  });
+
+  it('inverts an energy whose double overflows', () => {
+    const limb = createLimb({ kind: 'linear', torsionalStiffness: 2, alpha0: 0 });
+    expect(limb.inverse(1e308) / 1e154).toBeCloseTo(1, 14);
+  });
+
   it('integrates the table energy from brace on every side of the table', () => {
     // Knots 0, 0.2, 0.5; brace inside (α_0 = 0.1) and beyond (α_0 = 0.8).
     const rows = { rotation: [0, 0.2, 0.5], moment: [0, 100, 300] };
     for (const alpha0 of [0.1, 0.8]) {
       const limb = createLimb(/** @type {TableLimbData} */ (tableLimb({ ...rows, alpha0 }).limb));
       // q = α + α_0 left of the table, inside it, and right of it.
-      for (const alpha of [-1.5, -0.3, -0.05, 0, 0.05, 0.3, 1.5]) {
+      for (const alpha of [-1.5, -0.3, -0.12, -0.05, 0, 0.05, 0.12, 0.3, 1.5]) {
         expect(limb.energyChange(alpha)).toBeCloseTo(limb.energy(alpha) - limb.energy(0), 10);
       }
       expect(limb.energyChange(NaN)).toBeNaN();
@@ -85,6 +102,12 @@ describe('stiffnessForTravel', () => {
     expect(stiffnessForTravel({ drawEnergy: 80, travel: -0.1, preloadTravel: 0.03 })).toBeNaN();
     expect(stiffnessForTravel({ drawEnergy: 80, travel: 0.04, preloadTravel: -0.01 })).toBeNaN();
     expect(stiffnessForTravel({ drawEnergy: Infinity, travel: 0.04, preloadTravel: 0.01 })).toBeNaN();
+  });
+
+  it('does not subtract the squared preloads', () => {
+    // (1 + 1e16)² − (1e16)² rounds to 0; s_f·(s_f + 2·s_0) = 2e16 + 1.
+    expect(stiffnessForTravel({ drawEnergy: 1, travel: 1, preloadTravel: 1e16 })).toBeCloseTo(1 / (1 + 2e16), 30);
+    expect(stiffnessForTravel({ drawEnergy: 1, travel: 1, preloadTravel: 1e16 }) / (1 / (1 + 2e16))).toBeCloseTo(1, 14);
   });
 });
 

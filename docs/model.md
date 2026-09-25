@@ -159,7 +159,9 @@ the largest grid value, including the cell beyond the window end when that
 value sits at an end; f ≤ 0 everywhere means that B lies inside the track
 (status `inside`). Serialized track data is checked when it is loaded:
 finite values, increasing spline knots, C2 continuity of the spline
-coefficients, and spline integrals recomputed from the coefficients. An
+coefficients (value, first and second derivative at each join, each to
+1e-9 of the largest magnitude of that same quantity at any knot), and
+spline integrals recomputed from the coefficients. An
 ellipse stored with a < b is turned into the form a ≥ b (axis angle + 90°),
 which the curvature minimum b²/a assumes. A point on the track has no free span: a largest f below
 256·ε·max(|B|, |p|) or a free span below √(256·ε)·max(|B|, |p|) (ε the
@@ -297,13 +299,16 @@ limb.
   values, so these invariants hold for every table limb. The draw energy
   E1(α_f) − E1(0) is computed directly (½·k_t·α_f·(α_f + 2·α_0) for the
   linear limb), not as a difference of the preload-scale totals. A table
-  limb integrates M from α_0 piece by piece (end line, table, end line);
-  beyond the table the piece length is α itself, so a preload far larger
-  than α_f keeps the draw energy.
+  limb integrates M from α_0 piece by piece (end line, table, end line).
+  The piece that starts at α_0 takes its length directly: beyond the table
+  the end line over α, inside it the Taylor expansion of the quintic about
+  α_0 over α. A preload far larger than α_f, or an α_f below the
+  floating-point spacing at α_0, keeps the draw energy.
 - Travel mode: the stiffness that stores the draw energy W over the axle
-  travel s_f from brace to full draw is k = W / ((s_f + s_0)² − s_0²).
+  travel s_f from brace to full draw is k = W / ((s_f + s_0)² − s_0²),
+  evaluated as W / (s_f·(s_f + 2·s_0)) without subtracting the squares.
 - E1', E1'' and the inverse E1⁻¹ (Newton inside a bracket, residual below
-  1e-9 J; closed form α = √(2E/k_t) − α_0 for the linear limb) are
+  1e-9 J; closed form α = √2·√E/√k_t − α_0 for the linear limb) are
   available for the inverse model. For a tabulated limb the bracket ends at
   q_peak; an energy above E1 there has no inverse and gives NaN, as do a
   negative or non-finite energy. Every limb method returns NaN for a NaN

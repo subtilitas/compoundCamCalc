@@ -335,6 +335,26 @@ describe('serialized spline data', () => {
     expect(() => createSupport(infinite)).toThrow(/finite/);
   });
 
+  it('checks each derivative order on its own scale', () => {
+    // Knots 0.1 mm apart give a cubic coefficient of about 5e8; a jump of
+    // 100 mm in the value must still be found.
+    const fine = /** @type {any} */ (splineSupport([0, 1e-4, 2e-4], [0.03, 0.031, 0.03]));
+    expect(Math.max(...Array.from(fine.coeffs, Math.abs))).toBeGreaterThan(1e8);
+    expect(() => createSupport(fine)).not.toThrow();
+    for (const [index, delta] of [[4, 0.1], [4, 1e-6], [5, 1e-3], [6, 1e3]]) {
+      const bad = /** @type {any} */ (splineSupport([0, 1e-4, 2e-4], [0.03, 0.031, 0.03]));
+      bad.coeffs = Float64Array.from(bad.coeffs);
+      bad.coeffs[index] += delta;
+      expect(() => createSupport(bad)).toThrow(/continuous/);
+    }
+    // Splines built by splineSupport pass, also with 20000 intervals.
+    const n = 20000;
+    const knots = Array.from({ length: n + 1 }, (_, i) => (2 * Math.PI * i) / n);
+    const values = knots.map((t) => 0.03 + 0.004 * Math.cos(t) + 0.001 * Math.sin(3 * t));
+    values[n] = values[0];
+    expect(() => createSupport(splineSupport(knots, values, { periodic: true }))).not.toThrow();
+  });
+
   it('recomputes the cumulative integrals from the coefficients', () => {
     const tampered = good();
     tampered.cumulative = Float64Array.from(tampered.cumulative, () => 1e9);

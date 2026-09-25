@@ -375,21 +375,36 @@ function checkSplineData(d) {
   for (let j = 0; j < 4 * n; j++) {
     if (!Number.isFinite(coeffs[j])) throw new RangeError('Spline coefficients must be finite');
   }
-  /** Value, first and second derivative at the end of interval i. */
-  const end = (/** @type {number} */ i) => {
+  /**
+   * Value, first and second derivative at the end of interval i, each with
+   * the sum of the magnitudes of its terms (the scale of its rounding).
+   * @param {number} i
+   */
+  const end = (i) => {
     const h = knots[i + 1] - knots[i];
     const [c0, c1, c2, c3] = [coeffs[4 * i], coeffs[4 * i + 1], coeffs[4 * i + 2], coeffs[4 * i + 3]];
-    return [c0 + h * (c1 + h * (c2 + h * c3)), c1 + h * (2 * c2 + 3 * h * c3), 2 * c2 + 6 * h * c3];
+    const [a0, a1, a2, a3] = [Math.abs(c0), Math.abs(c1), Math.abs(c2), Math.abs(c3)];
+    return {
+      value: [c0 + h * (c1 + h * (c2 + h * c3)), c1 + h * (2 * c2 + 3 * h * c3), 2 * c2 + 6 * h * c3],
+      terms: [a0 + h * (a1 + h * (a2 + h * a3)), a1 + h * (2 * a2 + 3 * h * a3), 2 * a2 + 6 * h * a3],
+    };
   };
   const start = (/** @type {number} */ i) => [coeffs[4 * i], coeffs[4 * i + 1], 2 * coeffs[4 * i + 2]];
-  let scale = 0;
-  for (let j = 0; j < 4 * n; j++) scale = Math.max(scale, Math.abs(coeffs[j]));
+  // Each order is compared on its own scale: the largest magnitude of that
+  // quantity at any knot, or the terms of the evaluation when larger.
+  const scale = [0, 0, 0];
+  for (let i = 0; i < n; i++) {
+    const { value } = end(i);
+    const s = start(i);
+    for (let k = 0; k < 3; k++) scale[k] = Math.max(scale[k], Math.abs(value[k]), Math.abs(s[k]));
+  }
   const joins = periodic ? n : n - 1;
   for (let i = 0; i < joins; i++) {
     const left = end(i);
     const right = start((i + 1) % n);
     for (let k = 0; k < 3; k++) {
-      if (Math.abs(left[k] - right[k]) > SPLINE_CONTINUITY * Math.max(1, scale)) {
+      const tolerance = SPLINE_CONTINUITY * Math.max(scale[k], left.terms[k]);
+      if (!(Math.abs(left.value[k] - right[k]) <= tolerance)) {
         throw new RangeError(`Spline data is not twice continuous at knot ${i + 1}`);
       }
     }
