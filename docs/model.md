@@ -693,7 +693,10 @@ wrap at brace.
   change the active track, so closing it is the whole check.
 - When no lead-in wrap closes the track, a full solve runs trial solves:
   coarse, without trials of their own, and stopped at their first
-  diagnostic. It tries the string track radius (both semi-axes of an
+  diagnostic, except for the string wrap and the limb rotation of the
+  ideal track, which the final cam's checks replace; a trial passes
+  exactly when a coarse solve of the same state reports no diagnostic. It
+  tries the string track radius (both semi-axes of an
   ellipse) 5, 10, 15 and 20 mm larger, then half the minimum bend radius
   when that radius sets ρ_lim and the blend bends too sharply. The
   suggestion names the first change whose trial reports no diagnostic,
@@ -815,7 +818,7 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `target-shape` | the rebuilt target is not monotone on its first segment: no monotone setting of the free values at knots 0 and 1 exists (for example a string groove with 46 mm offset on a 50 mm radius, and point 2 at 7 N, 11.8 in from brace, as a local maximum: the first segment dips below 0 N) | point 2 |
 | `string-radius` | ρ of the string pitch line below ρ_lim | the string track radius (computed increase) or the ellipse axes |
 | `string-clearance` | the string groove bottom closer to the axle than bore/2 + wall | the radius or the offset (computed) |
-| `string-wrap` | full-draw contact angle plus residual wrap ≥ 360°: the contact of the final cam once it is built, otherwise of the ideal track (up to 4 decimals in the message) | the string track radius (computed) or the residual wrap |
+| `string-wrap` | full-draw contact angle plus residual wrap ≥ 360°: the contact of the final cam once it is built, otherwise of the ideal track (up to 4 decimals in the message); a full turn in the forward model of the final cam, `string-wrap` or `cable-wrap` by the cord that wraps it on the solved samples | the string track radius (computed) or the residual wrap |
 | `cable-radius` | ρ of the ideal cable track below ρ_lim and the fitted cam outside the tolerance; the named range leaves out the brace blend unless it is the only one, and a negative ρ is given as the angle over which the track bends the wrong way | chosen at the largest force difference of the fitted cam: before point 2 a change of point 2; between points 2 and 3, before the peak, where the force rises and point 3 is not the full-draw point, a later point 3, for a parametric curve a larger rise to peak; after the peak a more gradual drop over the nearest falling interval at or before it, or less let-off; otherwise a more gradual change between the curve points on either side |
 | `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in too close to the bore | the let-off (computed limit) at full draw or the force at the position, and the bore radius plus wall (at most the lowest lever arm / 1.03 minus the cable radius, rounded down, when at least 1.5 mm); a larger string track also raises the lever arm at the peak and is not suggested |
 | `cable-wrap` | active cable range plus lead-in wrap ≥ 360° | the lead-in wrap (computed) or the string track radius |

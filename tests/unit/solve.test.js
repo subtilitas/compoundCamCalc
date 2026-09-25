@@ -8,7 +8,7 @@ import { splineLimits } from '../../src/core/fit.js';
 import { limbFromState } from '../../src/core/limb.js';
 import {
   FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE, GROOVE_MARGIN, STRING_TRACK_TRIALS, changeSuggestion, forwardDiagnostics, largerStringTrack,
-  leadInTrials, solve,
+  leadInTrials, solve, trialPasses,
 } from '../../src/core/solve.js';
 import { createSupport, eccentricCircle, stringTrackSupport } from '../../src/core/support.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
@@ -719,6 +719,12 @@ describe('solve: diagnostics', () => {
     const alpha = /** @type {NonNullable<SolveResult['achieved']>} */ (limb.achieved).alpha;
     expect(alpha[alpha.length - 1]).toBeLessThan(s.limb.maxRotation);
     expect(codes(limb)).not.toContain('limb-rotation');
+    // A suggestion trial of the same states reaches the same verdict: it
+    // does not stop at the ideal track's rotation or wrap.
+    expect(limb.status).toBe('ok');
+    expect(trialPasses(s)).toBe(true);
+    expect(trialPasses(modified((st) => (st.body.residualWrap = 1.4639550368669456)))).toBe(true);
+    expect(trialPasses(modified((st) => (st.body.residualWrap = 1.4641)))).toBe(false);
   });
 
   it('places the string termination at the residual wrap past the achieved full-draw contact', () => {
@@ -744,6 +750,7 @@ describe('solve: diagnostics', () => {
     const diags = [];
     const forward = /** @type {any} */ ({
       n: 2,
+      x: [0.2, 0.25],
       psiS: [0, 1],
       psiC: [4, 5],
       stringTermination: 7,
@@ -769,6 +776,12 @@ describe('solve: diagnostics', () => {
     const cable = [];
     forwardDiagnostics({ ...forward, psiS: [0, 1], stringTermination: 2, psiC: [4, 10], cableTermination: 3, diagnostics: [forward.diagnostics[3]] }, cable, fmt);
     expect(cable.map((d) => d.code)).toEqual(['cable-wrap']);
+    // A solve that stops after the overlap leaves NaN in the last sample:
+    // the solved samples still name the cable.
+    /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic[]} */
+    const stopped = [];
+    forwardDiagnostics({ ...forward, psiS: [0, NaN], stringTermination: 2, psiC: [9.5, NaN], cableTermination: 3, diagnostics: [forward.diagnostics[3]] }, stopped, fmt);
+    expect(stopped.map((d) => d.code)).toEqual(['cable-wrap']);
     // A non-finite or concave final cam has no usable force curve.
     for (const code of ['non-finite', 'concave-track']) {
       /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic[]} */

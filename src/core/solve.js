@@ -98,6 +98,12 @@ const BRACE_CONTACT_TOLERANCE = 1e-9;
 const TERMINATION_TOLERANCE = 1e-9;
 
 /**
+ * Codes of the ideal-track checks that the checks of the final cam replace
+ * once it is built.
+ */
+const FINAL_CAM_CODES = new Set(['string-wrap', 'limb-rotation']);
+
+/**
  * Sample counts and spacings per resolution.
  * - forward: draw samples of the achieved curve
  * - inverse: draw samples of the ideal state
@@ -265,6 +271,18 @@ export function solve(state, options = {}) {
 }
 
 /**
+ * Trial solve of a suggestion: a coarse solve without trials of its own
+ * that stops at the first stage with a diagnostic. True when it reports
+ * none, as a coarse solve of the state does.
+ * @param {ProjectState} state
+ * @param {number} [maxIterations]
+ * @returns {boolean}
+ */
+export function trialPasses(state, maxIterations) {
+  return guardedSolve(state, 'coarse', maxIterations, false).status === 'ok';
+}
+
+/**
  * solveState with internal errors as a no-convergence diagnostic, and the
  * status and total time set.
  * @param {ProjectState} state
@@ -307,10 +325,11 @@ function solveState(state, resolution, maxIterations, trials) {
   const res = emptyResult(resolution);
   const settings = RESOLUTIONS[resolution];
   const diags = res.diagnostics;
-  // A trial solve only asks whether any diagnostic is reported. Entries of
-  // diags are never withdrawn, so it stops after the first stage that adds
-  // one.
-  const trialFails = () => !trials && diags.length > 0;
+  // A trial solve only asks whether any diagnostic is reported. It stops
+  // after the first stage that adds one, except for the string wrap and
+  // the limb rotation of the ideal track, which the final cam's checks
+  // replace.
+  const trialFails = () => !trials && diags.some((d) => !FINAL_CAM_CODES.has(d.code));
   const errors = validate(state);
   if (errors.length > 0) {
     diags.push(
@@ -660,7 +679,7 @@ function solveState(state, resolution, maxIterations, trials) {
     if (!trials || resolution !== 'full' || !closing || closing.closedByLeadIn) return;
     const tTrials = now();
     closing.diagnostic.suggestion = changeSuggestion(
-      state, closing.tooSharp, fmt, (s) => guardedSolve(s, 'coarse', maxIterations, false).status === 'ok',
+      state, closing.tooSharp, fmt, (s) => trialPasses(s, maxIterations),
     );
     res.timings.trials = now() - tTrials;
   };
@@ -701,7 +720,7 @@ function solveState(state, resolution, maxIterations, trials) {
   // the ideal track, which differ for a fitted cam (by 0.005° and 0.008° on
   // the default preset and its edits); a trial solve has already stopped at
   // the ideal ones.
-  for (const code of ['string-wrap', 'limb-rotation']) {
+  for (const code of FINAL_CAM_CODES) {
     const k = diags.findIndex((d) => d.code === code);
     if (k >= 0) diags.splice(k, 1);
   }
@@ -1686,9 +1705,16 @@ export function forwardDiagnostics(forward, diags, fmt) {
         add(diagnostic('wrap-exhausted', `A cord of the final cam runs off the end of its wrapped track${range}`, 'Increase the residual wrap or the lead-in wrap', where));
         break;
       case 'wrap-overlap': {
-        const last = Math.max(0, forward.n - 1);
-        const string = forward.stringTermination - forward.psiS[0] >= 2 * Math.PI;
-        const code = string || !(forward.psiC[last] - forward.cableTermination >= 2 * Math.PI) ? 'string-wrap' : 'cable-wrap';
+        // The cord that wraps a full turn on the samples of the range; a
+        // solve that stops early leaves NaN in the later samples.
+        let string = false;
+        let cable = false;
+        for (let i = 0; i < forward.n; i++) {
+          if (d.xRange && !(forward.x[i] >= d.xRange[0] && forward.x[i] <= d.xRange[1])) continue;
+          if (forward.stringTermination - forward.psiS[i] >= 2 * Math.PI) string = true;
+          if (forward.psiC[i] - forward.cableTermination >= 2 * Math.PI) cable = true;
+        }
+        const code = cable && !string ? 'cable-wrap' : 'string-wrap';
         add(diagnostic(code, `The ${code === 'string-wrap' ? 'string' : 'power cable'} of the final cam wraps a full turn or more${range}`, 'Increase the string track radius', where));
         break;
       }
