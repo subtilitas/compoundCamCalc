@@ -293,9 +293,12 @@ export function createStringPlan(container) {
     ...legendItems.map(([cls, text]) => {
       const s = svg('svg', { class: 'camview-swatch', width: 24, height: 14, viewBox: '0 0 24 14', 'aria-hidden': 'true', focusable: 'false' });
       s.append(svg('line', { class: `plan-swatch ${cls}`, x1: 1, y1: 7, x2: 23, y2: 7 }));
-      return h('li', { class: 'camview-legend-item' }, s, text);
+      return h('li', { class: 'camview-legend-item', 'data-testid': `legend-${cls}` }, s, text);
     }),
   );
+  // The full-draw row shows only while the full-draw outline does.
+  const fullItem = /** @type {HTMLElement} */ (legend.querySelector('[data-testid="legend-plan-full"]'));
+  fullItem.hidden = true;
   const caption = h('p', { class: 'camview-caption', 'data-testid': 'plan-caption', 'aria-live': 'polite' });
   caption.hidden = true;
   container.append(viewport.controls, root, load, legend, dims, caption);
@@ -334,6 +337,7 @@ export function createStringPlan(container) {
         drawing.style.display = 'none';
         dims.replaceChildren();
         load.textContent = '';
+        fullItem.hidden = true;
         setAttrs(root, { 'aria-label': 'String plan: no cam yet' });
         return;
       }
@@ -342,6 +346,7 @@ export function createStringPlan(container) {
       const { brace: b, end: f, hasFull } = planPoses(next);
       full.group.style.display = hasFull ? '' : 'none';
       full.mirror.style.display = hasFull ? '' : 'none';
+      fullItem.hidden = !hasFull;
       const base = viewBoxFor(planBounds([b, f], radius), FIT_PADDING);
       size = base.size;
       viewport.setBase(base);

@@ -218,6 +218,8 @@ test.describe('solver in the page', () => {
     await expect(page.getByTestId('camview-zoom-in')).toBeDisabled();
     // No scale bar without a drawing.
     await expect(page.getByTestId('camview-scale')).toBeHidden();
+    // No full-draw legend row without a full-draw outline.
+    await expect(page.getByTestId('plan-legend').getByText('At full draw (dotted)')).toBeHidden();
     const view = page.getByTestId('cam-view');
     await view.focus();
     await page.keyboard.press('+');
@@ -228,6 +230,7 @@ test.describe('solver in the page', () => {
     // Fitted: nothing to zoom out of.
     await expect(page.getByTestId('camview-zoom-out')).toBeDisabled();
     await expect(page.getByTestId('camview-scale')).toBeVisible();
+    await expect(page.getByTestId('plan-legend').getByText('At full draw (dotted)')).toBeVisible();
     await expect(page.getByTestId('camview-zoom-in')).toBeEnabled();
   });
 
