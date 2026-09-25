@@ -271,7 +271,19 @@ export function solve(state, options = {}) {
   // Options from untyped or deserialized data: a missing or non-object
   // container means the defaults.
   const o = options !== null && typeof options === 'object' ? options : {};
-  return guardedSolve(state, o.resolution === 'coarse' ? 'coarse' : 'full', o.maxIterations, true);
+  /** @type {'coarse' | 'full'} */
+  let resolution = 'full';
+  /** @type {unknown} */
+  let maxIterations;
+  try {
+    resolution = o.resolution === 'coarse' ? 'coarse' : 'full';
+    maxIterations = o.maxIterations;
+  } catch {
+    // An options object whose fields cannot be read: an invalid iteration
+    // limit, so the solve reports invalid-input.
+    maxIterations = NaN;
+  }
+  return guardedSolve(state, resolution, /** @type {number | undefined} */ (maxIterations), true);
 }
 
 /**

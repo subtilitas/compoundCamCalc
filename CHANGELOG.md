@@ -136,7 +136,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   budgets of 30 ms and 200 ms, with 19 diagnostic codes whose messages
   carry numbers and units and whose suggestions name the input to change;
   never throws, also for a missing or non-object options container, which
-  means the defaults; an iteration limit outside the integers 1 to 200
+  means the defaults, and for input whose fields cannot be read (a test
+  passes a throwing getter, null, undefined and a number to every
+  never-throw export); an iteration limit outside the integers 1 to 200
   gives `invalid-input` before any solving. A `closing-blend` message names
   the smallest radius of curvature or lever arm of the returned closed
   track, which decides whether the track closes.

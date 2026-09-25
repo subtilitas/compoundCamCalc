@@ -36,6 +36,7 @@
  * @module core/inverse
  */
 
+import { describeError } from './errors.js';
 import { STRING_SIDE, createContact, solveContact } from './contact.js';
 import { bowGeometry } from './geometry.js';
 import { createLimb } from './limb.js';
@@ -155,6 +156,20 @@ const RESAMPLE_ITERATIONS = 60;
  * @returns {{ context: InverseContext | null, error: string | null }}
  */
 export function createInverse(input) {
+  try {
+    return createInverseChecked(input);
+  } catch (err) {
+    // Any exception while reading malformed input.
+    return { context: null, error: describeError(err) };
+  }
+}
+
+/**
+ * Body of {@link createInverse}, which guards it.
+ * @param {Parameters<typeof createInverse>[0]} input
+ * @returns {ReturnType<typeof createInverse>}
+ */
+function createInverseChecked(input) {
   let stringSupport;
   let limb;
   try {

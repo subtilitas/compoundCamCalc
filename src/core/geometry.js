@@ -19,6 +19,7 @@
  * @module core/geometry
  */
 
+import { describeError } from './errors.js';
 import { CABLE_SIDE, STRING_SIDE, createContact, solveContact, terminationConstant } from './contact.js';
 import { drawRange } from './curve.js';
 import { LENGTH_MAX, LENGTH_MIN, inRange } from './domain.js';
@@ -47,6 +48,21 @@ import { LENGTH_MAX, LENGTH_MIN, inRange } from './domain.js';
  * @returns {{ bow: BowGeometry | null, error: string | null }}
  */
 export function bowGeometry(geometry, stringSupport) {
+  try {
+    return bowGeometryChecked(geometry, stringSupport);
+  } catch (err) {
+    // Any exception while reading malformed input.
+    return { bow: null, error: describeError(err) };
+  }
+}
+
+/**
+ * Body of {@link bowGeometry}, which guards it.
+ * @param {Parameters<typeof bowGeometry>[0]} geometry
+ * @param {Parameters<typeof bowGeometry>[1]} stringSupport
+ * @returns {ReturnType<typeof bowGeometry>}
+ */
+function bowGeometryChecked(geometry, stringSupport) {
   const g = geometry ?? /** @type {Geometry} */ ({});
   const values = [g.ata, g.braceHeight, g.drawLength, g.limbLength, g.limbAngleBrace];
   if (!values.every(Number.isFinite)) return { bow: null, error: 'Every geometry value must be a finite number' };
