@@ -28,7 +28,9 @@ moments in N·m, energies in J.
   ```
 
 - Track angles ψ are cam-frame angles of the outward normal and are kept
-  unwrapped (they grow past 2π when a cord wraps more than one turn).
+  unwrapped, so they stay continuous when a contact passes ψ = 2π. A planar
+  groove holds less than one turn of cord: a wrapped angle of 2π or more is
+  reported as `wrap-overlap`.
 
 | Symbol | Meaning |
 |---|---|
@@ -98,7 +100,10 @@ Shapes (`src/core/support.js`):
 - The ellipse integral P uses the incomplete elliptic integral of the second
   kind, a·E(u | m) with m = 1 − b²/a², computed with Carlson's symmetric
   integrals R_F and R_D (`src/core/elliptic.js`) to about 1e-15 relative.
-  The ellipse has ρ = b²/a at the ends of the major axis.
+  The ellipse has ρ = b²/a at the ends of the major axis. Both semi-axes
+  must be finite and positive, so m < 1; `createSupport` rejects others.
+  The elliptic functions accept m ≤ 1: at m = 1, where R_F and R_D diverge,
+  they return E(1) = 1 and E(φ | 1) = sin(φ − kπ) + 2k directly.
 - The spline integral P is the exact piecewise polynomial antiderivative. A
   periodic spline repeats with period ψ_n − ψ_0; an open spline continues its
   end pieces outside [ψ_0, ψ_n], which is its defined range.
@@ -149,8 +154,12 @@ checked at every step. When Newton leaves the branch, stalls or moves more
 than half a turn from ψ_w, a scan of 96 points over [ψ_w − π, ψ_w + π]
 brackets the root of the branch nearest to ψ_w and a safeguarded
 Newton–bisection finishes it. When no sign change exists on the scan, a
-golden-section search refines the largest f; f ≤ 0 everywhere means that B
-lies inside the track (status `inside`). The solver never throws.
+golden-section search refines the largest f over the two grid cells next to
+the largest grid value, including the cell beyond the window end when that
+value sits at an end; f ≤ 0 everywhere means that B lies inside the track
+(status `inside`). The golden-section search stops at an interval of 1e-12
+relative to |ψ| or after 100 steps, so it also ends at warm starts of
+thousands of radians. The solver never throws.
 
 The length identity is used to evaluate lengths and to check the forward
 model. It is never used to march an unknown contact angle: marching with it
@@ -188,7 +197,7 @@ given string track, cable track and limb.
    closure, so the terminations only add constants).
 2. Grid: nock positions x − x_b = s² with s uniform, which puts more samples
    near brace; 1500 samples by default, 100 for a coarse solve, or an
-   explicit increasing list of positions.
+   explicit increasing list of positions between x_b and x_f.
 3. Closure at each x: Newton on (θ, α) with
 
    ```
@@ -215,11 +224,13 @@ given string track, cable track and limb.
    F   = 2·E1'(α)·α'                   virtual work, both limbs
    T_s = E1'(α)·p_c / det              = F / (2·sin φ)
    T_c = E1'(α)·p_s / det              = T_s·p_s / p_c
-   balance residual = E1'(α) − T_s·s_a − T_c·c_a
    ```
 
-   The tension formulas avoid the division by sin φ, so they also hold at
-   brace, where they give the brace equilibrium:
+   These tensions satisfy the limb balance E1'(α) = T_s·s_a + T_c·c_a by
+   construction, so the solver reports no residual of it; the tests check
+   the tensions against a free-body balance built from positions (see
+   Verification). The tension formulas avoid the division by sin φ, so they
+   also hold at brace, where they give the brace equilibrium:
 
    ```
    T_s0·p_s = T_c0·p_c          cam moment balance
@@ -227,25 +238,33 @@ given string track, cable track and limb.
    ```
 
 The result holds Float64Arrays of x, F, θ, α, T_s, T_c, φ, ψ_s, ψ_c, p_s,
-p_c, s_a, c_a, free spans, axle position, dθ/dx, dα/dx, closure and balance
-residuals; the brace state; the cord lengths L_s = 2·g_s and L_c; the draw
+p_c, s_a, c_a, free spans, axle position, dθ/dx, dα/dx and the closure
+residual; the brace state; the cord lengths L_s = 2·g_s and L_c; the draw
 energy 2·(E1(α_f) − E1(0)), the limb energy at full draw 2·E1(α_f) and the
-preload energy 2·E1(0). All of it survives structured cloning, so it can
-move between a worker and the page.
+preload energy 2·E1(0). Draw and limb energy are NaN when a sample fails or
+the grid does not end at x_f. All of it survives structured cloning, so it
+can move between a worker and the page.
 
 Default terminations: the cable ends 30° before its smallest contact angle,
 which is the brace contact when the cam turns forwards (lead-in wrap); the
-string ends 30° beyond its largest contact angle (residual wrap). Both only
-shift the reported lengths.
+string ends 30° beyond its largest contact angle (residual wrap). The
+extremes are taken over the solved samples, which cover the whole draw on
+the default grid. The terminations shift the reported lengths and set the
+wrapped angles that `wrap-exhausted` and `wrap-overlap` check.
 
 ### Brace behaviour
 
 - F(x_b) = 0 because sin φ = 0.
-- θ'(x_b) = α'(x_b) = 0, so the contact angles do not move to first order
-  and F'(x_b) = 2·T_s0 / l_0.
-- F''(x_b) depends on the geometry, the preload and p_c(ψ_c0), but not on
-  p_c'(ψ_c0): the cable contact angle does not move to first order at
-  brace, so p_c' enters F only from the third derivative on.
+- θ'(x_b) = α'(x_b) = 0, so the axle, the anchor and the cable contact angle
+  do not move to first order. The string contact angle does: ψ_s = θ + φ
+  gives dψ_s/dx = φ'(x_b). The contact point moves by dX = ρ·t·dψ_s, along
+  the string line, which does not turn the string; only the nock, moving
+  across the string at the distance l_0, turns it, so φ'(x_b) = 1/l_0 and
+  F = 2·T_s·sin φ gives F'(x_b) = 2·T_s0 / l_0.
+- F''(x_b) depends on the geometry, the preload, p_c(ψ_c0) and the string
+  track near ψ = 0 (p_s, p_s' and ρ_s there), but not on p_c'(ψ_c0): the
+  cable contact angle does not move to first order at brace, so p_c' enters
+  F only from the third derivative on.
 
 ## Limb model
 
@@ -260,14 +279,18 @@ limb.
 - Tabulated limb: moments M(q_i) against the rotation from unstrung, fitted
   by the C2 shape-preserving quintic of `src/core/interp.js`; E1 is its exact
   integral. The point (0, 0) is added when the table starts after q = 0.
-  Outside the table the moment continues linearly with the end slope. The
-  project table (axle travel from brace, force at the axle) converts with
-  q = (travel + s_0)/R_L and M = force·R_L.
+  Outside the table the moment continues linearly with the end slope. When
+  the last row falls, that line reaches M = 0 at q_peak, where E1 is
+  largest. The project table (axle travel from brace, force at the axle)
+  converts with q = (travel + s_0)/R_L and M = force·R_L.
 - Travel mode: the stiffness that stores the draw energy W over the axle
   travel s_f from brace to full draw is k = W / ((s_f + s_0)² − s_0²).
 - E1', E1'' and the inverse E1⁻¹ (Newton inside a bracket, residual below
   1e-9 J; closed form α = √(2E/k_t) − α_0 for the linear limb) are
-  available for the inverse model.
+  available for the inverse model. For a tabulated limb the bracket ends at
+  q_peak; an energy above E1 there has no inverse and gives NaN, as do a
+  negative or non-finite energy. Every limb method returns NaN for a NaN
+  argument instead of throwing.
 
 ## Validity and diagnostics
 
@@ -278,12 +301,13 @@ each run of affected samples.
 
 | Code | Condition |
 |---|---|
-| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, invalid x grid or sample count, non-finite limb moment |
+| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, ellipse without finite positive semi-axes, x grid that is not increasing or leaves [x_b, x_f], invalid sample count, non-finite limb moment at brace (for example a NaN preload) |
 | `brace` | the string cannot leave its track at ψ = 0 towards the nock, the anchor lies inside the cable track, or det = 0 at brace |
 | `no-convergence` | a sample does not close within 30 iterations, or a contact is lost; later samples are NaN |
 | `slack-string` | T_s ≤ 0 |
 | `slack-cable` | T_c ≤ 0 |
 | `wrap-exhausted` | a contact passes its termination (σ·(ψ_c − ψ_e) < 0) or leaves the defined range of an open track |
+| `wrap-overlap` | a cord wraps a full turn or more, σ·(ψ_c − ψ_e) ≥ 2π, and would overlap itself in its groove; the string wrap is largest at brace, the cable wrap at full draw |
 | `cable-lever` | c_a ≤ 0: limb rotation no longer takes up cable |
 | `cam-reversal` | dθ/dx ≤ 0 after brace |
 
@@ -299,29 +323,38 @@ Measured values are the largest errors over the tested samples.
 | Support functions: X on its tangent line, dX/dψ = ρ·t, P' = p, p', p'' against differences, P against quadrature, ellipse ρ = b²/a and a²/b | 1e-16 m to 1e-10 | passes |
 | Projection partials of g_s and g_c against finite differences | 1e-10 | passes |
 | Concentric circles: θ(α) against the closed form of the cable closure | 1e-12 rad | 6e-14 rad |
-| Concentric circles: T_c/T_s = r_s/r_c | 1e-14 relative | 0 |
-| Concentric circles: F(x) against the semi-analytic curve (α as parameter, x(α) from the string closure, F = 2·E1'/x'(α)) | 1e-10 relative | 5e-15 |
-| Statics: 2·T_s·sin φ with T_s, T_c from the two moment balances against the virtual-work F | 1e-9 relative | 7e-12 |
-| F = 2·E1'(α)·dα/dx with dα/dx from finite differences of the solution | 1e-8 relative | 2e-11 |
-| Limb balance residual | 1e-9 N·m | 6e-14 N·m |
-| Energy: Simpson rule in s on 1501 samples against 2·(E1(α_f) − E1(0)) | 1e-9 relative | 1e-11 |
-| Energy: trapezoid rule on 2000 samples | 1e-6 relative | 5e-7 |
+| Concentric circles: T_s and T_c against the free-body balance (see the free-body rows); its ratio T_c/T_s = r_s/r_c | 1e-9, 1e-12 relative | 1e-15, 2e-15 |
+| Concentric circles: F(x) against the semi-analytic curve (α as parameter, x(α) from the string closure, F = 2·E1'/x'(α)) | 1e-10 relative | 1e-14 |
+| Free-body statics: F = 2·T_s·u_s,x, T_s and T_c from the moment balance of the cam about the axle and of the limb about the pivot, with tangent points found by bisection and cord directions taken from the contact, nock and anchor positions (no lever arms or projections of the solver) | 1e-9 relative | 8e-11 |
+| Free-body statics at brace: T_s0, T_c0, free span l_0 and F'(x_b) = 2·T_s0/l_0 | 1e-9, 1e-12 relative | 4e-16 |
+| Virtual work: F against dE/dx of 2·E1(α) along a closure path solved in the test (tangent points by bisection, cord lengths as free span plus the Gauss–Legendre arc length ∫ρ dψ, Newton with a difference Jacobian), 4th-order differences with h = 0.25 mm; α and θ at the same points | 1e-9 relative; 1e-12 rad, 1e-11 rad | 6e-11; 4e-16 rad, 3e-15 rad |
+| F = 2·E1'(α)·dα/dx with dα/dx from finite differences of the solution | 1e-9 relative | 1e-11 |
+| Energy: Simpson rule in s on 1501 samples against 2·(E1(α_f) − E1(0)) | 1e-9 relative | 5e-11 |
+| Energy: trapezoid rule on 2000 samples | 1e-6 relative | 8e-7 |
 | Grid refinement: trapezoid energy error for 100, 200, 400, 800 samples | order 1.9 to 2.1 | 2.00 to 2.02 |
-| Brace slope F'(x_b) = 2·T_s0/l_0 against a degree-7 fit of F(x_b + k·1 mm) | 1e-8 relative | 8e-13 |
-| F''(x_b) of four cable tracks with p_c(ψ_c0) = 20 mm and p_c' = 0, ±8 mm, −2.3 mm | 1e-6 relative | 3e-9 |
+| Brace slope F'(x_b) = 2·T_s0/l_0 against a degree-7 fit of F(x_b + k·1 mm) | 1e-8 relative | 2e-14 |
+| F''(x_b) of four cable tracks with p_c(ψ_c0) = 20 mm and p_c' = 0, ±8 mm, −2.3 mm | 1e-6 relative | 2e-9 |
 | Cable track that is a point at the axle (p_c = 0): α constant, F = 0 | 1e-15 rad, 0 N | passes |
 | Same solution at a nock position for any grid through it | 1e-12 rad | passes |
 | Tabulated limb with linear data against the linear limb | 1e-12 relative | passes |
+| E1⁻¹ of a tabulated limb whose last row falls, beyond the table up to the peak of E1; NaN above it | 1e-9 J | passes |
+| E(φ \| 1) against the quadrature of \|cos u\| | 1e-14 | passes |
+| Contact solver: tangent pair within 1 µm of a circle next to the end of the scan window; warm starts up to 1e6 rad | | passes |
 | One test per diagnostic code | | passes |
-| Realistic twin cam (below): peak between 150 N and 500 N, let-off above 20 % | | 305 N, 41 % |
+| Realistic twin cam (below): peak between 150 N and 500 N, let-off above 20 %, each cord wrapped less than one turn | | 260 N, 38 %, 341° |
 | Coarse solve (100 samples) and full solve (1500 samples) | 8 ms and 100 ms, tested with a factor 5 margin | 0.3 ms and 2.7 ms after warm-up |
 
 Realistic twin cam of the tests: default geometry (ATA 33 in, brace height
 6.5 in, draw length 29 in, limb lever 11 in at 25°), groove bottoms of an
-eccentric string circle (radius 36 mm, offset 6 mm, phase 45°) and an
-eccentric cable circle (radius 18 mm, offset 8 mm, phase −30°), 2.5 mm
-cords, linear limb 10 N/mm with 30 mm preload. The cam turns 313°, the axle
-moves 59 mm, the peak is 305 N at 24.6 in and the holding weight 181 N.
+eccentric string circle (radius 45 mm, offset 6 mm, phase 45°) and an
+eccentric cable circle (radius 18 mm, offset 10 mm, phase −60°), 2.5 mm
+cords, linear limb 10 N/mm with 30 mm preload. The cam turns 258°; the
+string wraps 341° at brace (including the 30° residual wrap) and the cable
+288° at full draw. The axle moves 54 mm, the peak is 260 N at 25.4 in and
+the holding weight 160 N at full draw, a let-off of 38 %. The same cam with
+a 36 mm string groove (offset 6 mm, phase 45°, cable phase −30°, offset
+8 mm) wraps the string 396° at brace and reports `wrap-overlap` over the
+first 123 mm of the power stroke.
 
 ## Numerical settings
 
@@ -333,6 +366,7 @@ moves 59 mm, the peak is 305 N at 24.6 in and the holding weight 181 N.
 | Newton step limits | 0.5 rad in θ, 0.1 rad in α |
 | Contact Newton | stops at a step below 1e-11 rad; residual below 1e-15 m |
 | Contact scan | 96 points over one turn around the warm start |
+| Contact golden-section search | at most 100 steps, interval 1e-12 relative to \|ψ\| |
 | Brace contact of the string | within 1e-9 rad of ψ = 0 |
 | E1⁻¹ residual | below 1e-9 J |
 | Default lead-in and residual wrap | 30° |

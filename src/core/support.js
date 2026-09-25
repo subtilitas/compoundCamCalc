@@ -92,7 +92,9 @@ export function eccentricCircle({ radius, offset = 0, phase = 0 }) {
 }
 
 /**
- * Ellipse data; the angles and the offset default to 0.
+ * Ellipse data; the angles and the offset default to 0. The semi-axes must
+ * be finite and positive ({@link createSupport} rejects others), so the
+ * elliptic parameter m = 1 − b²/a² stays below 1.
  * @param {{ a: number, b: number, axisAngle?: number, offset?: number, offsetAngle?: number }} params
  *   semi-axes (m), axis direction (rad), centre offset (m) and its direction (rad)
  * @returns {EllipseData}
@@ -289,9 +291,13 @@ function eccentricMethods(d) {
  */
 function ellipseMethods(d) {
   const { a, b, axisAngle, offset: e, offsetAngle } = d;
+  // A zero semi-axis makes the track a segment: p' jumps and ρ = 0 at its ends.
+  if (!(a > 0 && b > 0 && a < Infinity && b < Infinity)) {
+    throw new RangeError('An ellipse track needs finite, positive semi-axes');
+  }
   const k = b * b - a * a;
-  // √(a²cos²u + b²sin²u) = a·√(1 − m·sin²u) with m = 1 − b²/a².
-  const m = a > 0 ? 1 - (b * b) / (a * a) : 0;
+  // √(a²cos²u + b²sin²u) = a·√(1 − m·sin²u) with m = 1 − b²/a² < 1.
+  const m = 1 - (b * b) / (a * a);
   const base = ellipticE(-axisAngle, m);
   const sinOffset = Math.sin(offsetAngle);
   return {
@@ -392,7 +398,7 @@ function coreMethods(data) {
 
 /**
  * Attach evaluation methods to support data. Throws RangeError for an
- * unknown kind.
+ * unknown kind and for an ellipse without finite, positive semi-axes.
  * @param {SupportData} data
  * @returns {Support}
  */

@@ -145,6 +145,39 @@ describe('solveContact', () => {
     }
   });
 
+  it('finds a narrow tangent pair in the grid cell just outside the scan window', () => {
+    // B just outside a circle, in a direction that lies 0.3 grid steps inside
+    // the end of the scan window [ψ0 − π, ψ0 + π]: the largest f sits in the
+    // cell beyond the window end.
+    const r = 0.02;
+    const small = createSupport(eccentricCircle({ radius: r }));
+    const h = (2 * Math.PI) / 96;
+    const d = r + 1e-6;
+    const a = Math.acos(r / d);
+    for (const psi0 of [0, 1.3]) {
+      const gamma = psi0 + Math.PI - 0.3 * h;
+      const [bx, by] = [d * Math.cos(gamma), d * Math.sin(gamma)];
+      for (const sigma of [CABLE_SIDE, STRING_SIDE]) {
+        const c = solveContact(small, bx, by, sigma, psi0);
+        expect(c.status).toBe('ok');
+        // Tangent angle γ − σ·a, up to whole turns.
+        const turns = (c.psi - (gamma - sigma * a)) / (2 * Math.PI);
+        expect(Math.abs(turns - Math.round(turns))).toBeLessThan(1e-9);
+      }
+    }
+  });
+
+  it('returns for warm starts far from zero', () => {
+    const small = createSupport(eccentricCircle({ radius: 0.02 }));
+    for (const psi0 of [8192, 2e4, -1e6]) {
+      // B inside: the golden-section search ends although one ulp of ψ exceeds 1e-12 rad.
+      expect(solveContact(small, 0.001, 0, STRING_SIDE, psi0).status).toBe('inside');
+      const c = solveContact(small, 0.3, -0.2, CABLE_SIDE, psi0);
+      expect(c.status).toBe('ok');
+      expect(Math.abs(c.psi - psi0)).toBeLessThanOrEqual(Math.PI);
+    }
+  });
+
   it('reports B inside or on the track and non-finite input', () => {
     expect(solveContact(circle, 0.001, 0.002, CABLE_SIDE, 0).status).toBe('inside');
     expect(solveContact(circle, 0.03, 0, STRING_SIDE, 0).status).toBe('inside');

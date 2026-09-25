@@ -39,6 +39,8 @@ export const MAX_ITERATIONS = 30;
 /** Default wrap beyond the extreme contacts: cable lead-in and string residual wrap (rad). */
 export const DEFAULT_WRAP = Math.PI / 6;
 
+/** Largest distance of the last explicit sample from full draw that still counts as full draw (m). */
+const FULL_DRAW_TOLERANCE = 1e-12;
 /** Largest deviation of the brace string contact from ψ = 0 (rad). */
 const BRACE_ANGLE_TOLERANCE = 1e-9;
 /** Closure residual at which Newton stops early (m). */
@@ -49,7 +51,7 @@ const MAX_ALPHA_STEP = 0.1;
 
 /**
  * @typedef {'invalid-input' | 'brace' | 'no-convergence' | 'slack-string' | 'slack-cable'
- *   | 'wrap-exhausted' | 'cable-lever' | 'cam-reversal'} DiagnosticCode
+ *   | 'wrap-exhausted' | 'wrap-overlap' | 'cable-lever' | 'cam-reversal'} DiagnosticCode
  */
 
 /**
@@ -73,7 +75,7 @@ const MAX_ALPHA_STEP = 0.1;
  * @property {number} [samples] number of samples of the default grid
  *   (default {@link FULL_SAMPLES}, at least 2)
  * @property {ArrayLike<number>} [x] explicit nock positions instead of the
- *   default grid: increasing, none before brace
+ *   default grid: increasing, none before brace and none after full draw
  * @property {number} [maxIterations] Newton iteration limit per sample
  */
 
@@ -122,14 +124,17 @@ const MAX_ALPHA_STEP = 0.1;
  * @property {Float64Array} dThetaDx dθ/dx (rad/m)
  * @property {Float64Array} dAlphaDx dα/dx (rad/m)
  * @property {Float64Array} closure closure residual max(|r_s|, |r_c|) (m)
- * @property {Float64Array} balance limb balance residual E1' − T_s·s_a − T_c·c_a (N·m)
  * @property {BraceState | null} brace
  * @property {number} stringLength full string length L_s = 2·g_s (m)
  * @property {number} cableLength L_c (m)
- * @property {number} stringTermination (rad)
- * @property {number} cableTermination (rad)
- * @property {number} drawEnergy 2·(E1(α_f) − E1(0)) (J)
- * @property {number} limbEnergy 2·E1(α_f), including the preload (J)
+ * @property {number} stringTermination (rad); the default comes from the
+ *   largest string contact angle over the solved samples
+ * @property {number} cableTermination (rad); the default comes from the
+ *   smallest cable contact angle over the solved samples
+ * @property {number} drawEnergy 2·(E1(α_f) − E1(0)) (J); NaN when the solve
+ *   fails or the grid does not end at full draw
+ * @property {number} limbEnergy 2·E1(α_f), including the preload (J); NaN
+ *   like drawEnergy
  * @property {number} preloadEnergy 2·E1(0) (J)
  * @property {number} iterations Newton iterations over all samples
  */
@@ -159,6 +164,7 @@ const MESSAGES = /** @type {Record<DiagnosticCode, string>} */ ({
   'slack-string': 'The string goes slack: its tension is zero or negative',
   'slack-cable': 'The power cable goes slack: its tension is zero or negative',
   'wrap-exhausted': 'A cord runs off its track: the contact leaves the wrapped or defined part of the track',
+  'wrap-overlap': 'A cord wraps a full turn or more on its track and would overlap itself in the groove',
   'cable-lever': 'The limbs do not pull the cable: c_a, the cable length change per limb rotation, is zero or negative',
   'cam-reversal': 'The cam turns backwards while the string is drawn (dθ/dx ≤ 0)',
 });
@@ -171,7 +177,7 @@ function emptyResult(n) {
   return {
     x: arr(), F: arr(), theta: arr(), alpha: arr(), Ts: arr(), Tc: arr(), phi: arr(), psiS: arr(), psiC: arr(),
     pS: arr(), pC: arr(), sA: arr(), cA: arr(), spanS: arr(), spanC: arr(), axleX: arr(), axleY: arr(),
-    dThetaDx: arr(), dAlphaDx: arr(), closure: arr(), balance: arr(),
+    dThetaDx: arr(), dAlphaDx: arr(), closure: arr(),
   };
 }
 
@@ -210,8 +216,9 @@ function gridFor(input, xBrace, xFull) {
     const x = Float64Array.from(input.x ?? []);
     if (x.length < 1) return 'the x grid is empty';
     for (let i = 0; i < x.length; i++) {
-      if (!Number.isFinite(x[i]) || x[i] < xBrace - 1e-12 || (i > 0 && !(x[i] > x[i - 1]))) {
-        return 'the x grid must be finite, increasing and start at or after brace';
+      const outside = x[i] < xBrace - FULL_DRAW_TOLERANCE || x[i] > xFull + FULL_DRAW_TOLERANCE;
+      if (!Number.isFinite(x[i]) || outside || (i > 0 && !(x[i] > x[i - 1]))) {
+        return 'the x grid must be finite, increasing and lie between brace and full draw';
       }
     }
     return x;
@@ -231,20 +238,21 @@ export function solveForward(input) {
   let stringSupport;
   let cableSupport;
   let limb;
+  let moment0;
   try {
     stringSupport = createSupport(input.stringTrack);
     cableSupport = createSupport(input.cableTrack);
     limb = createLimb(input.limb);
+    moment0 = limb.moment(0);
   } catch (err) {
     return failed('invalid-input', err instanceof Error ? err.message : String(err));
   }
+  if (!Number.isFinite(moment0)) return failed('invalid-input', 'the limb moment at brace is not finite');
   const { bow, error } = bowGeometry(input.geometry, stringSupport);
   if (!bow) return failed('invalid-input', /** @type {string} */ (error));
   const grid = gridFor(input, bow.xBrace, bow.xFull);
   if (typeof grid === 'string') return failed('invalid-input', grid);
   const maxIterations = input.maxIterations ?? MAX_ITERATIONS;
-  const moment0 = limb.moment(0);
-  if (!Number.isFinite(moment0)) return failed('invalid-input', 'the limb moment at brace is not finite');
 
   // Brace: θ = 0, α = 0.
   const pose = createPose();
@@ -365,7 +373,6 @@ export function solveForward(input) {
     out.dThetaDx[i] = dTheta;
     out.dAlphaDx[i] = dAlpha;
     out.closure[i] = residual;
-    out.balance[i] = m - Ts * pose.sa - Tc * pose.ca;
     theta = th;
     alpha = al;
     xPrev = x;
@@ -390,7 +397,11 @@ export function solveForward(input) {
       message: `${MESSAGES['no-convergence']}: ${failure}`,
     });
   }
-  const energies = failedAt < 0 ? limbEnergies(limb, out.alpha[n - 1]) : { drawEnergy: NaN, limbEnergy: NaN, preloadEnergy: NaN };
+  // Draw and limb energy are full-draw values: only a solve that reaches x_f has them.
+  const reachesFull = failedAt < 0 && Math.abs(grid[n - 1] - bow.xFull) <= FULL_DRAW_TOLERANCE;
+  const energies = reachesFull
+    ? limbEnergies(limb, out.alpha[n - 1])
+    : { drawEnergy: NaN, limbEnergy: NaN, preloadEnergy: 2 * limb.energy(0) };
   return {
     status: failedAt >= 0 ? 'no-convergence' : diagnostics.length > 0 ? 'infeasible' : 'ok',
     diagnostics,
@@ -437,6 +448,9 @@ function collectDiagnostics(out, solved, xBrace, stringTermination, cableTermina
         );
       },
     ],
+    // A planar groove holds less than one turn: the string wrap is largest
+    // at brace, the cable wrap at full draw.
+    ['wrap-overlap', (i) => stringTermination - out.psiS[i] >= 2 * Math.PI || out.psiC[i] - cableTermination >= 2 * Math.PI],
     ['cable-lever', (i) => !(out.cA[i] > 0)],
     ['cam-reversal', (i) => out.x[i] > xBrace && !(out.dThetaDx[i] > 0)],
   ];

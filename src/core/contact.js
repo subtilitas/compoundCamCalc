@@ -30,6 +30,8 @@ const STEP_TOLERANCE = 1e-11;
 const SCAN_POINTS = 96;
 /** Iteration cap of the safeguarded Newton–bisection in a bracket. */
 const BRACKET_STEPS = 100;
+/** Iteration cap of the golden-section search; 60 steps shrink one grid cell below 1e-12 rad. */
+const GOLDEN_STEPS = 100;
 
 /**
  * Contact result. One object is reused across calls in the solver loops.
@@ -215,14 +217,19 @@ function bracketed(support, bx, by, sigma, psi0, out, evaluations) {
     hi = lo + h;
   } else {
     // No sign change on the grid: B is inside the track, or the positive
-    // arc of f is narrower than one grid step. Refine the grid maximum.
+    // arc of f is narrower than one grid step. Refine the grid maximum over
+    // both neighbouring cells. At the window ends the outer cell lies beyond
+    // the scan; f is defined there too (a periodic track repeats, an open
+    // spline continues its end pieces).
     let k = 0;
     for (let j = 1; j <= SCAN_POINTS; j++) if (f[j] > f[k]) k = j;
-    const top = goldenMax(support, bx, by, psi0 - Math.PI + Math.max(k - 1, 0) * h, psi0 - Math.PI + Math.min(k + 1, SCAN_POINTS) * h);
+    const left = psi0 - Math.PI + (k - 1) * h;
+    const right = psi0 - Math.PI + (k + 1) * h;
+    const top = goldenMax(support, bx, by, left, right);
     evaluations += top.evaluations;
     if (!(top.value > 0)) return fail(Number.isFinite(top.value) ? 'inside' : 'no-convergence');
-    lo = sigma > 0 ? psi0 - Math.PI + Math.max(k - 1, 0) * h : top.psi;
-    hi = sigma > 0 ? top.psi : psi0 - Math.PI + Math.min(k + 1, SCAN_POINTS) * h;
+    lo = sigma > 0 ? left : top.psi;
+    hi = sigma > 0 ? top.psi : right;
   }
   // Safeguarded Newton–bisection on g = σ·f with g(lo) < 0 ≤ g(hi).
   let psi = 0.5 * (lo + hi);
@@ -254,7 +261,9 @@ function bracketed(support, bx, by, sigma, psi0, out, evaluations) {
 }
 
 /**
- * Golden-section search for the maximum of f on [a, b].
+ * Golden-section search for the maximum of f on [a, b]. Stops at an
+ * interval of 1e-12 relative to |a| (at least 1e-12 rad) or after
+ * GOLDEN_STEPS steps, so large angles cannot stall it.
  * @param {Support} support
  * @param {number} bx
  * @param {number} by
@@ -274,7 +283,7 @@ function goldenMax(support, bx, by, a, b) {
   let fc = f(c);
   let fd = f(d);
   let evaluations = 2;
-  while (b - a > 1e-12) {
+  for (let it = 0; it < GOLDEN_STEPS && b - a > 1e-12 * Math.max(1, Math.abs(a)); it++) {
     if (fc >= fd) {
       b = d;
       d = c;

@@ -61,7 +61,8 @@ All notable changes are listed here. Versions follow semantic versioning.
 - Forward model (`src/core/forward.js`): draw force, cam and limb rotation,
   string and cable tension along the draw from given string and cable
   tracks, within the time budgets of 8 ms for 100 samples and 100 ms for
-  1500 samples; diagnostics for slack cords, exhausted wrap, cable lever,
-  cam reversal, brace state and convergence.
+  1500 samples; diagnostics for slack cords, exhausted wrap, a cord wrapped
+  a full turn or more, cable lever, cam reversal, brace state and
+  convergence.
 - Model description with derivations and verification tolerances
   (`docs/model.md`).

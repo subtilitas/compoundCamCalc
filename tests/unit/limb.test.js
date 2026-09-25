@@ -98,6 +98,43 @@ describe('table limb', () => {
     expect(limb.inverse(-1)).toBeNaN();
   });
 
+  it('inverts the energy beyond a table whose last row falls, up to the peak of E1', () => {
+    const { limb: data } = tableLimb({ rotation: [0.05, 0.1, 0.15, 0.2], moment: [200, 400, 600, 500], alpha0: 0.05 });
+    const table = /** @type {TableLimbData} */ (data);
+    const limb = createLimb(table);
+    const { knots, values, slopes } = table.curve;
+    const n = knots.length - 1;
+    expect(slopes[n]).toBeLessThan(0);
+    // The extended moment reaches 0 at q_peak, where E1 is largest.
+    const alphaPeak = knots[n] + values[n] / -slopes[n] - 0.05;
+    expect(Math.abs(limb.moment(alphaPeak))).toBeLessThan(1e-9);
+    expect(limb.energy(alphaPeak)).toBeGreaterThan(limb.energy(alphaPeak - 0.01));
+    expect(limb.energy(alphaPeak)).toBeGreaterThan(limb.energy(alphaPeak + 0.01));
+    for (const alpha of [0.1, 0.16, 0.2, 0.249]) {
+      const back = limb.inverse(limb.energy(alpha));
+      expect(back).toBeCloseTo(alpha, 10);
+      expect(Math.abs(limb.energy(back) - limb.energy(alpha))).toBeLessThan(INVERSE_TOLERANCE);
+    }
+    expect(Math.abs(limb.energy(limb.inverse(limb.energy(alphaPeak))) - limb.energy(alphaPeak))).toBeLessThan(INVERSE_TOLERANCE);
+    expect(limb.inverse(limb.energy(alphaPeak) + 1e-6)).toBeNaN();
+  });
+
+  it('returns NaN for a NaN rotation or energy, like the linear limb', () => {
+    const table = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.2], moment: [0, 100], alpha0: 0.1 }).limb));
+    const linear = createLimb(linearLimb({ stiffness: k, preloadTravel: s0, limbLength: R }));
+    for (const limb of [table, linear]) {
+      expect(limb.energy(NaN)).toBeNaN();
+      expect(limb.moment(NaN)).toBeNaN();
+      expect(limb.stiffness(NaN)).toBeNaN();
+      expect(limb.inverse(NaN)).toBeNaN();
+    }
+    // A NaN preload makes every rotation NaN.
+    const noPreload = createLimb({ ...table, alpha0: NaN });
+    expect(noPreload.moment(0)).toBeNaN();
+    expect(noPreload.energy(0)).toBeNaN();
+    expect(noPreload.stiffness(0)).toBeNaN();
+  });
+
   it('rejects invalid tables with a message', () => {
     expect(tableLimb({ rotation: [0.1], moment: [5], alpha0: 0 }).error).toMatch(/2 rows/);
     expect(tableLimb({ rotation: [0.1, 0.2], moment: [5], alpha0: 0 }).error).toMatch(/2 rows/);

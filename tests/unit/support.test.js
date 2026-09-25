@@ -152,6 +152,13 @@ describe('ellipse', () => {
     expect(swapped.p(0.9)).toBe(plain.p(0.9));
   });
 
+  it('rejects an ellipse without finite, positive semi-axes', () => {
+    expect(() => createSupport(ellipse({ a: 0.04, b: 0 }))).toThrow(RangeError);
+    expect(() => createSupport(offset(ellipse({ a: 0.04, b: -0.01 }), 0.001))).toThrow(/semi-axes/);
+    expect(() => createSupport(ellipse({ a: Infinity, b: 0.03 }))).toThrow(RangeError);
+    expect(() => createSupport(ellipse({ a: NaN, b: 0.03 }))).toThrow(RangeError);
+  });
+
   it('with a = b is the eccentric circle', () => {
     const el = createSupport(ellipse({ a: 0.03, b: 0.03, offset: 0.004, offsetAngle: 0.5 }));
     const ci = createSupport(eccentricCircle({ radius: 0.03, offset: 0.004, phase: 0.5 }));

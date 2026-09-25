@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { CLOSURE_TOLERANCE, DEFAULT_WRAP, FULL_SAMPLES, drawGrid, solveForward } from '../../src/core/forward.js';
-import { axle, bowGeometry, cableLength, stringHalfLength } from '../../src/core/geometry.js';
+import { axle, bowGeometry } from '../../src/core/geometry.js';
 import { createLimb, linearLimb, tableLimb } from '../../src/core/limb.js';
 import { createSupport, eccentricCircle, ellipse, offset, splineSupport } from '../../src/core/support.js';
 import { defaultState } from '../../src/state/presets.js';
-import { derivative, solveDense } from './numeric.js';
+import { derivative, integrate, solveDense } from './numeric.js';
 
 /** @typedef {import('../../src/core/forward.js').ForwardInput} ForwardInput */
 /** @typedef {import('../../src/core/forward.js').ForwardResult} ForwardResult */
 /** @typedef {import('../../src/core/geometry.js').BowGeometry} BowGeometry */
 /** @typedef {import('../../src/core/support.js').SupportData} SupportData */
+/** @typedef {import('../../src/core/support.js').Support} Support */
+/** @typedef {{ x: number, y: number }} Vec */
 
 const DEG = Math.PI / 180;
 const geometry = defaultState().geometry;
@@ -18,21 +20,23 @@ const limb = createLimb(limbData);
 
 /**
  * Realistic twin cam used by several tests. Groove bottoms: string track an
- * eccentric circle of radius 36 mm, offset 6 mm, phase 45°; cable track an
- * eccentric circle of radius 18 mm, offset 8 mm, phase −30°; both cords
- * 2.5 mm, so the pitch lines are 1.25 mm further out. With the default
- * geometry (ATA 33 in, brace height 6.5 in, draw length 29 in) the cam turns
- * about 313° and the axle moves about 59 mm, so the default limb of
- * 27 N/mm would peak near 820 N; 10 N/mm with 30 mm preload gives a peak of
- * about 305 N at 24.6 in and a let-off of about 40 %. The phases put the
- * largest string lever arm (phase 45°) and the smallest cable lever arm
- * (phase −30° + 180° = 150°) near the contact angles at full draw, which
- * produces the let-off. The cable lever arm stays below 0.9 times the string
- * lever arm, so the force rises slowly and peaks late in the draw.
+ * eccentric circle of radius 45 mm, offset 6 mm, phase 45°; cable track an
+ * eccentric circle of radius 18 mm, offset 10 mm, phase −60°; both cords
+ * 2.5 mm, so the pitch lines are 1.25 mm further out (string pitch radius
+ * 46.25 mm). With the default geometry (ATA 33 in, brace height 6.5 in, draw
+ * length 29 in) the cam turns about 258° and the string wraps about 341° at
+ * brace, including the 30° residual wrap, so it stays within one turn of
+ * its groove. The axle moves about 54 mm, so the default limb of 27 N/mm
+ * would peak near 700 N; 10 N/mm with 30 mm preload gives a peak of about
+ * 260 N at 25.4 in and a let-off of about 38 %. The smallest cable lever arm
+ * (phase −60° + 180° = 120°) comes round near the cable contact at full
+ * draw, which produces the let-off. The cable lever arm stays below 0.7
+ * times the string lever arm, so the force rises slowly and peaks late in
+ * the draw.
  */
 const twinCam = {
-  stringTrack: offset(eccentricCircle({ radius: 0.036, offset: 0.006, phase: 45 * DEG }), 0.00125),
-  cableTrack: offset(eccentricCircle({ radius: 0.018, offset: 0.008, phase: -30 * DEG }), 0.00125),
+  stringTrack: offset(eccentricCircle({ radius: 0.045, offset: 0.006, phase: 45 * DEG }), 0.00125),
+  cableTrack: offset(eccentricCircle({ radius: 0.018, offset: 0.01, phase: -60 * DEG }), 0.00125),
 };
 
 /**
@@ -62,6 +66,189 @@ function trapezoid(r) {
 }
 
 /**
+ * Bow layout from its definition, without core/geometry: axle at brace
+ * O_b = (x_b − p_s(0), ATA/2), limb pivot Q = O_b − R_L·(cos β_b, sin β_b),
+ * axle O(α) = Q + R_L·(cos(β_b − α), sin(β_b − α)).
+ * @param {Support} s string pitch line
+ */
+function layout(s) {
+  const { braceHeight, ata, limbLength: R, limbAngleBrace: beta } = geometry;
+  const q = { x: braceHeight - s.p(0) - R * Math.cos(beta), y: ata / 2 - R * Math.sin(beta) };
+  return {
+    q,
+    /** @param {number} alpha @returns {Vec} */
+    axleAt: (alpha) => ({ x: q.x + R * Math.cos(beta - alpha), y: q.y + R * Math.sin(beta - alpha) }),
+  };
+}
+
+/**
+ * Point of the cam frame (cam turned by θ about the axle O) in the world
+ * frame: O + R(−θ)·P.
+ * @param {Vec} O
+ * @param {number} theta
+ * @param {Vec} P
+ * @returns {Vec}
+ */
+function camToWorld(O, theta, P) {
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  return { x: O.x + c * P.x + s * P.y, y: O.y - s * P.x + c * P.y };
+}
+
+/**
+ * Cam-frame angle of the tangent point of the line from the world point B
+ * to a track, without core/contact: bisection of
+ * f(ψ) = (B_cam − X(ψ))·n(ψ) on the nearest cell around the guess where f
+ * changes sign in the right direction. The string leaves along −t, where f
+ * falls through zero; the cable leaves along +t, where f rises.
+ * @param {Support} support
+ * @param {Vec} O axle
+ * @param {number} theta cam rotation
+ * @param {Vec} B world point
+ * @param {boolean} rising true for the cable
+ * @param {number} guess (rad)
+ */
+function tangentAngle(support, O, theta, B, rising, guess) {
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  const bx = c * (B.x - O.x) - s * (B.y - O.y);
+  const by = s * (B.x - O.x) + c * (B.y - O.y);
+  const f = (/** @type {number} */ psi) => {
+    const X = support.point(psi);
+    return (bx - X.x) * Math.cos(psi) + (by - X.y) * Math.sin(psi);
+  };
+  const step = 0.02;
+  for (let k = 0; k < 160; k++) {
+    for (let lo of [guess + k * step, guess - (k + 1) * step]) {
+      let hi = lo + step;
+      const [fl, fh] = [f(lo), f(hi)];
+      if (rising ? !(fl < 0 && fh >= 0) : !(fl > 0 && fh <= 0)) continue;
+      for (let it = 0; it < 200; it++) {
+        const mid = 0.5 * (lo + hi);
+        if (mid <= lo || mid >= hi) break;
+        if ((f(mid) < 0) === rising) lo = mid;
+        else hi = mid;
+      }
+      return 0.5 * (lo + hi);
+    }
+  }
+  return NaN;
+}
+
+/**
+ * Statics of sample i from a free-body balance in the world frame, without
+ * the lever arms and projections of the solver. Contact points come from
+ * the track shapes at the tangent angles found by bisection; the cord
+ * directions come from the positions of contact, nock and anchor. Cam: the
+ * moments of string and cable about the axle cancel. Limb: the moment of the
+ * cord forces on the axle about the pivot balances the limb moment E1'(α).
+ * The axle carries the string and the top cable, T_s·u_s + T_c·u_c, and the
+ * yoke of the bottom cable, which pulls towards the mirror image of the
+ * cable contact, T_c·(−u_c,x, u_c,y).
+ * @param {ForwardResult} r
+ * @param {number} i sample
+ * @param {Support} s string pitch line
+ * @param {Support} c cable pitch line
+ */
+function freeBody(r, i, s, c) {
+  const lay = layout(s);
+  const theta = r.theta[i];
+  const alpha = r.alpha[i];
+  const O = lay.axleAt(alpha);
+  const N = { x: r.x[i], y: 0 };
+  const A = { x: O.x, y: -O.y };
+  const Xs = camToWorld(O, theta, s.point(tangentAngle(s, O, theta, N, false, r.psiS[i])));
+  const Xc = camToWorld(O, theta, c.point(tangentAngle(c, O, theta, A, true, r.psiC[i])));
+  const ls = Math.hypot(N.x - Xs.x, N.y - Xs.y);
+  const lc = Math.hypot(A.x - Xc.x, A.y - Xc.y);
+  const us = { x: (N.x - Xs.x) / ls, y: (N.y - Xs.y) / ls };
+  const uc = { x: (A.x - Xc.x) / lc, y: (A.y - Xc.y) / lc };
+  const cross = (/** @type {Vec} */ a, /** @type {Vec} */ b) => a.x * b.y - a.y * b.x;
+  const armS = cross({ x: Xs.x - O.x, y: Xs.y - O.y }, us);
+  const armC = cross({ x: Xc.x - O.x, y: Xc.y - O.y }, uc);
+  // α turns the lever clockwise: the limb moment is −(O − Q) × force.
+  const lever = { x: O.x - lay.q.x, y: O.y - lay.q.y };
+  const limbS = -cross(lever, us);
+  const limbC = -cross(lever, { x: 0, y: 2 * uc.y });
+  const [Ts, Tc] = solveDense([[armS, armC], [limbS, limbC]], [0, limb.moment(alpha)]);
+  return { Ts, Tc, F: 2 * Ts * us.x, span: ls };
+}
+
+/**
+ * Closure path solved without core/forward, core/geometry and core/contact.
+ * Cord lengths up to constants: free span from the tangent point (by
+ * bisection) plus the arc length ∫ρ dψ from the tangent point to a fixed
+ * cam angle (Gauss–Legendre); the string wraps towards larger ψ, the cable
+ * towards smaller ψ. Newton on (θ, α) with a central-difference Jacobian
+ * holds both lengths at their brace values.
+ * @param {{ stringTrack: SupportData, cableTrack: SupportData }} cam
+ */
+function independentPath(cam) {
+  const s = createSupport(cam.stringTrack);
+  const c = createSupport(cam.cableTrack);
+  const lay = layout(s);
+  const rhoS = (/** @type {number} */ psi) => s.rho(psi);
+  const rhoC = (/** @type {number} */ psi) => c.rho(psi);
+  const state = { theta: 0, psiS: 0, psiC: Math.PI };
+  /** @param {number} x @param {number} theta @param {number} alpha */
+  const lengths = (x, theta, alpha) => {
+    const O = lay.axleAt(alpha);
+    const N = { x, y: 0 };
+    const A = { x: O.x, y: -O.y };
+    const psiS = tangentAngle(s, O, theta, N, false, state.psiS + theta - state.theta);
+    const psiC = tangentAngle(c, O, theta, A, true, state.psiC + theta - state.theta);
+    const Xs = camToWorld(O, theta, s.point(psiS));
+    const Xc = camToWorld(O, theta, c.point(psiC));
+    return {
+      string: Math.hypot(N.x - Xs.x, N.y - Xs.y) - integrate(rhoS, 0, psiS),
+      cable: Math.hypot(A.x - Xc.x, A.y - Xc.y) + integrate(rhoC, Math.PI, psiC),
+      psiS,
+      psiC,
+    };
+  };
+  const brace = lengths(geometry.braceHeight, 0, 0);
+  /** @param {number} x @param {number} theta @param {number} alpha */
+  const residual = (x, theta, alpha) => {
+    const g = lengths(x, theta, alpha);
+    return [g.string - brace.string, g.cable - brace.cable];
+  };
+  let theta = 0;
+  let alpha = 0;
+  let dTheta = 0;
+  let dAlpha = 0;
+  let xPrev = geometry.braceHeight;
+  /**
+   * α and θ at the nock position x; call with increasing x.
+   * @param {number} x
+   */
+  return (x) => {
+    let th = theta + dTheta * (x - xPrev);
+    let al = alpha + dAlpha * (x - xPrev);
+    const e = 1e-7;
+    for (let it = 0; it < 40; it++) {
+      const r0 = residual(x, th, al);
+      const rt = [residual(x, th + e, al), residual(x, th - e, al)];
+      const ra = [residual(x, th, al + e), residual(x, th, al - e)];
+      const J = [0, 1].map((k) => [(rt[0][k] - rt[1][k]) / (2 * e), (ra[0][k] - ra[1][k]) / (2 * e)]);
+      const [st, sa] = solveDense(J, [-r0[0], -r0[1]]);
+      th += st;
+      al += sa;
+      if (Math.abs(st) + Math.abs(sa) < 1e-15) break;
+    }
+    const g = lengths(x, th, al);
+    Object.assign(state, { theta: th, psiS: g.psiS, psiC: g.psiC });
+    if (x > xPrev) {
+      dTheta = (th - theta) / (x - xPrev);
+      dAlpha = (al - alpha) / (x - xPrev);
+    }
+    theta = th;
+    alpha = al;
+    xPrev = x;
+    return { theta: th, alpha: al };
+  };
+}
+
+/**
  * Solve at the points xs, embedded in a coarse grid below them so that the
  * warm starts stay close.
  * @param {ForwardInput} base
@@ -75,7 +262,8 @@ function solveAt(base, xs) {
 }
 
 describe('forward model: concentric circles', () => {
-  const rs = 0.04;
+  // A string circle of 50 mm pays out the draw within one turn (about 323° of wrap at brace).
+  const rs = 0.05;
   const rc = 0.02;
   const circles = { stringTrack: eccentricCircle({ radius: rs }), cableTrack: eccentricCircle({ radius: rc }) };
   const bow = bowFor(circles.stringTrack);
@@ -112,8 +300,15 @@ describe('forward model: concentric circles', () => {
     expect(worst).toBeLessThan(1e-12);
   });
 
-  it('has T_c/T_s = r_s/r_c exactly', () => {
-    for (let i = 0; i < r.n; i++) expect(Math.abs((r.Tc[i] / r.Ts[i]) * (rc / rs) - 1)).toBeLessThan(1e-14);
+  it('has the tensions of the free-body balance, with T_c/T_s = r_s/r_c', () => {
+    const s = createSupport(circles.stringTrack);
+    const c = createSupport(circles.cableTrack);
+    for (let i = 0; i < r.n; i += 29) {
+      const fb = freeBody(r, i, s, c);
+      expect(Math.abs((fb.Tc / fb.Ts) * (rc / rs) - 1)).toBeLessThan(1e-12);
+      expect(Math.abs(r.Ts[i] / fb.Ts - 1)).toBeLessThan(1e-9);
+      expect(Math.abs(r.Tc[i] / fb.Tc - 1)).toBeLessThan(1e-9);
+    }
   });
 
   it('matches the semi-analytic F(x) with α as the parameter', () => {
@@ -195,7 +390,7 @@ describe('forward model: statics, energy and convergence', () => {
     [
       'ellipse string track',
       {
-        stringTrack: offset(ellipse({ a: 0.042, b: 0.034, axisAngle: 20 * DEG, offset: 0.004, offsetAngle: 60 * DEG }), 0.00125),
+        stringTrack: offset(ellipse({ a: 0.05, b: 0.042, axisAngle: 20 * DEG, offset: 0.004, offsetAngle: 60 * DEG }), 0.00125),
         cableTrack: twinCam.cableTrack,
       },
     ],
@@ -206,31 +401,29 @@ describe('forward model: statics, energy and convergence', () => {
     const s = createSupport(cam.stringTrack);
     const c = createSupport(cam.cableTrack);
 
-    it(`${name}: 2·T_s·sin φ from the moment balances equals the virtual-work force to 1e-9`, () => {
+    it(`${name}: F, T_s and T_c equal a free-body balance in the world frame to 1e-9`, () => {
       expect(r.status).toBe('ok');
       for (let i = 1; i < r.n; i += 37) {
-        const { x } = r;
-        const theta = r.theta[i];
-        const alpha = r.alpha[i];
-        // Contacts recomputed from the solved pose; unit vectors in the world frame.
-        const cs = stringHalfLength(bow, s, x[i], theta, alpha, 0, r.psiS[i]).contact;
-        const cc = cableLength(bow, c, theta, alpha, 0, r.psiC[i]).contact;
-        const rot = (/** @type {number} */ ux, /** @type {number} */ uy) => [
-          Math.cos(theta) * ux + Math.sin(theta) * uy,
-          -Math.sin(theta) * ux + Math.cos(theta) * uy,
-        ];
-        const us = rot(cs.ux, cs.uy);
-        const uc = rot(cc.ux, cc.uy);
-        const o = axle(bow, alpha);
-        const sa = us[0] * o.dx + us[1] * o.dy;
-        const ca = uc[0] * 0 + uc[1] * 2 * o.dy;
-        // Cam: T_s·p_s − T_c·p_c = 0. Limb: T_s·s_a + T_c·c_a = E1'(α).
-        const [Ts, Tc] = solveDense([[cs.p, -cc.p], [sa, ca]], [0, limb.moment(alpha)]);
-        const Fstatics = 2 * Ts * us[0];
-        expect(Math.abs(Fstatics / r.F[i] - 1)).toBeLessThan(1e-9);
-        expect(Math.abs(Ts / r.Ts[i] - 1)).toBeLessThan(1e-9);
-        expect(Math.abs(Tc / r.Tc[i] - 1)).toBeLessThan(1e-9);
-        expect(Math.abs(r.balance[i])).toBeLessThan(1e-9);
+        const fb = freeBody(r, i, s, c);
+        expect(Math.abs(fb.F / r.F[i] - 1)).toBeLessThan(1e-9);
+        expect(Math.abs(fb.Ts / r.Ts[i] - 1)).toBeLessThan(1e-9);
+        expect(Math.abs(fb.Tc / r.Tc[i] - 1)).toBeLessThan(1e-9);
+      }
+    });
+
+    it(`${name}: F equals dE/dx of the limb energy along an independently solved closure path to 1e-9`, () => {
+      const h = 2.5e-4;
+      for (const x0 of [bow.xBrace + 0.1, bow.xBrace + 0.3, bow.xFull - 0.03]) {
+        const path = independentPath(cam);
+        const xs = [x0 - 2 * h, x0 - h, x0, x0 + h, x0 + 2 * h];
+        const approach = Array.from(drawGrid(bow.xBrace, bow.xFull, 40)).filter((x) => x > bow.xBrace && x < xs[0]);
+        for (const x of approach) path(x);
+        const states = xs.map((x) => path(x));
+        const energy = (/** @type {number} */ x) => 2 * limb.energy(states[xs.indexOf(x)].alpha);
+        const { r: fr, offset: k } = solveAt(input(cam), xs);
+        expect(Math.abs(states[2].alpha - fr.alpha[k + 2])).toBeLessThan(1e-12);
+        expect(Math.abs(states[2].theta - fr.theta[k + 2])).toBeLessThan(1e-11);
+        expect(Math.abs(derivative(energy, x0, h) / fr.F[k + 2] - 1)).toBeLessThan(1e-9);
       }
     });
 
@@ -242,7 +435,7 @@ describe('forward model: statics, energy and convergence', () => {
         const alphaAt = (/** @type {number} */ x) => fr.alpha[k + xs.indexOf(x)];
         const dAlpha = derivative((x) => alphaAt(x), x0, h);
         const Fvw = 2 * limb.moment(fr.alpha[k + 2]) * dAlpha;
-        expect(Math.abs(Fvw / fr.F[k + 2] - 1)).toBeLessThan(1e-8);
+        expect(Math.abs(Fvw / fr.F[k + 2] - 1)).toBeLessThan(1e-9);
       }
     });
 
@@ -290,6 +483,20 @@ describe('forward model: statics, energy and convergence', () => {
     }
   });
 
+  it('reports draw and limb energy only for a grid that ends at full draw', () => {
+    const bow = bowFor(twinCam.stringTrack);
+    const partial = solveForward(input({ x: [bow.xBrace, 0.3, 0.4] }));
+    expect(partial.status).toBe('ok');
+    expect(partial.drawEnergy).toBeNaN();
+    expect(partial.limbEnergy).toBeNaN();
+    expect(partial.preloadEnergy).toBe(2 * limb.energy(0));
+    const grid = drawGrid(bow.xBrace, bow.xFull, 300);
+    const explicit = solveForward(input({ x: grid }));
+    const byCount = solveForward(input({ samples: 300 }));
+    expect(explicit.drawEnergy).toBe(byCount.drawEnergy);
+    expect(explicit.limbEnergy).toBe(byCount.limbEnergy);
+  });
+
   it('accepts a tabulated limb and matches the linear limb with the same moments', () => {
     const kt = limbData.torsionalStiffness;
     const rotation = [0, 0.2, 0.4, 0.6];
@@ -303,16 +510,19 @@ describe('forward model: statics, energy and convergence', () => {
 describe('forward model: brace', () => {
   const r = solveForward(input());
 
-  it('starts at θ = 0, α = 0, F = 0 with the brace equilibrium tensions', () => {
+  it('starts at θ = 0, α = 0, F = 0 with the tensions and span of the free-body balance', () => {
     const b = /** @type {import('../../src/core/forward.js').BraceState} */ (r.brace);
     expect([r.theta[0], r.alpha[0], r.x[0]]).toEqual([0, 0, geometry.braceHeight]);
     // sin φ at brace is zero up to the rounding of the contact angle.
     expect(Math.abs(r.F[0])).toBeLessThan(1e-12);
     expect(b.psiS).toBeCloseTo(0, 15);
-    expect(b.stringTension * b.pS - b.cableTension * b.pC).toBeCloseTo(0, 12);
-    expect(b.stringTension * b.sA + b.cableTension * b.cA).toBeCloseTo(b.moment, 11);
+    const fb = freeBody(r, 0, createSupport(twinCam.stringTrack), createSupport(twinCam.cableTrack));
+    expect(Math.abs(b.stringTension / fb.Ts - 1)).toBeLessThan(1e-9);
+    expect(Math.abs(b.cableTension / fb.Tc - 1)).toBeLessThan(1e-9);
+    expect(Math.abs(b.span / fb.span - 1)).toBeLessThan(1e-12);
+    expect(b.moment).toBe(limb.moment(0));
+    expect(Math.abs(b.slope / ((2 * fb.Ts) / fb.span) - 1)).toBeLessThan(1e-9);
     expect(r.Ts[0]).toBe(b.stringTension);
-    expect(b.slope).toBeCloseTo((2 * b.stringTension) / b.span, 12);
   });
 
   /**
@@ -378,7 +588,9 @@ describe('forward model: a cable track that is a point at the axle', () => {
       expect(Math.abs(r.F[i])).toBe(0);
     }
     expect(r.theta[r.n - 1]).toBeGreaterThan(1);
-    expect(r.diagnostics.map((d) => d.code)).toEqual(['slack-string']);
+    // With the limbs at rest the string pays out the whole draw, more than
+    // one turn of its track.
+    expect(r.diagnostics.map((d) => d.code)).toEqual(['slack-string', 'wrap-overlap']);
   });
 });
 
@@ -404,7 +616,9 @@ describe('forward model: realistic twin cam', () => {
       expect(r.theta[i]).toBeGreaterThan(r.theta[i - 1]);
       expect(r.alpha[i]).toBeGreaterThan(r.alpha[i - 1]);
     }
-    expect(r.theta[r.n - 1]).toBeLessThan(2 * Math.PI);
+    // Each cord wraps less than one turn: the string at brace, the cable at full draw.
+    expect(r.stringTermination - r.psiS[0]).toBeLessThan(2 * Math.PI);
+    expect(r.psiC[r.n - 1] - r.cableTermination).toBeLessThan(2 * Math.PI);
     expect(r.alpha[r.n - 1]).toBeLessThan(defaultState().limb.maxRotation);
     // The output survives structured cloning, as needed for a worker.
     const copy = structuredClone(r);
@@ -417,15 +631,23 @@ describe('forward model: diagnostics', () => {
   const codes = (r) => r.diagnostics.map((d) => d.code);
 
   it('invalid-input: bad geometry, track data, grid, sample count or limb', () => {
+    const xFull = bowFor(twinCam.stringTrack).xFull;
+    const table = /** @type {import('../../src/core/limb.js').TableLimbData} */ (
+      tableLimb({ rotation: [0, 0.2], moment: [0, 100], alpha0: 0.1 }).limb
+    );
     const cases = [
       /** @type {any} */ (undefined),
       input({ geometry: { ...geometry, ata: NaN } }),
       input({ cableTrack: /** @type {any} */ ({ kind: 'square' }) }),
+      input({ stringTrack: ellipse({ a: 0.04, b: 0 }) }),
       input({ x: [geometry.braceHeight - 0.01, 0.3] }),
       input({ x: [0.3, 0.2] }),
       input({ x: [] }),
+      input({ x: [geometry.braceHeight, xFull + 1e-6] }),
       input({ samples: 1 }),
       input({ limb: { kind: 'linear', torsionalStiffness: NaN, alpha0: 0.1 } }),
+      input({ limb: { ...table, alpha0: NaN } }),
+      input({ limb: /** @type {any} */ ({ ...table, alpha0: undefined }) }),
     ];
     for (const c of cases) {
       const r = solveForward(c);
@@ -493,14 +715,14 @@ describe('forward model: diagnostics', () => {
     expect(r.diagnostics.find((d) => d.code === 'slack-string')?.xRange?.[0]).toBe(geometry.braceHeight);
   });
 
-  // Circle of radius 10 mm centred 100 mm towards +x: p_c ≈ −89 mm, so
+  // Circle of radius 10 mm centred 120 mm towards +x: p_c ≈ −109 mm, so
   // det = p_s·c_a + s_a·p_c < 0. The path ends at a fold (no convergence
   // further on).
-  const farSide = () => solveForward(input({ cableTrack: eccentricCircle({ radius: 0.01, offset: 0.1, phase: 0 }), samples: 100 }));
+  const farSide = () => solveForward(input({ cableTrack: eccentricCircle({ radius: 0.01, offset: 0.12, phase: 0 }), samples: 100 }));
 
   it('slack-cable: a cable line far on the other side of the axle would have to push', () => {
     const r = farSide();
-    expect(r.brace?.pC).toBeLessThan(-0.08);
+    expect(r.brace?.pC).toBeLessThan(-0.1);
     const slack = r.diagnostics.find((d) => d.code === 'slack-cable');
     expect(slack?.xRange?.[0]).toBe(geometry.braceHeight);
     expect(r.Tc[1]).toBeLessThan(0);
@@ -522,6 +744,34 @@ describe('forward model: diagnostics', () => {
 
     const cable = solveForward(input({ samples: 50, cableTermination: 4 }));
     expect(cable.diagnostics.find((q) => q.code === 'wrap-exhausted')?.xRange?.[0]).toBe(cable.x[0]);
+  });
+
+  it('wrap-overlap: a string track of 36 mm wraps more than one turn early in the draw', () => {
+    const small = {
+      stringTrack: offset(eccentricCircle({ radius: 0.036, offset: 0.006, phase: 45 * DEG }), 0.00125),
+      cableTrack: offset(eccentricCircle({ radius: 0.018, offset: 0.008, phase: -30 * DEG }), 0.00125),
+    };
+    const r = solveForward(input({ ...small, samples: 200 }));
+    expect(r.status).toBe('infeasible');
+    expect(codes(r)).toEqual(['wrap-overlap']);
+    const range = /** @type {[number, number]} */ (r.diagnostics[0].xRange);
+    expect(range[0]).toBe(geometry.braceHeight);
+    // The string wrap ψ_e − ψ_s shrinks as the string pays out; the run ends
+    // at the last sample with a full turn.
+    const last = r.x.indexOf(range[1]);
+    expect(r.stringTermination - r.psiS[0]).toBeGreaterThan(2 * Math.PI + 30 * DEG);
+    expect(r.stringTermination - r.psiS[last]).toBeGreaterThanOrEqual(2 * Math.PI);
+    expect(r.stringTermination - r.psiS[last + 1]).toBeLessThan(2 * Math.PI);
+  });
+
+  it('wrap-overlap: a cable termination almost one turn before the brace contact', () => {
+    const base = solveForward(input({ samples: 100 }));
+    const r = solveForward(input({ samples: 100, cableTermination: base.psiC[0] - 2 * Math.PI + 0.5 }));
+    // The cable wrap ψ_c − ψ_e starts at 2π − 0.5 rad and grows with the draw.
+    const d = r.diagnostics.find((q) => q.code === 'wrap-overlap');
+    const first = r.psiC.findIndex((psi) => psi - r.cableTermination >= 2 * Math.PI);
+    expect(first).toBeGreaterThan(0);
+    expect(d?.xRange).toEqual([r.x[first], r.x[99]]);
   });
 
   it('cable-lever: a limb lever pointing past the vertical makes c_a negative', () => {

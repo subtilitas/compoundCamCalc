@@ -99,12 +99,14 @@ warm starts. Then solve J·[θ', α'] = [−sin φ, 0] and
 F   = 2·E1'(α)·α'                  virtual work
 T_s = F / (2 sin φ)                string tension
 T_c = T_s·p_s / p_c                cable tension
-E1'(α) = T_s·s_a + T_c·c_a         limb balance (check)
+E1'(α) = T_s·s_a + T_c·c_a         limb balance
 ```
 
 The implementation evaluates T_s = E1'·p_c/det and T_c = E1'·p_s/det with
 det = p_s·c_a + s_a·p_c, which equal the lines above and hold at brace
-without a division by sin φ.
+without a division by sin φ. The limb balance holds by construction of
+these formulas, so it is no check; the tests compare the tensions with a
+free-body balance built from positions.
 
 Validity: T_s > 0, T_c > 0, c_a > 0 along the path. The forward model
 reports `{code, xRange, message}` diagnostics; codes and the verification
@@ -223,7 +225,7 @@ The solver never throws on user input and never clamps silently. It returns
 - Clearance: |X| ≥ r_bore + wall + d/2; groove bottom stays outside the bore
   wall.
 - Wrap: string Δθ + Δφ + terminations < 360°; cable Δθ + Δβ + terminations
-  < 360°.
+  < 360° (`wrap-overlap` in the forward model).
 - α_f within the allowed limb rotation.
 - Newton convergence within fixed iteration limits.
 
@@ -344,7 +346,9 @@ Committed as tests with stated tolerances:
   semi-analytic F(x) from x(α).
 - Reverse round trip: eccentric-circle cable track → forward model → inverse
   recovers p_c(ψ) to < 1e-8 m.
-- Statics F = 2·T_s·sin φ equals virtual work dE/dx to 1e-9 relative.
+- Statics F = 2·T_s·sin φ, with T_s from a free-body balance built from
+  positions, equals virtual work dE/dx along a closure path solved
+  independently in the test, to 1e-9 relative.
 - Brace slope F'(x_b) = 2·T_s0/l_0; F''(x_b) independent of p_c'.
 - p_c = 0 gives F = 0.
 - Length identity against explicit span plus arc length to 1e-12 m.
@@ -429,7 +433,10 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 
 Default preset: ATA 33 in, brace height 6.5 in, draw length 29 in, peak
 267 N (60 lbf), let-off 80 %, string diameter 2.5 mm; it must solve with zero
-diagnostics.
+diagnostics. For the 29 in draw the string track needs a groove radius of
+about 45 mm or more (6 mm offset): the 36 mm groove of the current preset
+wraps the string about 400° at brace and reports `wrap-overlap`. Slice 3
+tunes the preset.
 
 ## Limitations
 

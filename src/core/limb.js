@@ -9,7 +9,8 @@
  *   α_0 = preload travel / R_L.
  * - table: measured moments M(q_i) fitted by the C2 shape-preserving quintic
  *   of core/interp; E1 is its exact integral. Outside the table the moment
- *   continues linearly with the end slope.
+ *   continues linearly with the end slope. A falling end slope makes E1
+ *   peak where that line reaches M = 0; larger energies have no inverse.
  *
  * Draw energy W = 2·(E1(α_f) − E1(0)); the limbs store 2·E1(0) at brace
  * (preload) and 2·E1(α_f) at full draw. Units: rad, N·m, J.
@@ -39,12 +40,14 @@ export const INVERSE_TOLERANCE = 1e-9;
 /** @typedef {LinearLimbData | TableLimbData} LimbData */
 
 /**
+ * Every method returns NaN for a NaN argument and never throws.
  * @typedef {object} LimbMethods
  * @property {(alpha: number) => number} energy E1(α) (J)
  * @property {(alpha: number) => number} moment E1'(α) = M(α + α_0) (N·m)
  * @property {(alpha: number) => number} stiffness E1''(α) (N·m/rad)
- * @property {(energy: number) => number} inverse α with E1(α) = energy, NaN
- *   when the energy is negative or not finite
+ * @property {(energy: number) => number} inverse α with E1(α) = energy on the
+ *   rising part of E1 (α ≥ −α_0), NaN when the energy is negative, not
+ *   finite or above the largest E1 of a table limb
  */
 
 /** @typedef {LimbData & LimbMethods} Limb */
@@ -143,7 +146,7 @@ function linearMethods(d) {
   return {
     energy: (alpha) => 0.5 * kt * (alpha + a0) ** 2,
     moment: (alpha) => kt * (alpha + a0),
-    stiffness: () => kt,
+    stiffness: (alpha) => (Number.isNaN(alpha) ? NaN : kt),
     inverse: (energy) => (energy >= 0 && Number.isFinite(energy) ? Math.sqrt((2 * energy) / kt) - a0 : NaN),
   };
 }
@@ -159,14 +162,18 @@ function tableMethods(d) {
   const [q0, qn] = [knots[0], knots[n]];
   const total = curve.integral(q0, qn);
   const a0 = d.alpha0;
+  // NaN fails both range tests, so it is caught first: the curve
+  // evaluation would throw on it.
   /** @param {number} q */
   const M = (q) => {
+    if (Number.isNaN(q)) return NaN;
     if (q < q0) return values[0] + slopes[0] * (q - q0);
     if (q > qn) return values[n] + slopes[n] * (q - qn);
     return curve.evaluate(q);
   };
   /** @param {number} q */
   const W = (q) => {
+    if (Number.isNaN(q)) return NaN;
     if (q < q0) return (q - q0) * (values[0] + 0.5 * slopes[0] * (q - q0));
     if (q > qn) return total + (q - qn) * (values[n] + 0.5 * slopes[n] * (q - qn));
     return curve.integral(q0, q);
@@ -176,6 +183,7 @@ function tableMethods(d) {
     moment: (alpha) => M(alpha + a0),
     stiffness(alpha) {
       const q = alpha + a0;
+      if (Number.isNaN(q)) return NaN;
       if (q < q0) return slopes[0];
       if (q > qn) return slopes[n];
       return curve.derivative(q);
@@ -183,10 +191,12 @@ function tableMethods(d) {
     inverse(energy) {
       if (!(energy >= 0 && Number.isFinite(energy))) return NaN;
       // W is increasing where M > 0; bracket [q0, hi] and refine by
-      // Newton steps kept inside the bracket.
+      // Newton steps kept inside the bracket. With a falling end slope the
+      // extended moment reaches 0 at the peak of W, which caps the bracket.
+      const peak = slopes[n] < 0 ? qn + values[n] / -slopes[n] : Infinity;
       let lo = q0;
       let hi = Math.max(qn, q0 + 1e-6);
-      for (let k = 0; k < 200 && W(hi) < energy; k++) hi = q0 + 2 * (hi - q0);
+      for (let k = 0; k < 200 && W(hi) < energy && hi < peak; k++) hi = Math.min(peak, q0 + 2 * (hi - q0));
       if (!(W(hi) >= energy)) return NaN;
       let q = 0.5 * (lo + hi);
       for (let it = 0; it < 200; it++) {

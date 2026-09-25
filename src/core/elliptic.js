@@ -90,18 +90,21 @@ export function carlsonRD(x, y, z) {
 
 /**
  * Complete elliptic integral of the second kind E(m) = ∫₀^{π/2} √(1 − m sin²u) du,
- * parameter m ≤ 1.
+ * parameter m ≤ 1. At m = 1 the Carlson integrals diverge; E(1) = 1 is
+ * returned directly. m > 1 gives NaN.
  * @param {number} m
  * @returns {number}
  */
 export function ellipticECompleteParam(m) {
+  if (m === 1) return 1;
   return carlsonRF(0, 1 - m, 1) - (m / 3) * carlsonRD(0, 1 - m, 1);
 }
 
 /**
  * Incomplete elliptic integral of the second kind
  * E(φ | m) = ∫₀^φ √(1 − m sin²u) du for any real φ and m ≤ 1. The angle is
- * reduced to [−π/2, π/2] with E(φ + kπ | m) = E(φ | m) + 2k·E(m).
+ * reduced to [−π/2, π/2] with E(φ + kπ | m) = E(φ | m) + 2k·E(m). At m = 1
+ * the integrand is |cos u|, so E(φ | 1) = sin(φ − kπ) + 2k.
  * @param {number} phi (rad)
  * @param {number} m parameter (the modulus squared)
  * @returns {number}
@@ -111,6 +114,7 @@ export function ellipticE(phi, m) {
   const k = Math.round(phi / Math.PI);
   const r = phi - k * Math.PI;
   const s = Math.sin(r);
+  if (m === 1) return s + 2 * k;
   const c = Math.cos(r);
   const y = 1 - m * s * s;
   const partial = s * carlsonRF(c * c, y, 1) - (m / 3) * s * s * s * carlsonRD(c * c, y, 1);

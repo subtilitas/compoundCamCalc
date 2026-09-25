@@ -29,9 +29,11 @@ function median(fn, runs) {
 describe('forward model performance', () => {
   it(`solves ${COARSE_SAMPLES} samples within ${COARSE_BUDGET} ms and ${FULL_SAMPLES} samples within ${FULL_BUDGET} ms`, () => {
     const state = defaultState();
+    // A 45 mm string groove: the 36 mm groove of the current preset wraps the
+    // string more than one turn over the 29 in draw ('wrap-overlap').
     const input = {
       geometry: state.geometry,
-      stringTrack: stringTrackSupport(state.stringTrack, state.cords.stringDiameter),
+      stringTrack: stringTrackSupport({ ...state.stringTrack, radius: 0.045 }, state.cords.stringDiameter),
       cableTrack: offset(eccentricCircle({ radius: 0.018, offset: 0.008, phase: -Math.PI / 6 }), state.cords.cableDiameter / 2),
       limb: /** @type {import('../../src/core/limb.js').LimbData} */ (limbFromState(state.limb, state.geometry.limbLength).limb),
     };
