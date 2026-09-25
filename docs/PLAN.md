@@ -221,8 +221,10 @@ Explicit per sample, no marching (`src/core/inverse.js`):
   mode the peak and let-off parameters follow the measured values, clamped
   to their field ranges; a field note names a custom curve outside them.
 - Custom points keep a gap of ≥ 0.1 in, also after a geometry change: points
-  closer than that after the linear rescaling move apart (a power stroke
-  over 5 in has room for 49 gaps of 0.1 in). Validation rejects smaller
+  closer than that after the linear rescaling move apart. A power stroke of
+  L holds floor(L / 0.1 in) + 1 points; where a curve has more, the interior
+  points at the smallest gaps are dropped first (a stroke over 2 in holds at
+  least 21 points, the limit is 50). Validation rejects smaller
   gaps (tolerance 10⁻⁹ m). A move never goes towards a neighbour that is
   already closer.
 - Parametric generator: brace, ramp point (40 % of the rise, 38 % of the

@@ -4,7 +4,7 @@
  * @module state/schema
  */
 
-import { MAX_FORCE, MAX_POINTS, MIN_FORCE, MIN_GAP, drawRange } from '../core/curve.js';
+import { MAX_FORCE, MAX_POINTS, MIN_FORCE, MIN_GAP, drawRange, generateCurve } from '../core/curve.js';
 import { INCH, fromSI } from '../core/units.js';
 import { defaultState } from './presets.js';
 
@@ -408,6 +408,16 @@ export function migrate(data) {
     );
   }
   const state = fillDefaults(defaultState(), data);
+  // Default points belong to the default geometry and parameters: without
+  // points of its own, the curve follows the data's geometry and parameters.
+  if (!(isObject(data.curve) && 'points' in data.curve) && isObject(state.geometry) && isObject(state.curve)) {
+    try {
+      const { xBrace, xFull } = drawRange(state.geometry.braceHeight, state.geometry.drawLength);
+      state.curve.points = generateCurve({ xBrace, xFull, ...state.curve.params });
+    } catch {
+      // Invalid geometry or parameters: validation reports them.
+    }
+  }
   if (Array.isArray(state.curve?.points)) {
     state.curve.points = state.curve.points.map((/** @type {any} */ p) => (isObject(p) ? { x: p.x, F: p.F } : p));
   }

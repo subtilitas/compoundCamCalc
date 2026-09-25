@@ -340,6 +340,33 @@ test.describe('File menu with two tabs', () => {
     await expect(openDialog.getByRole('button', { name: 'Open Bow B' })).toBeVisible();
   });
 
+  test('Save as with Replace does nothing when another tab renames the replaced design meanwhile', async ({ page }) => {
+    await page.goto('./');
+    await saveAs(page, 'Bow A');
+    await changeAta(page, '34');
+    await saveAs(page, 'Bow B');
+    await menu(page, 'save-as');
+    await page.getByTestId('dialog-name').fill('Bow A');
+    await page.getByTestId('dialog-ok').click();
+    await expect(page.getByTestId('dialog-replace')).toBeVisible();
+    // Another tab renames "Bow A" after the dialog closes and before this tab holds the lock.
+    await page.evaluate(() => {
+      const request = navigator.locks.request.bind(navigator.locks);
+      /** @type {any} */ (navigator.locks).request = (/** @type {string} */ name, /** @type {() => unknown} */ run) => {
+        const lib = JSON.parse(localStorage.getItem('compoundCamCalc.designs') ?? '{}');
+        for (const d of lib.designs) if (d.name === 'Bow A') d.name = 'Bow C';
+        localStorage.setItem('compoundCamCalc.designs', JSON.stringify(lib));
+        return request(name, run);
+      };
+    });
+    await page.getByTestId('dialog-replace').click();
+    await expect(page.getByTestId('file-status')).toHaveText('"Bow A" was not saved: another tab changed the designs. Try again.');
+    await expect(page.getByTestId('design-name')).toHaveText('Bow B');
+    const designs = await page.evaluate(() => JSON.parse(localStorage.getItem('compoundCamCalc.designs') ?? '{}').designs);
+    const c = designs.find((/** @type {{ name: string }} */ d) => d.name === 'Bow C');
+    expect(c.state.geometry.ata).not.toBe(designs.find((/** @type {{ name: string }} */ d) => d.name === 'Bow B').state.geometry.ata);
+  });
+
   test('Open sample asks again when another tab deletes the open design meanwhile', async ({ page, context }) => {
     await page.goto('./');
     await saveAs(page, 'Bow A');

@@ -127,9 +127,10 @@ function syncParams(params, points) {
 
 /**
  * Map point x linearly from one brace/full-draw range to another, then move
- * points apart where a gap fell below {@link MIN_GAP}. The power stroke of a
- * valid geometry (more than 5 in) exceeds 49 gaps of 0.1 in, so this always
- * succeeds; order and forces stay.
+ * points apart where a gap fell below {@link MIN_GAP}. A stroke shorter than
+ * (n − 1) gaps of MIN_GAP cannot hold n points: interior points at the
+ * smallest gaps are dropped first. The power stroke of a valid geometry
+ * (more than 2 in) holds at least 21 points. Order and forces stay.
  * @param {CurvePoint[]} points
  * @param {{ xBrace: number, xFull: number }} from
  * @param {{ xBrace: number, xFull: number }} to
@@ -137,11 +138,18 @@ function syncParams(params, points) {
  */
 function rescalePoints(points, from, to) {
   const k = (to.xFull - to.xBrace) / (from.xFull - from.xBrace);
-  const last = points.length - 1;
   const out = points.map((p, i) => ({
-    x: i === 0 ? to.xBrace : i === last ? to.xFull : to.xBrace + (p.x - from.xBrace) * k,
+    x: i === 0 ? to.xBrace : i === points.length - 1 ? to.xFull : to.xBrace + (p.x - from.xBrace) * k,
     F: p.F,
   }));
+  const fit = Math.floor((to.xFull - to.xBrace) / MIN_GAP + 1e-9) + 1;
+  while (out.length > Math.max(fit, 3)) {
+    // The interior point at the smallest gap; the last gap drops the point before full draw.
+    let drop = 1;
+    for (let i = 2; i < out.length; i++) if (out[i].x - out[i - 1].x < out[drop].x - out[drop - 1].x) drop = i;
+    out.splice(Math.min(drop, out.length - 2), 1);
+  }
+  const last = out.length - 1;
   for (let i = 1; i < last; i++) out[i].x = Math.max(out[i].x, out[i - 1].x + MIN_GAP);
   for (let i = last - 1; i > 0; i--) out[i].x = Math.min(out[i].x, out[i + 1].x - MIN_GAP);
   return out;

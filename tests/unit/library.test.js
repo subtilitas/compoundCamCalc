@@ -3,6 +3,7 @@ import {
   FILE_MAX, NAME_MAX, canonicalText, deleteDesign, emptyLibrary, fileNameOf, findByName, isDirty, listDesigns,
   nameOfFile, normalizeName, parseCurrent, parseLibrary, serializeCurrent, untitled, readProjectFile, renameDesign, saveDesign, serializeLibrary,
 } from '../../src/state/library.js';
+import { drawRange } from '../../src/core/curve.js';
 import { defaultState } from '../../src/state/presets.js';
 import { SAMPLES } from '../../src/state/samples.js';
 import { toJSON } from '../../src/state/schema.js';
@@ -96,6 +97,13 @@ describe('design library', () => {
     expect(readProjectFile('{"schemaVersion":9}', 19).error).toMatch(/newer version/);
     const partial = readProjectFile('{"schemaVersion":1}', 19);
     expect(partial).toEqual({ state: defaultState(), error: null, filled: true });
+    // Omitted points follow the file's geometry and parameters, not the default bow.
+    const brace = readProjectFile('{"schemaVersion":1,"geometry":{"braceHeight":0.2}}', 50);
+    expect(brace.error).toBeNull();
+    expect(brace.state?.curve.points[0].x).toBeCloseTo(drawRange(0.2, defaultState().geometry.drawLength).xBrace, 12);
+    const peak = readProjectFile('{"schemaVersion":1,"curve":{"params":{"peak":200}}}', 50);
+    expect(peak.error).toBeNull();
+    expect(Math.max(...(peak.state?.curve.points ?? []).map((p) => p.F))).toBeCloseTo(200, 9);
     // Extra fields are dropped and do not count as missing values.
     const extra = JSON.parse(toJSON(defaultState()));
     extra.comment = 'x';

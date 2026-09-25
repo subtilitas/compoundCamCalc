@@ -440,12 +440,21 @@ export function createFileMenu(container, store, options) {
    */
   async function saveUnder(name, id) {
     const state = store.getState();
+    // Check the target again inside the lock: another tab may have renamed
+    // or deleted it, or given its name to another design, since the dialog.
     const r = await withLibrary((lib) => {
-      const out = saveDesign(lib, { id: id !== null && lib.designs.some((d) => d.id === id) ? id : null, name, state, now: now() });
+      const target = id === null ? undefined : lib.designs.find((d) => d.id === id);
+      if (target && findByName(lib, name)?.id !== target.id) return null;
+      if (!target && findByName(lib, name)) return null;
+      const out = saveDesign(lib, { id: target ? target.id : null, name, state, now: now() });
       return { library: out.library, value: out.id };
     });
-    if (!r.ok || r.value === null) {
+    if (!r.ok) {
       say(STORAGE_FULL);
+      return;
+    }
+    if (r.value === null) {
+      say(`"${name}" was not saved: another tab changed the designs. Try again.`);
       return;
     }
     writable = true;

@@ -332,6 +332,23 @@ describe('geometry actions', () => {
     }
   });
 
+  it('drops the points a short stroke cannot hold at the minimum gap', () => {
+    const store = createStore(defaultState());
+    const { xBrace, xFull } = { xBrace: store.getState().curve.points[0].x, xFull: store.getState().curve.points.at(-1)?.x ?? 0 };
+    const points = Array.from({ length: 50 }, (_, i) => ({ x: xBrace + ((xFull - xBrace) * i) / 49, F: i === 0 ? 0 : 100 + i }));
+    expect(store.dispatch({ type: 'setCurvePoints', points })).toEqual([]);
+    // 2.1 in of power stroke holds 22 points 0.1 in apart.
+    const drawLength = store.getState().geometry.braceHeight + AMO_OFFSET + 2.1 * INCH;
+    expect(store.dispatch({ type: 'setGeometry', geometry: { drawLength } })).toEqual([]);
+    const next = store.getState().curve.points;
+    expect(next).toHaveLength(22);
+    expect(next[0]).toEqual({ x: next[0].x, F: 0 });
+    expect(next.at(-1)?.F).toBe(149);
+    for (let i = 1; i < next.length; i++) expect(next[i].x - next[i - 1].x).toBeGreaterThanOrEqual(MIN_GAP - 1e-12);
+    store.undo();
+    expect(store.getState().curve.points).toHaveLength(50);
+  });
+
   it('keeps the curve when only the ATA changes', () => {
     const store = createStore(defaultState());
     const points = store.getState().curve.points;

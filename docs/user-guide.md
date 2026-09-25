@@ -115,7 +115,10 @@ focus moves to the next useful button.
   3.75 in (1.75 in AMO offset plus 2 in of power stroke). A change of brace
   height or draw length moves the brace point and the full-draw point; the
   other points keep their relative position in the power stroke. Where that
-  brings two points closer than 0.1 in, they move apart to 0.1 in.
+  brings two points closer than 0.1 in, they move apart to 0.1 in. A power
+  stroke of L holds floor(L / 0.1 in) + 1 points, for example 22 points at
+  2.1 in; a custom curve with more points loses the interior points at the
+  smallest gaps. Undo brings them back.
 - **Peak draw force** and **Let-off**: sliders apply while moving; the text
   fields apply on Enter or when leaving the field.
 - **Rise to peak** (share of the power stroke) and **Valley width**: shape
@@ -427,7 +430,7 @@ the name:
 | Open sample… | Lists the sample designs. A sample opens as an unsaved design. |
 | Reset to default | Replaces all inputs with the default design. The name stays; Undo restores the inputs. |
 | Save to file (.json) | Downloads the inputs as `<name>.json`. |
-| Open from file… | Reads such a file. A file that is empty, larger than 1 MB or not a valid project changes nothing and the message names the reason. Missing values take their defaults, and the message says so. |
+| Open from file… | Reads such a file. A file that is empty, larger than 1 MB or not a valid project changes nothing and the message names the reason. Missing values take their defaults, and the message says so. A file without force curve points gets the curve generated from its geometry and curve parameters. |
 
 Opening a design, a sample or a file asks first when the current inputs
 have unsaved changes or belong to a deleted design, and clears the undo
