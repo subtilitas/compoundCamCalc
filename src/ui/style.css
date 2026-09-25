@@ -2,15 +2,30 @@
   color-scheme: light dark;
   --bg: #f7f7f5;
   --surface: #ffffff;
+  --surface-2: #f0f2f1;
   --text: #1b1f1e;
   --muted: #5a6361;
   --border: #d8dcda;
+  --control-border: #7d8784;
   --accent: #206a5d;
   --accent-contrast: #ffffff;
   --warn: #9a5b00;
   --error: #b3261e;
+  --focus: #1a5fb4;
+  --chart-bg: #ffffff;
+  --chart-grid: #e4e7e5;
+  --chart-axis: #5a6361;
+  --chart-curve: #206a5d;
+  --chart-point: #206a5d;
+  --chart-point-stroke: #ffffff;
+  --chart-point-selected: #b04a00;
+  --chart-locked: #5a6361;
+  --chart-ref: #7a4f9e;
+  --chart-readout-bg: #1b1f1e;
+  --chart-readout-text: #ffffff;
   --radius: 8px;
   --gap: 16px;
+  --target: 44px;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -21,13 +36,27 @@
     color-scheme: dark;
     --bg: #121514;
     --surface: #1b1f1e;
+    --surface-2: #232826;
     --text: #e6eae8;
     --muted: #a3aca9;
     --border: #333a38;
+    --control-border: #7f8a87;
     --accent: #5fc2ae;
     --accent-contrast: #0b1211;
     --warn: #f0b35a;
     --error: #ff8a80;
+    --focus: #8ab4f8;
+    --chart-bg: #1b1f1e;
+    --chart-grid: #2c3230;
+    --chart-axis: #a3aca9;
+    --chart-curve: #5fc2ae;
+    --chart-point: #5fc2ae;
+    --chart-point-stroke: #0b1211;
+    --chart-point-selected: #f0b35a;
+    --chart-locked: #a3aca9;
+    --chart-ref: #c9a3f0;
+    --chart-readout-bg: #e6eae8;
+    --chart-readout-text: #121514;
   }
 }
 
@@ -39,13 +68,27 @@
   color-scheme: dark;
   --bg: #121514;
   --surface: #1b1f1e;
+  --surface-2: #232826;
   --text: #e6eae8;
   --muted: #a3aca9;
   --border: #333a38;
+  --control-border: #7f8a87;
   --accent: #5fc2ae;
   --accent-contrast: #0b1211;
   --warn: #f0b35a;
   --error: #ff8a80;
+  --focus: #8ab4f8;
+  --chart-bg: #1b1f1e;
+  --chart-grid: #2c3230;
+  --chart-axis: #a3aca9;
+  --chart-curve: #5fc2ae;
+  --chart-point: #5fc2ae;
+  --chart-point-stroke: #0b1211;
+  --chart-point-selected: #f0b35a;
+  --chart-locked: #a3aca9;
+  --chart-ref: #c9a3f0;
+  --chart-readout-bg: #e6eae8;
+  --chart-readout-text: #121514;
 }
 
 * {
@@ -83,8 +126,41 @@ body {
 .app-main {
   flex: 1;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--gap);
+}
+
+@media (min-width: 960px) {
+  .app-main {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+    align-items: start;
+  }
+}
+
+.notices {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+
+.notices:empty {
+  display: none;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.notice p {
+  margin: 10px 0;
+  flex: 1;
 }
 
 .panel {
@@ -100,8 +176,457 @@ body {
 }
 
 .panel h2 {
-  margin: 0 0 8px;
+  margin: 0;
   font-size: 1.1rem;
+}
+
+.panel-settings h2 {
+  margin-bottom: 8px;
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 8px;
+}
+
+.mode-badge {
+  padding: 2px 10px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  color: var(--accent);
+}
+
+.mode-badge[data-mode='custom'] {
+  color: var(--warn);
+}
+
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  min-height: var(--target);
+  padding: 0 14px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.chart-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chart-bg {
+  fill: var(--chart-bg);
+}
+
+.chart-grid line {
+  stroke: var(--chart-grid);
+  stroke-width: 1;
+}
+
+.chart-axes .axis {
+  stroke: var(--chart-axis);
+  stroke-width: 1;
+}
+
+.chart-axes text {
+  fill: var(--chart-axis);
+  font-size: 12px;
+}
+
+.chart-axes .axis-title {
+  fill: var(--text);
+  font-size: 13px;
+}
+
+.chart-refs .ref {
+  stroke: var(--chart-ref);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.chart-refs .ref-label {
+  fill: var(--chart-ref);
+  font-size: 12px;
+}
+
+.chart-curve {
+  fill: none;
+  stroke: var(--chart-curve);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.pt {
+  cursor: grab;
+  outline: none;
+}
+
+.chart[data-dragging] .pt {
+  cursor: grabbing;
+}
+
+.pt-locked {
+  cursor: default;
+}
+
+.pt-hit {
+  fill: transparent;
+}
+
+.pt-dot {
+  fill: var(--chart-point);
+  stroke: var(--chart-point-stroke);
+  stroke-width: 2;
+}
+
+.pt-locked .pt-dot {
+  fill: var(--chart-locked);
+}
+
+.pt-ring {
+  fill: none;
+  stroke: none;
+  stroke-width: 3;
+}
+
+.pt.selected .pt-dot {
+  fill: var(--chart-point-selected);
+}
+
+.pt.selected .pt-ring {
+  stroke: var(--chart-point-selected);
+  stroke-width: 2;
+}
+
+.pt:focus-visible .pt-ring,
+.chart:has(.chart-points .pt:focus-visible) .pt-mark .pt-ring {
+  stroke: var(--focus);
+  stroke-width: 3;
+}
+
+.chart-readout {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--chart-readout-bg);
+  color: var(--chart-readout-text);
+  font-size: 0.875rem;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hint {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px 16px;
+  margin: 12px 0;
+}
+
+.stat {
+  min-width: 0;
+}
+
+.stats dt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.stats dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.edit-status {
+  min-height: 1.45em;
+  margin: 4px 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.point-table summary {
+  min-height: var(--target);
+  padding: 10px 0;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.point-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.point-table th,
+.point-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.point-table thead th {
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.point-table tbody th {
+  width: 3.5em;
+  padding-top: 12px;
+  font-weight: 400;
+}
+
+.point-table tr.selected th {
+  font-weight: 700;
+  color: var(--chart-point-selected);
+}
+
+.point-table input {
+  width: 100%;
+  max-width: 10ch;
+  min-height: 40px;
+  padding: 4px 6px;
+  border: 1px solid var(--control-border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.point-table td.locked {
+  padding-top: 12px;
+  color: var(--muted);
+}
+
+.lock-note {
+  font-size: 0.8rem;
+}
+
+.cell-error,
+.field-msg {
+  display: block;
+  color: var(--error);
+  font-size: 0.8rem;
+}
+
+.field-msg:empty {
+  display: none;
+}
+
+input[aria-invalid='true'] {
+  border-color: var(--error);
+}
+
+.group {
+  margin: 0 0 16px;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.group legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.field {
+  margin-top: 10px;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.field-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-input-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 6ch;
+  min-height: var(--target);
+  padding: 4px 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper {
+  flex: none;
+  width: var(--target);
+  padding: 0;
+  font-size: 1.2rem;
+}
+
+.unit {
+  flex: none;
+  min-width: 2.5em;
+  color: var(--muted);
+}
+
+.field-range {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.slider {
+  display: block;
+  width: 100%;
+  min-height: var(--target);
+  margin: 0 0 4px;
+  accent-color: var(--accent);
+}
+
+.unit-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px 12px;
+}
+
+.unit-field label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.875rem;
+}
+
+.unit-field select {
+  width: 100%;
+  min-height: var(--target);
+  padding: 4px 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.info-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.info {
+  position: relative;
+  min-height: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  font-style: italic;
+  font-weight: 700;
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Extends the touch target of the small info button to 44 px. */
+.info::before {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
+.glossary-pop {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: calc(100vw - 16px);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 400;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+
+.glossary-inline {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  width: min(320px, 80vw);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .app-footer {

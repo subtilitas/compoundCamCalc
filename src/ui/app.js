@@ -1,0 +1,147 @@
+/**
+ * Application wiring: store, editor, chart, table, settings, stats,
+ * toolbar, keyboard shortcuts, notices and autosave.
+ * @module ui/app
+ */
+
+import { createStore } from '../state/store.js';
+import { startAutosave, loadSaved } from './autosave.js';
+import { createChart } from './chart.js';
+import { byId, h } from './dom.js';
+import { createEditor } from './editor.js';
+import { createSettings } from './settings.js';
+import { createStats } from './stats.js';
+import { createPointTable } from './table.js';
+
+/**
+ * Show a dismissible notice.
+ * @param {HTMLElement} area
+ * @param {string} text
+ */
+function showNotice(area, text) {
+  const close = h('button', { type: 'button', class: 'notice-close', 'aria-label': 'Dismiss notice', 'data-testid': 'notice-close' }, '×');
+  const notice = h('div', { class: 'notice', role: 'status', 'data-testid': 'notice' }, h('p', {}, text), close);
+  close.addEventListener('click', () => notice.remove());
+  area.append(notice);
+}
+
+/** Start the application on the page. */
+export function startApp() {
+  const root = byId('app', HTMLElement);
+  const notices = byId('notices', HTMLDivElement);
+  const saved = loadSaved();
+  const store = createStore(saved.state);
+  const editor = createEditor(store);
+
+  const chart = createChart(byId('chart-wrap', HTMLDivElement), editor);
+  const table = createPointTable(
+    byId('point-rows', HTMLTableSectionElement),
+    byId('th-draw', HTMLTableCellElement),
+    byId('th-force', HTMLTableCellElement),
+    editor,
+  );
+  const settings = createSettings(byId('settings-body', HTMLDivElement), store);
+  const stats = createStats(byId('stats', HTMLDListElement));
+  const status = byId('edit-status', HTMLParagraphElement);
+  const modeBadge = byId('curve-mode', HTMLSpanElement);
+  const addButton = byId('btn-add-point', HTMLButtonElement);
+  const deleteButton = byId('btn-delete-point', HTMLButtonElement);
+  const undoButton = byId('btn-undo', HTMLButtonElement);
+  const redoButton = byId('btn-redo', HTMLButtonElement);
+  const resetButton = byId('btn-reset-curve', HTMLButtonElement);
+  const details = byId('point-table', HTMLDetailsElement);
+  if (window.matchMedia('(min-width: 960px)').matches) details.open = true;
+
+  let rev = 0;
+  let shownCount = 0;
+  function render() {
+    const s = store.getState();
+    chart.render(s);
+    table.render(s);
+    settings.render(s);
+    stats.render(s);
+    const custom = s.curve.mode === 'custom';
+    modeBadge.textContent = custom ? 'Custom' : 'Parametric';
+    modeBadge.dataset.mode = s.curve.mode;
+    resetButton.disabled = !custom;
+    const selected = editor.selected();
+    deleteButton.disabled = !editor.canRemove(selected);
+    undoButton.disabled = !store.canUndo();
+    redoButton.disabled = !store.canRedo();
+    const text = editor.message();
+    const count = editor.messageCount();
+    if (count !== shownCount && text !== '' && status.textContent === text) {
+      // The same message again: clear it and set it in the next frame, so
+      // the status region announces it again.
+      status.textContent = '';
+      requestAnimationFrame(() => {
+        if (editor.message() === text) status.textContent = text;
+      });
+    } else if (status.textContent !== text) {
+      status.textContent = text;
+    }
+    shownCount = count;
+    root.dataset.pointCount = String(s.curve.points.length);
+    root.dataset.selected = selected >= 0 ? String(selected + 1) : '';
+    root.dataset.curveMode = s.curve.mode;
+    root.dataset.rev = String(++rev);
+  }
+
+  addButton.addEventListener('click', () => editor.addInWidestGap());
+  deleteButton.addEventListener('click', () => {
+    const hadFocus = document.activeElement === deleteButton;
+    if (editor.remove(editor.selected()) && hadFocus) addButton.focus();
+  });
+  /**
+   * Run a toolbar action and keep keyboard focus in the toolbar when the
+   * action disables the focused button. Chromium moves focus to the body as
+   * soon as the focused button is disabled, so focus is read before.
+   * @param {HTMLButtonElement} button
+   * @param {() => void} action
+   * @param {() => HTMLButtonElement} fallback
+   */
+  function keepFocus(button, action, fallback) {
+    const hadFocus = document.activeElement === button;
+    action();
+    if (hadFocus && button.disabled) fallback().focus();
+  }
+  undoButton.addEventListener('click', () =>
+    keepFocus(undoButton, () => store.undo(), () => (redoButton.disabled ? addButton : redoButton)));
+  redoButton.addEventListener('click', () =>
+    keepFocus(redoButton, () => store.redo(), () => (undoButton.disabled ? addButton : undoButton)));
+  resetButton.addEventListener('click', () =>
+    keepFocus(resetButton, () => {
+      store.dispatch({ type: 'regenerateCurve' });
+      editor.say('Curve regenerated from the parameters');
+    }, () => addButton));
+
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const t = e.target;
+    // Text fields keep their own undo.
+    if ((t instanceof HTMLInputElement && t.type === 'text') || t instanceof HTMLTextAreaElement) return;
+    const key = e.key.toLowerCase();
+    if (key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      store.undo();
+    } else if ((key === 'z' && e.shiftKey) || (key === 'y' && e.ctrlKey)) {
+      e.preventDefault();
+      store.redo();
+    }
+  });
+
+  store.subscribe(render);
+  editor.onChange(render);
+  render();
+
+  if (saved.notice) showNotice(notices, saved.notice);
+  let storageWarned = false;
+  root.dataset.autosave = 'idle';
+  startAutosave(store, (state) => {
+    root.dataset.autosave = state;
+    if (state === 'error' && !storageWarned) {
+      storageWarned = true;
+      showNotice(notices, 'This browser does not allow saving. Changes are lost when the page is closed.');
+    }
+  });
+}
