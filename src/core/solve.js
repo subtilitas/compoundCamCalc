@@ -1235,7 +1235,9 @@ function largestDifference(points, x, difference, xPeak, parametric, fmt) {
   let suggestion;
   if (x < points[Math.min(1, last)].x) {
     suggestion = EVEN_RISE;
-  } else if (x < points[Math.min(2, last)].x) {
+  } else if (x < points[Math.min(2, last)].x && x < xPeak && last > 2 && points[2].F > points[1].F) {
+    // A miss on the rise to the peak, with a point 3 that can move (not the
+    // full-draw point): a later point 3 spreads the rise.
     suggestion = parametric ? LATER_PEAK.parametric : LATER_PEAK.custom;
   } else if (drop >= 0) {
     suggestion = `Make the force drop between points ${drop + 1} and ${drop + 2} more gradual: move them apart, or reduce the let-off`;

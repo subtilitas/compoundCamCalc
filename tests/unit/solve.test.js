@@ -567,6 +567,17 @@ describe('solve: diagnostics', () => {
     const lower = structuredClone(custom);
     lower.curve.points[1].F -= 10;
     expect(solve(lower).fit.maxForceDifference).toBeGreaterThan(rc.fit.maxForceDifference);
+    // Three points (brace, peak start, full draw): the miss at 14.7 in lies
+    // after the peak at 14.5 in, where the force falls to full draw; point 3
+    // is the full-draw point and cannot move, so the drop is named.
+    const three = structuredClone(reduce(defaultState(), { type: 'setCurveParams', params: { peak: 250, riseFraction: 0.3 } }));
+    three.curve.mode = 'custom';
+    const pts = three.curve.points;
+    three.curve.points = [pts[0], pts[2], /** @type {import('../../src/core/interp.js').CurvePoint} */ (pts.at(-1))];
+    expect(validate(three)).toEqual([]);
+    const r3 = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (radius(solve(three)));
+    expect(r3.message).toMatch(/between points 2 and 3$/);
+    expect(r3.suggestion).toBe('Make the force drop between points 2 and 3 more gradual: move them apart, or reduce the let-off');
     // Valley 1 in at peak 285 N and rise 43 %: the miss lies on the drop
     // between points 5 and 6; moving point 5 0.5 in earlier halves it.
     const drop = reduce(defaultState(), { type: 'setCurveParams', params: { peak: 285, riseFraction: 0.43, valleyWidth: INCH } });

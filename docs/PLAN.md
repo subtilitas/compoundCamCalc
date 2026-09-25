@@ -361,8 +361,8 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   thread: the coverage run adds V8 block counters to the test process,
   which slow the solve about 4 times, and the budget applies to the code as
   the app runs it. Measured medians with Node 22 on a 4-core 2.1 GHz Xeon:
-  24 ms to 27 ms coarse and 30 ms to 35 ms full alone; 26 ms to 28 ms and
-  33 ms to 39 ms in the coverage run with the rest of the suite in
+  24 ms to 27 ms coarse and 30 ms to 35 ms full alone; 26 ms to 35 ms and
+  33 ms to 51 ms in the coverage run with the rest of the suite in
   parallel; 32 ms to 49 ms and 56 ms to 63 ms with every core also loaded
   by another process. The first call, before the JavaScript engine has
   optimised the code, takes 200 ms to 250 ms alone and up to 480 ms on a
