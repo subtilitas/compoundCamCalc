@@ -168,6 +168,18 @@ describe('quarticRangeOnUnit', () => {
 });
 
 describe('createCurve', () => {
+  it('reads the points by index and never calls an iterator on the array', () => {
+    const points = [{ x: 0, F: 0 }, { x: 1, F: 2 }, { x: 2, F: 3 }];
+    Object.defineProperty(points, Symbol.iterator, {
+      value: function* () {
+        for (let k = 0; k < 10; k++) yield { x: 10 + k, F: 5 };
+      },
+    });
+    const data = buildCurveData(points);
+    expect(Array.from(data.knots)).toEqual([0, 1, 2]);
+    expect(Array.from(data.values)).toEqual([0, 2, 3]);
+  });
+
   it('interpolates the points exactly', () => {
     const curve = createCurve(forceCurve);
     for (const p of forceCurve) expect(curve.evaluate(p.x)).toBeCloseTo(p.F, 10);

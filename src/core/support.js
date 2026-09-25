@@ -178,16 +178,23 @@ function solveCyclic(a, b, c, corner, r) {
  */
 export function splineSupport(knots, values, options = {}) {
   const periodic = options.periodic === true;
-  const n = knots.length - 1;
+  const count = knots?.length;
+  const n = count - 1;
   const slopes = options.endSlopes;
   if (slopes !== undefined && !(Array.isArray(slopes) && slopes.length === 2 && slopes.every(Number.isFinite))) {
     throw new RangeError('Spline end slopes must be two finite numbers');
   }
-  if (n < (periodic ? 3 : 1) || n > SPLINE_INTERVALS_MAX || values.length !== knots.length) {
+  if (!Number.isInteger(count) || n < (periodic ? 3 : 1) || n > SPLINE_INTERVALS_MAX || values?.length !== count) {
     throw new RangeError(`A spline support needs matching knots and values and ${periodic ? 3 : 1} to ${SPLINE_INTERVALS_MAX} intervals`);
   }
-  const x = Float64Array.from(knots);
-  const y = Float64Array.from(values);
+  // Exactly the validated number of entries, by index: an iterator on the
+  // arguments is never called.
+  const x = new Float64Array(count);
+  const y = new Float64Array(count);
+  for (let i = 0; i < count; i++) {
+    x[i] = knots[i];
+    y[i] = values[i];
+  }
   if (periodic) y[n] = y[0];
   const h = new Float64Array(n);
   const delta = new Float64Array(n);

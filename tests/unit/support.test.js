@@ -383,6 +383,19 @@ describe('serialized spline data', () => {
     const long = { kind: 'spline', knots: { length: 100002 }, coeffs: { length: 400004 }, cumulative: [], periodic: false };
     expect(() => createSupport(/** @type {any} */ (long))).toThrow(/at most 100000 intervals/);
     expect(() => splineSupport(/** @type {any} */ ({ length: 100002 }), /** @type {any} */ ({ length: 100002 }))).toThrow(/100000 intervals/);
+    // An iterator on the arguments is never called: exactly the declared
+    // number of entries is copied.
+    const endless = (/** @type {number} */ value) => ({
+      length: 4,
+      0: 0, 1: 1, 2: 2, 3: 3,
+      *[Symbol.iterator]() { for (;;) yield value; },
+    });
+    const knotsLike = endless(0);
+    const valuesLike = { ...endless(0.03), 0: 0.03, 1: 0.03, 2: 0.03, 3: 0.03 };
+    const fromLike = splineSupport(/** @type {any} */ (knotsLike), /** @type {any} */ (valuesLike));
+    expect(Array.from(fromLike.knots)).toEqual([0, 1, 2, 3]);
+    expect(fromLike.coeffs.length).toBe(12);
+    expect(() => splineSupport(/** @type {any} */ ({ length: 3.5 }), /** @type {any} */ ({ length: 3.5 }))).toThrow(RangeError);
     const farKnot = /** @type {any} */ (splineSupport([1e4, 1e4 + 1, 1e4 + 2], [0.03, 0.03, 0.03]));
     expect(() => createSupport(farKnot)).toThrow(/at most 10000 rad/);
   });
