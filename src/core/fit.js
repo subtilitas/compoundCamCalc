@@ -66,7 +66,7 @@ const MAX_GRID = 50;
  *   and p'' prescribed at both ends (m, m/rad, m/rad²), for a C2 join
  * @property {number} [gridPerInterval] constraint points per knot interval, 1 to 50 (default 8)
  * @property {number} [margin] added to both limits in the constraints
- *   (m, default 5e-6): the spline between two constraint points stays above
+ *   (m, at least 0, default 5e-6): the spline between two constraint points stays above
  *   the limits, so the exchange rounds are rarely needed
  */
 
@@ -159,6 +159,7 @@ function fitChecked(input) {
     Number.isFinite(rhoMin) &&
     Number.isFinite(pMin) &&
     finiteOrUndefined([input.startValue, input.margin]) &&
+    !(/** @type {number} */ (input.margin) < 0) &&
     Number.isInteger(intervals) &&
     intervals >= 1 &&
     intervals <= MAX_INTERVALS &&

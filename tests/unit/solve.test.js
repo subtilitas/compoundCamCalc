@@ -92,6 +92,8 @@ describe('solve: default preset', () => {
     const limits = splineLimits(/** @type {import('../../src/core/support.js').SplineData} */ (r.tracks.cablePitch), rhoLimit, pMin);
     expect(limits.minP).toBeGreaterThanOrEqual(pMin);
     expect(limits.minRho).toBeGreaterThanOrEqual(rhoLimit);
+    // The reported cable radius is this exact minimum.
+    expect(/** @type {any} */ (r.metrics).cableMinRho).toBe(limits.minRho);
   });
 
   it('solves with zero diagnostics and a buildable cam', () => {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { fitCableTrack } from '../../src/core/fit.js';
 import { solveForward } from '../../src/core/forward.js';
 import { bowGeometry } from '../../src/core/geometry.js';
-import { createInverse } from '../../src/core/inverse.js';
+import { createInverse, inverseAt } from '../../src/core/inverse.js';
 import { limbFromState, tableLimb } from '../../src/core/limb.js';
 import { solveQP } from '../../src/core/qp.js';
 import { solve } from '../../src/core/solve.js';
@@ -25,6 +25,7 @@ const CASES = /** @type {const} */ ([
   ['fitCableTrack', (/** @type {any} */ v) => fitCableTrack(v), (/** @type {any} */ r) => r.status === 'invalid'],
   ['solveQP', (/** @type {any} */ v) => solveQP(v, v), (/** @type {any} */ r) => r.status === 'invalid'],
   ['createInverse', (/** @type {any} */ v) => createInverse(v), (/** @type {any} */ r) => r.context === null && typeof r.error === 'string'],
+  ['inverseAt', (/** @type {any} */ v) => inverseAt(v, v, 0.3, 100, 10, 0, 0, v), (/** @type {any} */ r) => r.ok === false],
   ['bowGeometry', (/** @type {any} */ v) => bowGeometry(v, v), (/** @type {any} */ r) => r.bow === null && typeof r.error === 'string'],
   ['tableLimb', (/** @type {any} */ v) => tableLimb(v), (/** @type {any} */ r) => r.limb === null && typeof r.error === 'string'],
   ['limbFromState', (/** @type {any} */ v) => limbFromState(v, v, v), (/** @type {any} */ r) => r.limb === null && typeof r.error === 'string'],

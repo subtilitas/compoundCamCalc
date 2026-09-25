@@ -144,7 +144,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   and a number to every never-throw export); the inverse model refuses an
   iteration limit outside the integers 1 to 200; an ideal cable track whose
   closed spline dips below a limit between its 0.1° samples gets the
-  constrained fit instead of a `closing-blend` result; an iteration limit outside the integers 1 to 200
+  constrained fit instead of a `closing-blend` result; the reported cable
+  radius of curvature is the exact minimum of the closed track that the
+  limit check accepted; a negative fit margin is invalid input; an iteration limit outside the integers 1 to 200
   gives `invalid-input` before any solving. A `closing-blend` message names
   the smallest radius of curvature or lever arm of the returned closed
   track, which decides whether the track closes.

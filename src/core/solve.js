@@ -861,7 +861,9 @@ function solveState(state, resolution, maxIterations, trials) {
 
   // Metrics.
   const achievedMetrics = sampleMetrics(forward.x, forward.F);
-  const minRhoCable = minimumOn((psi) => cableSupport.rho(psi), closed.psiStart, closed.psiStart + 2 * Math.PI, 1440).value;
+  // The exact minimum over every interval of the closed periodic spline,
+  // the value the limit check accepted.
+  const minRhoCable = closed.minRho;
   res.metrics = {
     peak: achievedMetrics.peak,
     holding: achievedMetrics.hold,

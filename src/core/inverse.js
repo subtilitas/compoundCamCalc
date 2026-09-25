@@ -292,6 +292,37 @@ function emptySample() {
  * @returns {InverseSample}
  */
 export function inverseAt(ctx, brace, x, F, W, thetaGuess, psiGuess, out = emptySample()) {
+  // A malformed context or output object is a failed sample, not an
+  // exception.
+  const target = out !== null && typeof out === 'object' ? out : emptySample();
+  try {
+    return inverseAtChecked(ctx, brace, x, F, W, thetaGuess, psiGuess, target);
+  } catch {
+    // The failed sample goes into out when out can hold it, and into a new
+    // object otherwise.
+    try {
+      Object.assign(target, emptySample(), { x });
+      if (target.ok === false) return target;
+    } catch {
+      // out cannot be written or read back
+    }
+    return { ...emptySample(), x };
+  }
+}
+
+/**
+ * Body of {@link inverseAt}, which guards it.
+ * @param {InverseContext} ctx
+ * @param {BraceConditions} brace
+ * @param {number} x
+ * @param {number} F
+ * @param {number} W
+ * @param {number} thetaGuess
+ * @param {number} psiGuess
+ * @param {InverseSample} out
+ * @returns {InverseSample}
+ */
+function inverseAtChecked(ctx, brace, x, F, W, thetaGuess, psiGuess, out) {
   const { bow, stringSupport, limb } = ctx;
   const atBrace = Math.abs(x - bow.xBrace) <= BRACE_POSITION_TOLERANCE;
   Object.assign(out, emptySample());

@@ -198,6 +198,7 @@ describe('constrained cable track fit', () => {
       // Only undefined means an absent option.
       ...[null, false, 0, ''].flatMap((v) => /** @type {any[]} */ ([{ ends: v }, { through: v }, { intervals: v }, { gridPerInterval: v }])),
       ...[null, false, ''].map((v) => /** @type {any} */ ({ margin: v })),
+      { margin: -0.001 },
       { ends: { start: [0.02, NaN, 0], end: [0.02, 0, 0] } },
       { ends: { start: [0.02, 0, 0], end: [0.02, 0] } },
       { through: [{ psi: NaN, p: 0.02, integral: 0.01 }] },
