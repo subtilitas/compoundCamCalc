@@ -224,7 +224,10 @@ function gridFor(input, xBrace, xFull) {
     const length = source === null || typeof source !== 'object' ? NaN : Number(source.length);
     if (!Number.isInteger(length) || length < 1) return 'the x grid must be a non-empty array of numbers';
     if (length > MAX_SAMPLES) return `the x grid has more than ${MAX_SAMPLES} samples`;
-    const given = Float64Array.from(source);
+    // Copy exactly the validated number of indexed entries; an iterator on
+    // the source is ignored.
+    const given = new Float64Array(length);
+    for (let i = 0; i < length; i++) given[i] = Number(source[i]);
     for (let i = 0; i < given.length; i++) {
       const outside = given[i] < xBrace - FULL_DRAW_TOLERANCE || given[i] > xFull + FULL_DRAW_TOLERANCE;
       if (!Number.isFinite(given[i]) || outside || (i > 0 && !(given[i] > given[i - 1]))) {

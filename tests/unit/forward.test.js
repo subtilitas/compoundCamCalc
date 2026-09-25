@@ -659,6 +659,17 @@ describe('forward model: diagnostics', () => {
       input({ x: /** @type {any} */ ({ length: -1 }) }),
       input({ x: /** @type {any} */ (0.3) }),
       input({ x: /** @type {any} */ ([geometry.braceHeight, Symbol('x')]) }),
+      // An endless iterator with a declared length of 1: only index 0 is read.
+      input({
+        x: /** @type {any} */ ({
+          length: 2,
+          0: geometry.braceHeight,
+          1: NaN,
+          *[Symbol.iterator]() {
+            for (;;) yield geometry.braceHeight;
+          },
+        }),
+      }),
       input({ limb: { kind: 'linear', torsionalStiffness: -1000, alpha0: -0.2 } }),
       input({ maxIterations: 0 }),
       input({ maxIterations: 1.5 }),
