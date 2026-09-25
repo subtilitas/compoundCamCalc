@@ -190,7 +190,13 @@ describe('solveContact', () => {
     }
     expect(solveContact(circle, NaN, 0.5, CABLE_SIDE, 0).status).toBe('no-convergence');
     expect(solveContact(circle, 0.5, 0.5, CABLE_SIDE, NaN).status).toBe('no-convergence');
-    const nan = createSupport(eccentricCircle({ radius: NaN }));
+    expect(() => createSupport(eccentricCircle({ radius: NaN }))).toThrow(/finite radius/);
+    // A support object that evaluates to NaN everywhere.
+    const nan = /** @type {any} */ ({
+      ...circle,
+      evaluate: (/** @type {number} */ _psi, /** @type {Float64Array} */ out) => out.fill(NaN),
+      p: () => NaN,
+    });
     expect(solveContact(nan, 0.5, 0.5, CABLE_SIDE, 0).status).toBe('no-convergence');
     const { length, contact } = cordLength(circle, 0.001, 0, CABLE_SIDE, 0, 0);
     expect(Number.isNaN(length)).toBe(true);

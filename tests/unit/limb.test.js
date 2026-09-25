@@ -37,6 +37,16 @@ describe('linear limb', () => {
     expect(limb.inverse(Infinity)).toBeNaN();
   });
 
+  it('keeps the draw energy when the preload energy is many orders larger', () => {
+    const huge = createLimb({ kind: 'linear', torsionalStiffness: 1, alpha0: 1e16 });
+    const alphaFull = 0.2;
+    // E1(α) − E1(0) = ½·k_t·α·(α + 2·α_0), about 2e15 J; subtracting the
+    // totals (5e31 J) would lose it entirely.
+    expect(limbEnergies(huge, alphaFull).drawEnergy).toBeCloseTo(alphaFull * (alphaFull + 2e16), -1);
+    const table = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.2, 0.5], moment: [0, 100, 300], alpha0: 0.1 }).limb));
+    expect(table.energyChange(0.2)).toBeCloseTo(table.energy(0.2) - table.energy(0), 12);
+  });
+
   it('reports draw, total and preload energy separately', () => {
     const e = limbEnergies(limb, 0.14);
     expect(e.preloadEnergy).toBeCloseTo(k * s0 * s0, 12);

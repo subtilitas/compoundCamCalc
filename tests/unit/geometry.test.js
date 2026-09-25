@@ -33,7 +33,9 @@ describe('bowGeometry', () => {
     expect(bowGeometry({ ...geometry, ata: NaN }, stringSupport).error).toMatch(/finite/);
     expect(bowGeometry({ ...geometry, limbLength: 0 }, stringSupport).error).toMatch(/positive/);
     expect(bowGeometry({ ...geometry, drawLength: geometry.braceHeight }, stringSupport).error).toMatch(/Full draw/);
-    const broken = createSupport(eccentricCircle({ radius: NaN }));
+    expect(() => createSupport(eccentricCircle({ radius: NaN }))).toThrow(/finite radius/);
+    // A support object whose lever arm at brace is not finite.
+    const broken = /** @type {any} */ ({ ...stringSupport, p: () => NaN });
     expect(bowGeometry(geometry, broken).error).toMatch(/lever arm/);
     expect(bowGeometry(/** @type {any} */ (null), stringSupport).bow).toBeNull();
   });

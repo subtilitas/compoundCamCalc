@@ -250,6 +250,69 @@ describe('spline support', () => {
   });
 });
 
+describe('minRho', () => {
+  it('is exact for circles, ellipses and offsets', () => {
+    expect(createSupport(eccentricCircle({ radius: 0.03, offset: 0.01, phase: 1 })).minRho(0, 5).value).toBe(0.03);
+    const e = createSupport(ellipse({ a: 0.05, b: 0.03, axisAngle: 0.4 }));
+    expect(e.minRho(0, 1).value).toBeCloseTo(0.03 ** 2 / 0.05, 15);
+    // A range that avoids ψ = axisAngle + k·π has its minimum at an end.
+    const part = e.minRho(1.2, 1.5);
+    expect(part.value).toBeCloseTo(Math.min(e.rho(1.2), e.rho(1.5)), 15);
+    const o = createSupport(offset(ellipse({ a: 0.05, b: 0.03 }), -0.001));
+    expect(o.minRho(0, 1).value).toBeCloseTo(0.03 ** 2 / 0.05 - 0.001, 15);
+  });
+
+  it('matches dense sampling on random splines and never exceeds a sampled value', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.double({ min: 0.01, max: 0.05, noNaN: true }), { minLength: 4, maxLength: 12 }),
+        fc.boolean(),
+        fc.double({ min: -3, max: 9, noNaN: true }),
+        fc.double({ min: 0, max: 8, noNaN: true }),
+        (vals, periodic, lo, width) => {
+          const knots = vals.map((_, i) => i * 0.7);
+          const values = periodic ? [...vals.slice(0, -1), vals[0]] : vals;
+          const s = createSupport(splineSupport(knots, values, { periodic }));
+          const m = s.minRho(lo, lo + width);
+          let sampled = Infinity;
+          for (let j = 0; j <= 4000; j++) sampled = Math.min(sampled, s.rho(lo + (width * j) / 4000));
+          expect(m.value).toBeLessThanOrEqual(sampled + 1e-12);
+          expect(sampled - m.value).toBeLessThan(1e-6 + 1e-3 * Math.abs(m.value));
+          expect(Math.abs(s.rho(m.psi) - m.value)).toBeLessThan(1e-9);
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+});
+
+describe('serialized spline data', () => {
+  const good = () => /** @type {any} */ (splineSupport([0, 1, 2, 3], [0.02, 0.03, 0.025, 0.028]));
+
+  it('rejects non-finite or unordered knots, wrong lengths and discontinuous coefficients', () => {
+    const nanKnot = good();
+    nanKnot.knots = Float64Array.from([0, NaN, 2, 3]);
+    expect(() => createSupport(nanKnot)).toThrow(RangeError);
+    const short = good();
+    short.coeffs = short.coeffs.slice(0, 8);
+    expect(() => createSupport(short)).toThrow(/matching/);
+    const jump = good();
+    jump.coeffs = Float64Array.from(jump.coeffs);
+    jump.coeffs[4] += 0.001;
+    expect(() => createSupport(jump)).toThrow(/continuous/);
+    const infinite = good();
+    infinite.coeffs = Float64Array.from(infinite.coeffs);
+    infinite.coeffs[1] = Infinity;
+    expect(() => createSupport(infinite)).toThrow(/finite/);
+  });
+
+  it('recomputes the cumulative integrals from the coefficients', () => {
+    const tampered = good();
+    tampered.cumulative = Float64Array.from(tampered.cumulative, () => 1e9);
+    expect(createSupport(tampered).P(2.5)).toBeCloseTo(createSupport(good()).P(2.5), 15);
+  });
+});
+
 describe('createSupport and toSupportData', () => {
   it('round-trips every kind through plain data and structured cloning', () => {
     for (const [, data] of shapes) {

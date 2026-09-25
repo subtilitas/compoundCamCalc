@@ -676,6 +676,13 @@ describe('forward model: diagnostics', () => {
       }),
       input({ limb: { kind: 'linear', torsionalStiffness: -1000, alpha0: -0.2 } }),
       input({ limb: /** @type {any} */ ({ kind: 'table', curve: { knots: [0, 0.4], values: [100, 200] }, alpha0: 0 }) }),
+      // Serialized spline data with a NaN knot.
+      input({ cableTrack: (() => {
+        const s = /** @type {any} */ (splineSupport([0, 1, 2, 3, 4], [0.02, 0.021, 0.02, 0.019, 0.02], { periodic: true }));
+        s.knots = Float64Array.from(s.knots);
+        s.knots[2] = NaN;
+        return s;
+      })() }),
       input({ maxIterations: 0 }),
       input({ maxIterations: 1.5 }),
       input({ maxIterations: 1e9 }),
@@ -874,10 +881,23 @@ describe('forward model: diagnostics', () => {
     const bumpy = splineSupport(knots, values, { periodic: true });
     const r = solveForward(input({ stringTrack: bumpy, samples: 100 }));
     const d = r.diagnostics.find((q) => q.code === 'concave-track');
-    expect(d?.message).toMatch(/string track between ψ = /);
+    expect(d?.message).toMatch(/string track, ρ = -\d/);
     expect(r.status).not.toBe('ok');
     // Convex tracks never report it.
     expect(codes(solveForward(input({ samples: 100 })))).not.toContain('concave-track');
+  });
+
+  it('concave-track: a bump narrower than any sampling grid on a fine spline', () => {
+    // 20000-interval spline of the string pitch circle with one 0.1 µm bump.
+    const base = createSupport(twinCam.stringTrack);
+    const count = 20000;
+    const knots = Array.from({ length: count + 1 }, (_, i) => (2 * Math.PI * i) / count);
+    const values = knots.map((psi) => base.p(psi));
+    values[5000] += 1e-7;
+    values[count] = values[0];
+    const bumpy = splineSupport(knots, values, { periodic: true });
+    const r = solveForward(input({ stringTrack: bumpy, samples: 100 }));
+    expect(codes(r)).toContain('concave-track');
   });
 
   it('wrap-overlap: a cable termination almost one turn before the brace contact', () => {

@@ -157,7 +157,9 @@ Newton–bisection finishes it. When no sign change exists on the scan, a
 golden-section search refines the largest f over the two grid cells next to
 the largest grid value, including the cell beyond the window end when that
 value sits at an end; f ≤ 0 everywhere means that B lies inside the track
-(status `inside`). A point on the track has no free span: a largest f below
+(status `inside`). Serialized track data is checked when it is loaded:
+finite values, increasing spline knots, C2 continuity of the spline
+coefficients, and spline integrals recomputed from the coefficients. A point on the track has no free span: a largest f below
 256·ε·max(|B|, |p|) or a free span below √(256·ε)·max(|B|, |p|) (ε the
 machine epsilon, 2.2e-16) also gives `inside`, so rounding noise never makes a
 tangent from a point on the track. The golden-section search stops at an interval of 1e-12
@@ -290,7 +292,9 @@ limb.
   largest. The project table (axle travel from brace, force at the axle)
   converts with q = (travel + s_0)/R_L and M = force·R_L; travel and force
   are at least 0. Serialized table data is rebuilt from its knots and
-  values, so these invariants hold for every table limb.
+  values, so these invariants hold for every table limb. The draw energy
+  E1(α_f) − E1(0) is computed directly (½·k_t·α_f·(α_f + 2·α_0) for the
+  linear limb), not as a difference of the preload-scale totals.
 - Travel mode: the stiffness that stores the draw energy W over the axle
   travel s_f from brace to full draw is k = W / ((s_f + s_0)² − s_0²).
 - E1', E1'' and the inverse E1⁻¹ (Newton inside a bracket, residual below
@@ -319,7 +323,7 @@ each run of affected samples.
 | `cable-lever` | c_a ≤ 0: limb rotation no longer takes up cable |
 | `cam-reversal` | dθ/dx ≤ 0 after brace |
 | `non-finite` | the force, a tension, θ or α at a sample, or the limb energy, is not finite (input magnitudes beyond the floating-point range) |
-| `concave-track` | the radius of curvature p + p″ is negative somewhere on the wrapped range of a track (checked every 0.25°): string from its smallest contact angle to its termination, cable from its termination to its largest contact angle |
+| `concave-track` | the radius of curvature p + p″ is negative somewhere on the wrapped range of a track (exact minimum: constant r for a circle, b²/a or an end value for an ellipse, the cubic p + p″ minimised on every spline interval): string from its smallest contact angle to its termination, cable from its termination to its largest contact angle |
 
 ## Verification
 

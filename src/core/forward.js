@@ -456,13 +456,13 @@ function solveForwardChecked(input) {
     [stringSupport, minPsiS, stringTermination, 'string'],
     [cableSupport, cableTermination, maxPsiC, 'cable'],
   ])) {
-    const concave = concaveRange(support, a, b);
-    if (concave) {
-      const deg = (/** @type {number} */ v) => ((v * 180) / Math.PI).toFixed(1);
+    const smallest = support.minRho(a, b);
+    if (smallest.value < 0) {
+      const deg = ((smallest.psi * 180) / Math.PI).toFixed(1);
       diagnostics.push({
         code: 'concave-track',
         xRange: [grid[0], grid[n - 1]],
-        message: `${MESSAGES['concave-track']}: ${name} track between ψ = ${deg(concave[0])}° and ${deg(concave[1])}°`,
+        message: `${MESSAGES['concave-track']}: ${name} track, ρ = ${(smallest.value * 1000).toFixed(3)} mm at ψ = ${deg}°`,
       });
     }
   }
@@ -499,32 +499,6 @@ function solveForwardChecked(input) {
     ...energies,
     iterations,
   };
-}
-
-/** Angle step of the convexity check (rad), 0.25°. */
-const CONVEXITY_STEP = Math.PI / 720;
-
-/**
- * First and last angle in [a, b] where the radius of curvature is negative,
- * sampled every 0.25° and at both ends, or null when the range is convex.
- * @param {import('./support.js').Support} support
- * @param {number} a
- * @param {number} b
- * @returns {[number, number] | null}
- */
-function concaveRange(support, a, b) {
-  if (!(b >= a) || !Number.isFinite(a) || !Number.isFinite(b)) return null;
-  const steps = Math.min(Math.ceil((b - a) / CONVEXITY_STEP), 16 * 1440);
-  let first = NaN;
-  let last = NaN;
-  for (let j = 0; j <= steps; j++) {
-    const psi = steps === 0 ? a : a + ((b - a) * j) / steps;
-    if (support.rho(psi) < 0) {
-      if (Number.isNaN(first)) first = psi;
-      last = psi;
-    }
-  }
-  return Number.isNaN(first) ? null : [first, last];
 }
 
 /**

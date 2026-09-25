@@ -43,6 +43,8 @@ export const INVERSE_TOLERANCE = 1e-9;
  * Every method returns NaN for a NaN argument and never throws.
  * @typedef {object} LimbMethods
  * @property {(alpha: number) => number} energy E1(α) (J)
+ * @property {(alpha: number) => number} energyChange E1(α) − E1(0), computed
+ *   without subtracting the preload-scale totals (J)
  * @property {(alpha: number) => number} moment E1'(α) = M(α + α_0) (N·m)
  * @property {(alpha: number) => number} stiffness E1''(α) (N·m/rad)
  * @property {(energy: number) => number} inverse α with E1(α) = energy on the
@@ -189,6 +191,7 @@ function linearMethods(d) {
   const a0 = d.alpha0;
   return {
     energy: (alpha) => 0.5 * kt * (alpha + a0) ** 2,
+    energyChange: (alpha) => 0.5 * kt * alpha * (alpha + 2 * a0),
     moment: (alpha) => kt * (alpha + a0),
     stiffness: (alpha) => (Number.isNaN(alpha) ? NaN : kt),
     inverse: (energy) => (energy >= 0 && Number.isFinite(energy) ? Math.sqrt((2 * energy) / kt) - a0 : NaN),
@@ -224,6 +227,13 @@ function tableMethods(d) {
   };
   return {
     energy: (alpha) => W(alpha + a0),
+    energyChange(alpha) {
+      const q = alpha + a0;
+      if (Number.isNaN(q)) return NaN;
+      // Inside the table the integral from brace is exact without a difference.
+      if (a0 >= q0 && q <= qn && q >= q0) return curve.integral(a0, q);
+      return W(q) - W(a0);
+    },
     moment: (alpha) => M(alpha + a0),
     stiffness(alpha) {
       const q = alpha + a0;
@@ -295,7 +305,9 @@ export function createLimb(data) {
  *   2·E1(α_f) including the preload, and the preload energy 2·E1(0) (J)
  */
 export function limbEnergies(limb, alphaFull) {
-  const full = limb.energy(alphaFull);
-  const brace = limb.energy(0);
-  return { drawEnergy: 2 * (full - brace), limbEnergy: 2 * full, preloadEnergy: 2 * brace };
+  return {
+    drawEnergy: 2 * limb.energyChange(alphaFull),
+    limbEnergy: 2 * limb.energy(alphaFull),
+    preloadEnergy: 2 * limb.energy(0),
+  };
 }

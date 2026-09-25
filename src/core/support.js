@@ -75,6 +75,9 @@ import { ellipticE } from './elliptic.js';
  * @property {(psi: number) => number} rho radius of curvature p + p'' (m)
  * @property {(psi: number) => { x: number, y: number }} point contact point X (m)
  * @property {(psi: number) => number} distance |X|, distance of the contact point from the axle (m)
+ * @property {(a: number, b: number) => { value: number, psi: number }} minRho
+ *   smallest radius of curvature on [a, b] and its angle, exact for every
+ *   kind (m, rad)
  * @property {number} reference angle where P = 0 (rad)
  * @property {number} min start of the defined range (rad, −Infinity when unbounded)
  * @property {number} max end of the defined range (rad, Infinity when unbounded)
@@ -265,14 +268,19 @@ function locate(x, v) {
   return lo;
 }
 
+/** @typedef {Pick<SupportMethods, 'evaluate' | 'P' | 'minRho' | 'reference' | 'min' | 'max'>} CoreMethods */
+
 /**
  * @param {EccentricData} d
- * @returns {Pick<SupportMethods, 'evaluate' | 'P' | 'reference' | 'min' | 'max'>}
+ * @returns {CoreMethods}
  */
 function eccentricMethods(d) {
   const { radius: r, offset: e, phase } = d;
+  if (![r, e, phase].every(Number.isFinite)) throw new RangeError('An eccentric circle track needs a finite radius, offset and phase');
   const sinPhase = Math.sin(phase);
   return {
+    // The offset term e·cos(ψ − phase) adds nothing to p + p''.
+    minRho: (a) => ({ value: r, psi: a }),
     evaluate(psi, out) {
       const c = Math.cos(psi - phase);
       const s = Math.sin(psi - phase);
@@ -290,7 +298,7 @@ function eccentricMethods(d) {
 
 /**
  * @param {EllipseData} d
- * @returns {Pick<SupportMethods, 'evaluate' | 'P' | 'reference' | 'min' | 'max'>}
+ * @returns {CoreMethods}
  */
 function ellipseMethods(d) {
   const { a, b, axisAngle, offset: e, offsetAngle } = d;
@@ -298,6 +306,17 @@ function ellipseMethods(d) {
   if (!(a > 0 && b > 0 && a < Infinity && b < Infinity)) {
     throw new RangeError('An ellipse track needs finite, positive semi-axes');
   }
+  if (![axisAngle, e, offsetAngle].every(Number.isFinite)) {
+    throw new RangeError('An ellipse track needs a finite axis angle, offset and offset angle');
+  }
+  // ρ(u) = a²b²/(a²cos²u + b²sin²u)^(3/2) with u = ψ − axisAngle; the offset
+  // adds nothing. Its minimum b²/a lies at u = k·π.
+  /** @param {number} psi */
+  const rhoAt = (psi) => {
+    const u = psi - axisAngle;
+    const q = a * a * Math.cos(u) ** 2 + b * b * Math.sin(u) ** 2;
+    return (a * a * b * b) / (q * Math.sqrt(q));
+  };
   const k = b * b - a * a;
   // √(a²cos²u + b²sin²u) = a·√(1 − m·sin²u) with m = 1 − b²/a² < 1.
   const m = 1 - (b * b) / (a * a);
@@ -319,18 +338,110 @@ function ellipseMethods(d) {
       return out;
     },
     P: (psi) => a * (ellipticE(psi - axisAngle, m) - base) + e * (Math.sin(psi - offsetAngle) + sinOffset),
+    minRho(lo, hi) {
+      const k = Math.ceil((lo - axisAngle) / Math.PI);
+      const inside = axisAngle + k * Math.PI;
+      if (inside <= hi) return { value: (b * b) / a, psi: inside };
+      const [ra, rb] = [rhoAt(lo), rhoAt(hi)];
+      return ra <= rb ? { value: ra, psi: lo } : { value: rb, psi: hi };
+    },
     reference: 0,
     min: -Infinity,
     max: Infinity,
   };
 }
 
+/** Relative tolerance of the continuity check of serialized spline data. */
+const SPLINE_CONTINUITY = 1e-9;
+
+/**
+ * Check serialized spline data: lengths, finite values, increasing knots,
+ * C2 continuity at the inner knots (and across the period of a periodic
+ * spline), and the cumulative integrals recomputed from the coefficients.
+ * @param {SplineData} d
+ * @returns {Float64Array} cumulative integrals recomputed from coeffs
+ */
+function checkSplineData(d) {
+  const { knots, coeffs, periodic } = d;
+  const n = (knots?.length ?? 0) - 1;
+  if (!(n >= (periodic ? 3 : 1)) || coeffs?.length !== 4 * n || typeof periodic !== 'boolean') {
+    throw new RangeError('Spline data needs matching knots and coefficients');
+  }
+  for (let i = 0; i <= n; i++) {
+    if (!Number.isFinite(knots[i]) || (i > 0 && !(knots[i] > knots[i - 1]))) {
+      throw new RangeError('Spline knots must be finite and increasing');
+    }
+  }
+  for (let j = 0; j < 4 * n; j++) {
+    if (!Number.isFinite(coeffs[j])) throw new RangeError('Spline coefficients must be finite');
+  }
+  /** Value, first and second derivative at the end of interval i. */
+  const end = (/** @type {number} */ i) => {
+    const h = knots[i + 1] - knots[i];
+    const [c0, c1, c2, c3] = [coeffs[4 * i], coeffs[4 * i + 1], coeffs[4 * i + 2], coeffs[4 * i + 3]];
+    return [c0 + h * (c1 + h * (c2 + h * c3)), c1 + h * (2 * c2 + 3 * h * c3), 2 * c2 + 6 * h * c3];
+  };
+  const start = (/** @type {number} */ i) => [coeffs[4 * i], coeffs[4 * i + 1], 2 * coeffs[4 * i + 2]];
+  let scale = 0;
+  for (let j = 0; j < 4 * n; j++) scale = Math.max(scale, Math.abs(coeffs[j]));
+  const joins = periodic ? n : n - 1;
+  for (let i = 0; i < joins; i++) {
+    const left = end(i);
+    const right = start((i + 1) % n);
+    for (let k = 0; k < 3; k++) {
+      if (Math.abs(left[k] - right[k]) > SPLINE_CONTINUITY * Math.max(1, scale)) {
+        throw new RangeError(`Spline data is not twice continuous at knot ${i + 1}`);
+      }
+    }
+  }
+  const cumulative = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    const h = knots[i + 1] - knots[i];
+    const o = 4 * i;
+    cumulative[i + 1] = cumulative[i] + h * (coeffs[o] + h * (coeffs[o + 1] / 2 + h * (coeffs[o + 2] / 3 + (h * coeffs[o + 3]) / 4)));
+  }
+  return cumulative;
+}
+
+/**
+ * Smallest value of the cubic ρ(t) = r0 + r1·t + r2·t² + r3·t³ on [t0, t1].
+ * @param {number} r0 @param {number} r1 @param {number} r2 @param {number} r3
+ * @param {number} t0 @param {number} t1
+ * @returns {{ value: number, t: number }}
+ */
+function cubicMin(r0, r1, r2, r3, t0, t1) {
+  const f = (/** @type {number} */ t) => r0 + t * (r1 + t * (r2 + t * r3));
+  let best = { value: f(t0), t: t0 };
+  const consider = (/** @type {number} */ t) => {
+    if (t >= t0 && t <= t1) {
+      const v = f(t);
+      if (v < best.value) best = { value: v, t };
+    }
+  };
+  consider(t1);
+  // Stationary points: ρ'(t) = r1 + 2·r2·t + 3·r3·t² = 0.
+  const A = 3 * r3;
+  const B = 2 * r2;
+  if (A === 0) {
+    if (B !== 0) consider(-r1 / B);
+  } else {
+    const disc = B * B - 4 * A * r1;
+    if (disc >= 0) {
+      const q = -0.5 * (B + Math.sign(B || 1) * Math.sqrt(disc));
+      consider(q / A);
+      if (q !== 0) consider(r1 / q);
+    }
+  }
+  return best;
+}
+
 /**
  * @param {SplineData} d
- * @returns {Pick<SupportMethods, 'evaluate' | 'P' | 'reference' | 'min' | 'max'>}
+ * @returns {CoreMethods}
  */
 function splineMethods(d) {
-  const { knots, coeffs, cumulative, periodic } = d;
+  const { knots, coeffs, periodic } = d;
+  const cumulative = checkSplineData(d);
   const n = knots.length - 1;
   const x0 = knots[0];
   const period = knots[n] - x0;
@@ -360,6 +471,39 @@ function splineMethods(d) {
       const piece = t * (coeffs[o] + t * (coeffs[o + 1] / 2 + t * (coeffs[o + 2] / 3 + (t * coeffs[o + 3]) / 4)));
       return w * periodIntegral + cumulative[i] + piece;
     },
+    minRho(lo, hi) {
+      /** @type {{ value: number, psi: number }} */
+      let best = { value: Infinity, psi: lo };
+      if (!(hi >= lo)) return best;
+      // ρ = p + p'' on interval i with t = ψ − ψ_i:
+      // (c0 + 2c2) + (c1 + 6c3)·t + c2·t² + c3·t³, minimised exactly per
+      // interval over [a, b] (a ≤ b, both in the base period or, for an open
+      // spline, anywhere: the end pieces continue outside the knots).
+      /** @param {number} a @param {number} b @param {number} shift */
+      const scan = (a, b, shift) => {
+        const first = locate(knots, a);
+        const last = locate(knots, b);
+        for (let i = first; i <= last; i++) {
+          const o = 4 * i;
+          const t0 = (i === first ? a : knots[i]) - knots[i];
+          const t1 = (i === last ? b : knots[i + 1]) - knots[i];
+          const r = cubicMin(coeffs[o] + 2 * coeffs[o + 2], coeffs[o + 1] + 6 * coeffs[o + 3], coeffs[o + 2], coeffs[o + 3], t0, t1);
+          if (r.value < best.value) best = { value: r.value, psi: knots[i] + r.t + shift };
+        }
+      };
+      if (!periodic) {
+        scan(lo, hi, 0);
+      } else if (hi - lo >= period) {
+        scan(x0, knots[n], 0);
+      } else {
+        const shift = wraps(lo) * period;
+        const a = lo - shift;
+        const b = hi - shift;
+        scan(a, Math.min(b, knots[n]), shift);
+        if (b > knots[n]) scan(x0, b - period, shift + period);
+      }
+      return best;
+    },
     reference: x0,
     min: periodic ? -Infinity : x0,
     max: periodic ? Infinity : knots[n],
@@ -368,7 +512,7 @@ function splineMethods(d) {
 
 /**
  * @param {SupportData} data
- * @returns {Pick<SupportMethods, 'evaluate' | 'P' | 'reference' | 'min' | 'max'>}
+ * @returns {CoreMethods}
  */
 function coreMethods(data) {
   switch (data.kind) {
@@ -381,6 +525,7 @@ function coreMethods(data) {
     case 'offset': {
       const base = coreMethods(data.base);
       const delta = data.delta;
+      if (!Number.isFinite(delta)) throw new RangeError('An offset track needs a finite offset');
       const ref = base.reference;
       return {
         evaluate(psi, out) {
@@ -389,6 +534,10 @@ function coreMethods(data) {
           return out;
         },
         P: (psi) => base.P(psi) + delta * (psi - ref),
+        minRho(a, b) {
+          const m = base.minRho(a, b);
+          return { value: m.value + delta, psi: m.psi };
+        },
         reference: ref,
         min: base.min,
         max: base.max,
