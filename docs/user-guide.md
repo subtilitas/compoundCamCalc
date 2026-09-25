@@ -481,24 +481,47 @@ when the page closes.
 | Draw energy | Area under the curve from brace to full draw, in J or ft·lbf |
 | Power stroke | Distance from brace to full draw: draw length − 1.75 in − brace height |
 
+## Help
+
+The **Help** button next to the File button opens the help dialog. No
+keyboard shortcut opens it; Tab to the button and press Enter or Space. The
+dialog holds:
+
+- a quick start in 5 steps;
+- the keyboard shortcuts of the force chart, undo and redo, the cam view
+  and string plan, the draw position slider, and the dialogs;
+- every term of the list below, with the same text;
+- a link to this user guide on GitHub, which opens in a new tab.
+
+The focus starts on the dialog heading. The page behind the dialog does not
+respond while it is open. **Close** at the top or the bottom, or Escape,
+closes the dialog, and the focus returns to the Help button. The dialog
+scrolls within 90 % of the window height.
+
 ## Terms
 
-- **ATA** (axle-to-axle length): distance between the two cam axles of the
-  braced bow.
-- **Brace height**: distance from the grip pivot point to the string of the
-  braced bow at rest.
-- **Draw length (AMO)**: distance from the nock point to the grip pivot
-  point at full draw plus 1.75 in.
-- **Let-off**: drop from the peak draw force to the holding weight, as a
-  percentage of the peak.
-- **Holding weight**: lowest draw force between the peak and full draw, the
-  force the archer holds at full draw.
-- **Valley**: draw range around the holding weight where the force stays
-  below the holding weight plus 5 % of the peak.
-- **Power stroke**: distance the string travels from brace to full draw.
-- **Draw energy**: energy stored by drawing the bow.
+The definitions below are the texts of the info buttons and of the help
+dialog, word for word. A unit test keeps them the same.
 
-The info buttons next to these terms show the same definitions. They open
+- Axle-to-axle length (ATA): distance between the two cam axles of the braced bow.
+- Brace height: distance from the grip pivot point to the string of the braced bow at rest.
+- Draw length (AMO): distance from the nock point to the grip pivot point at full draw plus 1.75 in, as defined by the Archery Manufacturers Organization (AMO).
+- Peak draw force: highest force on the draw force curve.
+- Let-off: drop from the peak draw force to the holding weight, as a percentage of the peak.
+- Holding weight: lowest draw force between the peak and full draw, the force the archer holds at full draw.
+- Valley: draw length range around the holding weight in which the force stays below the holding weight plus 5 % of the peak.
+- Power stroke: distance the string travels from brace to full draw, equal to draw length minus 1.75 in minus brace height.
+- Draw energy: energy stored by drawing the bow, the area under the force curve from brace to full draw.
+- Limb energy: elastic energy stored in both limbs at full draw, counted from the unstrung limbs, so it includes the preload energy at brace.
+- Axle travel: length of the arc the axle moves from brace to full draw, the limb lever length times the limb rotation at full draw.
+- Cam rotation: angle the cam turns about its axle, counted from its position at brace. The results give the rotation at full draw.
+- Lever arm: perpendicular distance from the axle centre to the line of a cord at its contact point on the track pitch line. The cord tension times the lever arm is the torque of that cord on the cam.
+- Radius of curvature: radius of the circle that matches the bend of a track pitch line at a point, ρ = p + p'' with the lever arm p as a function of the contact angle. A smaller value is a sharper bend.
+- Minimum bend radius: smallest radius of curvature allowed on a track pitch line. The solver uses the larger of this value and half the cord diameter plus 0.2 mm, so the groove bottom stays convex.
+- Minimum wall: smallest material thickness between the bottom of a track groove and the axle bore. Every groove bottom stays at least the bore radius plus this wall from the axle centre.
+
+Info buttons stand next to the settings, stats and results values with a
+term, and next to the lever arm in the cam view legend. They open
 with a click, a tap, or Enter and Space on the keyboard, below the button or
 above it near the bottom of the window, and close with Escape, a click
 outside, or when the page scrolls.

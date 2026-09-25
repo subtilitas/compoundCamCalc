@@ -6,6 +6,16 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Help dialog from a Help button in the page header (`src/ui/help.js`):
+  quick start in 5 steps, the keyboard shortcuts, every glossary term and a
+  link to the user guide in the wiki. No keyboard shortcut opens it.
+- Glossary terms for limb energy, axle travel, cam rotation, lever arm,
+  radius of curvature, minimum bend radius and minimum wall, with info
+  buttons on the minimum wall and minimum bend radius settings, on the
+  results values (achieved peak, limb energy, axle travel, cam rotation and
+  the smallest radii of curvature) and on the lever arm in the cam view
+  legend. The Terms section of the user guide repeats every glossary text
+  word for word; a unit test checks it.
 - File menu in the page header: Save, Save as…, Open… (with Rename and
   Delete), Open sample…, Reset to default, Save to file (.json) and Open
   from file…; named designs in the browser (`src/state/library.js`), an

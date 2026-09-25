@@ -725,6 +725,7 @@ const BODY_FIELDS = [
   {
     id: 'wall',
     label: 'Minimum wall, groove bottom to bore',
+    glossary: 'wall',
     path: 'body.minWall',
     kind: 'dims',
     get: (s) => s.body.minWall,
@@ -743,6 +744,7 @@ const BODY_FIELDS = [
   {
     id: 'bend-radius',
     label: 'Minimum bend radius of a track',
+    glossary: 'bendRadius',
     path: 'body.minBendRadius',
     kind: 'dims',
     get: (s) => s.body.minBendRadius,
@@ -791,6 +793,13 @@ const BODY_FIELDS = [
     ...ANGLE,
   },
 ];
+
+/** Glossary entries of the fields that have an info button, in panel order. */
+export const FIELD_GLOSSARY = Object.freeze(
+  [GEOMETRY_FIELDS, FORCE_FIELDS, LIMB_FIELDS, TRACK_FIELDS, CORD_FIELDS, BODY_FIELDS]
+    .flat()
+    .flatMap((def) => (def.glossary ? [def.glossary] : [])),
+);
 
 /** One-line hint under the limb input select, per limb mode. */
 export const LIMB_MODE_HINTS = Object.freeze({

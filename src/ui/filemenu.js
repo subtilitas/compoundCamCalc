@@ -58,6 +58,8 @@ function savedText(iso) {
  * @property {() => boolean} persist writes the working copy and the
  *   current design at once; false when storage refuses
  * @property {() => Date} [now]
+ * @property {HTMLElement[]} [after] elements placed right after the File
+ *   menu in the header bar
  */
 
 /**
@@ -209,6 +211,7 @@ export function createFileMenu(container, store, options) {
   container.append(
     h('div', { class: 'file-bar' },
       h('div', { class: 'file-menu' }, menuButton, panel),
+      ...(options.after ?? []),
       h('span', { class: 'file-design' }, 'Design: ', nameEl, ' ', marker)),
     live,
   );

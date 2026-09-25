@@ -24,6 +24,9 @@ const ITEMS = [
   { key: 'stroke', label: 'Power stroke', glossary: 'powerStroke', text: (m, u) => lengthLabel(m.powerStroke, u) },
 ];
 
+/** Glossary entries of the statistics, in order. */
+export const STAT_GLOSSARY = Object.freeze(ITEMS.map((item) => item.glossary));
+
 /**
  * @param {HTMLDListElement} list
  * @returns {{ render: (state: ProjectState) => void }}
