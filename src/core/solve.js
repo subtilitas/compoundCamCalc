@@ -571,6 +571,11 @@ function solveState(state, resolution, maxIterations, trials) {
    *   maxAt: number } | null}
    */
   let best = null;
+  // The first active track whose closed track leaves the input domain of
+  // support.js: reported when no candidate closes and no cable-wrap
+  // diagnostic explains it.
+  /** @type {import('./outline.js').Piecewise | null} */
+  let unclosed = null;
   const D0 = 2 * ctx.bow.braceAxleY;
   for (const candidate of candidates) {
     const tOutline = now();
@@ -593,11 +598,15 @@ function solveState(state, resolution, maxIterations, trials) {
           { psiRange: [active.start - body.leadInWrap, active.end] },
         ),
       );
+      unclosed = null;
       break;
     }
     const closed = closeCableTrack(active, { leadIn: body.leadInWrap, rhoMin: rhoLimitCable, pMin, step: settings.step });
     res.timings.outline += now() - tOutline;
-    if (!closed) continue;
+    if (!closed) {
+      unclosed ??= active;
+      continue;
+    }
     const tForward = now();
     const forward = solveForward({
       geometry,
@@ -628,7 +637,27 @@ function solveState(state, resolution, maxIterations, trials) {
       best = { candidate, active, closed, forward, maxDiff, maxAt };
     }
   }
+  /**
+   * A closing blend that no lead-in wrap closes: in a full solve, trial
+   * solves (coarse, without trials of their own) look for a change that
+   * passes every check. A coarse solve runs while an input is dragged and
+   * keeps the plain suggestion.
+   * @param {ReturnType<typeof closingDiagnostic> | null} closing
+   */
+  const suggestChange = (closing) => {
+    if (!trials || resolution !== 'full' || !closing || closing.closedByLeadIn) return;
+    const tTrials = now();
+    closing.diagnostic.suggestion = changeSuggestion(
+      state, closing.tooSharp, fmt, (s) => guardedSolve(s, 'coarse', maxIterations, false).status === 'ok',
+    );
+    res.timings.trials = now() - tTrials;
+  };
   if (!best) {
+    if (unclosed) {
+      const closing = closingDiagnostic(null, unclosed, state, rhoLimitCable, pMin, settings.step, fmt, trials);
+      diags.push(closing.diagnostic);
+      suggestChange(closing);
+    }
     finishStringOnly(res, stringSupport, state, settings);
     return res;
   }
@@ -747,17 +776,7 @@ function solveState(state, resolution, maxIterations, trials) {
     }
   }
   diags.push(...violations);
-  // A closing blend that no lead-in wrap closes: in a full solve, trial
-  // solves (coarse, without trials of their own) look for a change that
-  // passes every check. A coarse solve runs while an input is dragged and
-  // keeps the plain suggestion.
-  if (trials && resolution === 'full' && closing && !closing.closedByLeadIn) {
-    const tTrials = now();
-    closing.diagnostic.suggestion = changeSuggestion(
-      state, closing.tooSharp, fmt, (s) => guardedSolve(s, 'coarse', maxIterations, false).status === 'ok',
-    );
-    res.timings.trials = now() - tTrials;
-  }
+  suggestChange(closing);
   return res;
 }
 
@@ -1355,11 +1374,14 @@ export function largerStringTrack(state, dr) {
 
 /**
  * Diagnostic of a closing blend that bends too sharply or comes too close
- * to the axle. The suggestion names the largest lead-in wrap (in 5° steps,
- * down to 0°) that closes the track: the lead-in does not change the active
- * track, so closing it is the whole check. Otherwise solveState replaces
- * the suggestion by changeSuggestion once the other checks have run.
- * @param {import('./outline.js').ClosedCable} closed
+ * to the axle, or of an arc too short for any closing curve: closeCableTrack
+ * returns null when the closed track leaves the input domain of support.js.
+ * The suggestion names the largest lead-in wrap (in 5° steps, down to 0°)
+ * that closes the track: the lead-in does not change the active track, so
+ * closing it is the whole check. Otherwise solveState replaces the
+ * suggestion by changeSuggestion once the other checks have run.
+ * @param {import('./outline.js').ClosedCable | null} closed null for an
+ *   arc that no closing curve fits
  * @param {import('./outline.js').Piecewise} active
  * @param {ProjectState} state
  * @param {number} rhoLimit (m)
@@ -1371,15 +1393,19 @@ export function largerStringTrack(state, dr) {
  * @returns {{ diagnostic: SolveDiagnostic, tooSharp: boolean, closedByLeadIn: boolean }}
  */
 function closingDiagnostic(closed, active, state, rhoLimit, pMin, step, fmt, tryLeadIn) {
-  const tooSharp = closed.blendMinRho < rhoLimit - 1e-5;
-  const message = tooSharp
-    ? `The cable track cannot be closed over the remaining ${fmt.angle(closed.blendLength)} with a radius of curvature of at least ${fmt.size(rhoLimit)}: ` +
-      `the closing curve reaches ${fmt.size(closed.blendMinRho)}`
-    : `The curve that closes the cable track over the remaining ${fmt.angle(closed.blendLength)} comes to a lever arm of ${fmt.size(closed.blendMinP)}; ` +
-      `the axle bore, the wall and the cable radius need at least ${fmt.size(pMin)}`;
+  const blendLength = active.start - state.body.leadInWrap + 2 * Math.PI - active.end;
+  const tooSharp = closed !== null && closed.blendMinRho < rhoLimit - 1e-5;
+  const message = !closed
+    ? `The lead-in wrap of ${fmt.angle(state.body.leadInWrap)} and the active cable track leave ${fmt.angle(blendLength)} of the turn to close the cable track; ` +
+      'no closing curve fits into so short an arc'
+    : tooSharp
+      ? `The cable track cannot be closed over the remaining ${fmt.angle(blendLength)} with a radius of curvature of at least ${fmt.size(rhoLimit)}: ` +
+        `the closing curve reaches ${fmt.size(closed.blendMinRho)}`
+      : `The curve that closes the cable track over the remaining ${fmt.angle(blendLength)} comes to a lever arm of ${fmt.size(closed.blendMinP)}; ` +
+        `the axle bore, the wall and the cable radius need at least ${fmt.size(pMin)}`;
   /** @param {string} suggestion @param {boolean} closedByLeadIn */
   const result = (suggestion, closedByLeadIn) => ({
-    diagnostic: diagnostic('closing-blend', message, suggestion, { psiRange: [closed.psiFull, closed.psiFull + closed.blendLength] }),
+    diagnostic: diagnostic('closing-blend', message, suggestion, { psiRange: [active.end, active.end + blendLength] }),
     tooSharp,
     closedByLeadIn,
   });

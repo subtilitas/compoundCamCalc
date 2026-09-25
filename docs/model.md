@@ -684,7 +684,11 @@ wrap at brace.
   track and the blend as one periodic spline; it counts as closed only when
   the exact minima of its p and ρ on every interval meet p_min and ρ_lim to
   1e-7 m (on the default preset and 8 edits they clear both by 0.1 µm to
-  1 µm). When no such track exists the solver reports `closing-blend`. The suggestion names the largest lead-in wrap k·5°
+  1 µm). When no such track exists the solver reports `closing-blend`. It
+  also reports `closing-blend` when the arc left for the blend is too short
+  for any closing curve: the closed track then leaves the input domain
+  (on the default preset a lead-in wrap of 137.55° leaves 0.06°), and the
+  result has the string outlines only. The suggestion names the largest lead-in wrap k·5°
   below the input, down to 0°, that closes the track; the lead-in does not
   change the active track, so closing it is the whole check.
 - When no lead-in wrap closes the track, a full solve runs trial solves:
@@ -808,7 +812,7 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `cable-radius` | ρ of the ideal cable track below ρ_lim and the fitted cam outside the tolerance; the named range leaves out the brace blend unless it is the only one, and a negative ρ is given as the angle over which the track bends the wrong way | chosen at the largest force difference of the fitted cam: before point 2 a change of point 2; between points 2 and 3, before the peak, where the force rises and point 3 is not the full-draw point, a later point 3, for a parametric curve a larger rise to peak; after the peak a more gradual drop over the nearest falling interval at or before it, or less let-off; otherwise a more gradual change between the curve points on either side |
 | `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in too close to the bore | the let-off (computed limit) at full draw or the force at the position, and the bore radius plus wall (at most the lowest lever arm / 1.03 minus the cable radius, rounded down, when at least 1.5 mm); a larger string track also raises the lever arm at the peak and is not suggested |
 | `cable-wrap` | active cable range plus lead-in wrap ≥ 360° | the lead-in wrap (computed) or the string track radius |
-| `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the smallest string track increase (5 mm to 20 mm, both semi-axes of an ellipse), then half the minimum bend radius when it sets ρ_lim, with which a coarse trial solve reports no diagnostic; otherwise the changes tried and the force curve. The trials run in a full solve; a coarse solve names the force curve |
+| `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min, or an arc too short for a closed track within the input domain (no cam then) | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the smallest string track increase (5 mm to 20 mm, both semi-axes of an ellipse), then half the minimum bend radius when it sets ρ_lim, with which a coarse trial solve reports no diagnostic; otherwise the changes tried and the force curve. The trials run in a full solve; a coarse solve names the force curve |
 | `no-convergence` | a closure, the resampling, the constrained fit or the forward model of the final cam fails (including a non-finite or concave final cam, and any forward code without its own entry), the travel-mode stiffness does not settle, or an internal error | the input to change |
 | `slack-string` | the string of the final cam goes slack (forward model) | the force in the range or the let-off |
 | `wrap-exhausted` | a contact of the final cam passes its termination (forward model) | the residual and lead-in wrap |
@@ -887,6 +891,7 @@ Measured values are the largest errors over the tested samples.
 | Lead-in wrap 0, 1.5e-179, 1e-15 and 1e-9 rad: knots at least 1e-3 of the spacing apart, ρ of the closed track ≥ ρ_lim | 1e-6 m | passes |
 | Solve with rise 40 % at let-off 75 % and 65 %: no `closing-blend`, cam below 120 mm, closed track ρ ≥ ρ_lim | 1e-5 m | cam 114.0 mm and 113.4 mm |
 | Solve with a lead-in wrap of 0: no diagnostics, cable post at ψ_c0; minimum bend radius 20 mm with a lead-in wrap of 5° and 10°: `closing-blend`, `cable-radius`, `cable-clearance`, suggestion a 10 mm bend radius, which solves without diagnostics, while no larger string track does; lead-in trials k·5° down to exactly 0 | | passes |
+| Lead-in wrap 137.55° on the default preset (0.06° left to close, coarse and full): `closing-blend` alone, no cable track, achieved curve or metrics, string outlines only, suggestion a lead-in wrap of at most 105.0°, which solves without diagnostics; 100 random valid states: every solve without diagnostics has a cable track, an achieved curve and metrics | | passes |
 | `closing-blend` trials: point 2 at 12 in and 120 N names a 55.0 mm string track radius (full solve; 50 mm fails, 55 mm solves without diagnostics; the coarse solve runs no trials and names the force curve); a 45 mm × 35 mm ellipse with point 2 at 11 in and 100 N names both semi-axes 15 mm larger; point 2 at 10 in and 50 N names none, and each larger string track raises the largest force difference; trial states within the field range, the bend radius tried only when it sets ρ_lim | | passes |
 | Offsets, maximum dimension, termination and cable stop posts, timing marks | 5e-16 m to 1e-6 m | passes |
 | Default preset: zero diagnostics; force within the fit tolerance; outlines closed and nested (groove bottom inside the pitch line and the flange, outside the bore and its wall); posts and marks at the achieved contacts | 8.0 N | 3.71 N |

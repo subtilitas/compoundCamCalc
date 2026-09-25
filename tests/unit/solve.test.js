@@ -258,7 +258,7 @@ describe('solve: diagnostics', () => {
   /**
    * @param {ProjectState} s
    * @param {string} code
-   * @param {{ maxIterations?: number }} [options]
+   * @param {{ maxIterations?: number, resolution?: 'coarse' | 'full' }} [options]
    */
   const expectCode = (s, code, options = {}) => {
     const r = solve(s, { resolution: 'coarse', ...options });
@@ -667,6 +667,21 @@ describe('solve: diagnostics', () => {
     const blend = expectCode(modified((s) => (s.body.leadInWrap = 120 * DEG)), 'closing-blend');
     expect(blend.d.message).toMatch(/remaining \d+\.\d°/);
     expect(blend.d.suggestion).toMatch(/lead-in wrap to at most \d+\.\d°/);
+    // 0.06° of the turn left: the closed track leaves the input domain of
+    // support.js, so no candidate closes and no cam is built.
+    for (const resolution of /** @type {const} */ (['coarse', 'full'])) {
+      const short = expectCode(modified((s) => (s.body.leadInWrap = 137.55 * DEG)), 'closing-blend', { resolution });
+      expect(codes(short.r)).toEqual(['closing-blend']);
+      expect(short.d.message).toMatch(/leave 0\.1° of the turn to close the cable track; no closing curve fits/);
+      expect(short.r.tracks.cablePitch).toBeNull();
+      expect(short.r.achieved).toBeNull();
+      expect(short.r.metrics).toBeNull();
+      expect(Object.keys(short.r.outlines)).toEqual(['stringPitch', 'stringGroove', 'stringFlange']);
+      const lead = Number(/** @type {RegExpMatchArray} */ (short.d.suggestion.match(/^Reduce the lead-in wrap to at most (\d+\.\d)°$/))[1]);
+      expect(lead).toBe(105);
+      const fixed = solve(modified((s) => (s.body.leadInWrap = lead * DEG)), { resolution: 'coarse' });
+      expect(fixed.status).toBe('ok');
+    }
   });
 
   it('forward model diagnostics of the final cam become solver diagnostics once', () => {
@@ -1123,6 +1138,12 @@ describe('solve: robustness', () => {
           const r = solve(s, { resolution: 'coarse' });
           expect(['ok', 'infeasible', 'no-convergence']).toContain(r.status);
           expect(r.status === 'ok').toBe(r.diagnostics.length === 0);
+          // A solve without diagnostics has built the cam.
+          if (r.status === 'ok') {
+            expect(r.tracks.cablePitch).not.toBeNull();
+            expect(r.achieved).not.toBeNull();
+            expect(r.metrics).not.toBeNull();
+          }
           for (const d of r.diagnostics) {
             expect(Object.keys(CODES)).toContain(d.code);
             expect(typeof d.message).toBe('string');

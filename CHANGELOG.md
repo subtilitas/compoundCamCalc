@@ -117,7 +117,10 @@ All notable changes are listed here. Versions follow semantic versioning.
   to 144 mm that closes. The closed track counts as closed only when the
   exact minima of p and ρ on every interval of its periodic spline meet
   p_min and ρ_lim to 1e-7 m. A lead-in wrap of 0 is valid: knots less than
-  1e-3 of the spacing apart are left out. The `closing-blend` suggestion
+  1e-3 of the spacing apart are left out. An arc too short for any closing
+  curve inside the input domain, such as the 0.06° a lead-in wrap of
+  137.55° leaves on the default preset, is a `closing-blend` result with the
+  string outlines only. The `closing-blend` suggestion
   names the largest lead-in wrap k·5° down to 0° that closes the track.
   Otherwise it names a string track 5 mm to 20 mm larger, or half the
   minimum bend radius when it sets the limit, only when a coarse trial
