@@ -53,6 +53,7 @@ describe('design library', () => {
 
   it('normalises names and finds them ignoring case', () => {
     expect(normalizeName('  Bow \n  one ')).toEqual({ name: 'Bow one', error: null });
+    expect(normalizeName('Bow\u202Eone\u0007').name).toBe('Bow one');
     expect(normalizeName('   ').error).toBe('Enter a name');
     expect(normalizeName('x'.repeat(NAME_MAX + 1)).error).toMatch(/at most 80/);
     expect(normalizeName('Cafe\u0301').name).toBe('Caf\u00e9');

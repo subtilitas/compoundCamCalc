@@ -85,9 +85,16 @@ describe('share link', () => {
 
   it('rejects an oversized link before decoding', () => {
     const r = decodeShare(SHARE_VERSION + 'A'.repeat(SHARE_MAX));
-    expect(r.error).toBe('The link is longer than 64 KB');
+    expect(r.error).toBe('The link is longer than 65,536 characters. Ask for a project file instead.');
     expect(readProjectText('{}', 1024 * 1024 + 1, 'link').error).toBe('The link is larger than 1 MB');
     expect(readProjectText('', 0, 'link').error).toBe('The link is empty');
+  });
+
+  it('rejects deeply nested data without throwing', () => {
+    const deep = `{"state":{"a":${'['.repeat(20000)}${']'.repeat(20000)}}}`;
+    const text = SHARE_VERSION + Buffer.from(deep, 'utf8').toString('base64url');
+    expect(text.length).toBeLessThan(SHARE_MAX);
+    expect(decodeShare(text).error).toBe(LINK_DAMAGED);
   });
 
   it('reports invalid inputs and fields that took default values', () => {
@@ -107,5 +114,8 @@ describe('share link', () => {
     const markup = '<img src=x onerror=alert(1)>';
     expect(decodeShare(encodeShare(defaultState(), markup)).name).toBe(markup);
     expect(decodeShare(linkOf({ state: defaultState() })).name).toBe(SHARED_NAME);
+    // Bidirectional overrides and zero-width characters do not reach the prompt.
+    expect(shareName('x\u202Eabc\u200Bd\u2066e')).toBe('x abc d e');
+    expect(shareName('\u202E\u200B')).toBe(SHARED_NAME);
   });
 });

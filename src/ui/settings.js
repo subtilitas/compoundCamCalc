@@ -10,7 +10,7 @@
 
 import { AMO_OFFSET, INCH, fromSI, parseNumber, parseQuantity, toSI } from '../core/units.js';
 import { FIELDS, MIN_POWER_STROKE } from '../state/schema.js';
-import { DEGREE, DIMS_DECIMALS, FORCE_DECIMALS, dimsText, fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
+import { DEGREE, DIMS_DECIMALS, FORCE_DECIMALS, dimsText, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
 import { h } from './dom.js';
 import { infoButton } from './glossary.js';
 
@@ -852,11 +852,23 @@ export function inputGroups(s) {
         text: `${r.travel} ${s.units.dims}, ${r.force} ${s.units.force}`,
       }))
     : [];
+  const custom = s.curve.mode === 'custom';
+  // A custom curve takes rise and valley width only after Reset curve; its
+  // points define it.
+  const force = FORCE_FIELDS.flatMap((def) => rows([def]).map((r) => (custom && (def.id === 'rise' || def.id === 'valley')
+    ? { ...r, text: `${r.text} (applies after Reset curve)` }
+    : r)));
+  const points = custom
+    ? s.curve.points.map((p, i) => ({
+        label: `Point ${i + 1}: draw length (AMO), draw force`,
+        text: `${drawText(p.x, s.units)} ${s.units.draw}, ${forceText(p.F, s.units)} ${s.units.force}`,
+      }))
+    : [];
   return [
     { title: 'Bow geometry', rows: rows(GEOMETRY_FIELDS) },
     {
       title: 'Draw force',
-      rows: [{ label: 'Curve', text: s.curve.mode === 'custom' ? 'Custom' : 'Parametric' }, ...rows(FORCE_FIELDS)],
+      rows: [{ label: 'Curve', text: custom ? 'Custom' : 'Parametric' }, ...force, ...points],
     },
     { title: 'Limbs', rows: [{ label: 'Limb input', text: option(LIMB_MODES, s.limb.mode) }, ...rows(LIMB_FIELDS), ...table] },
     { title: 'String track', rows: [{ label: 'Shape', text: option(TRACK_SHAPES, s.stringTrack.shape) }, ...rows(TRACK_FIELDS)] },

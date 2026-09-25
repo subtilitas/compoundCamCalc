@@ -284,7 +284,7 @@ export function createResults(container) {
     hidden: true,
   });
   const warnNote = h('p', { class: 'hint', hidden: true },
-    'Warnings do not stop the exports: the cam meets the solver checks, but it cannot be built or used as drawn.');
+    'Warnings do not change the status or stop the exports. They point to a cam that may not be buildable or usable as drawn.');
 
   /** @type {Map<string, { row: HTMLDivElement, dd: HTMLElement }>} */
   const rows = new Map();

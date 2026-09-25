@@ -99,7 +99,7 @@ describe('report data', () => {
     expect(d.printed).toBe('2026-09-05 07:04');
     expect(d.version).toBe('0.1.0');
     expect(d.id).toBe(designId(state));
-    expect(d.status).toBe(`Exports the current cam, design ${d.id}`);
+    expect(d.status).toBe(`This report shows the current cam, design ${d.id}`);
     expect(d.note).toBe(MODEL_NOTE);
   });
 
@@ -107,7 +107,7 @@ describe('report data', () => {
     const now = { ...state, geometry: { ...state.geometry, braceHeight: state.geometry.braceHeight + 0.001 } };
     const d = data({ now });
     expect(d.id).toBe(designId(state));
-    expect(d.status).toBe(`Exports the last cam that met every check, design ${d.id}; later edits are not included`);
+    expect(d.status).toBe(`This report shows the last cam that met every check, design ${d.id}; later edits are not included`);
   });
 
   it('uses the units of the current inputs for every value', () => {
@@ -124,7 +124,7 @@ describe('report data', () => {
     expect(d.table).toEqual(loadTable(ctx, imperial));
     expect(d.table.head[0]).toBe('Draw (AMO), in');
     // The design id ignores the display units: the cam is current.
-    expect(d.status).toMatch(/^Exports the current cam/);
+    expect(d.status).toMatch(/^This report shows the current cam/);
   });
 
   it('lists the metrics, the diagnostics and a force table at 10 % steps', () => {
@@ -170,6 +170,16 @@ describe('inputs of the report', () => {
     expect(force.find((r) => r.label === 'Let-off')?.text).toBe('75.0 %');
     expect(groups[2].rows[0]).toEqual({ label: 'Limb input', text: 'Stiffness and preload' });
     expect(groups[3].rows[0]).toEqual({ label: 'Shape', text: 'Eccentric circle' });
+  });
+
+  it('list the points of a custom curve and mark the parameters it does not use', () => {
+    const s = { ...state, curve: { ...state.curve, mode: /** @type {const} */ ('custom') } };
+    const force = inputGroups(s)[1].rows;
+    expect(force[0]).toEqual({ label: 'Curve', text: 'Custom' });
+    expect(force.filter((r) => r.text.endsWith('(applies after Reset curve)'))).toHaveLength(2);
+    const points = force.filter((r) => r.label.startsWith('Point '));
+    expect(points).toHaveLength(s.curve.points.length);
+    expect(points[0]).toEqual({ label: 'Point 1: draw length (AMO), draw force', text: `${(s.geometry.braceHeight / 0.0254 + 1.75).toFixed(2)} in, 0.0 N` });
   });
 
   it('list the rows of a measured limb and the fields of an ellipse', () => {

@@ -399,9 +399,10 @@ The report describes the same cam as the export files: the last cam that
 met every check, with the inputs it was solved for. Values show in the
 display units selected now. The report contains:
 
-- the design name, the date and time of printing, the app version and the
-  status sentence of the Export panel; when the inputs changed after that
-  cam, the sentence ends with "later edits are not included";
+- the design name, the date and time of printing, the app version and a
+  sentence that names the cam: "This report shows the current cam" or,
+  when the inputs changed after that cam, "This report shows the last cam
+  that met every check", ending with "later edits are not included";
 - the inputs, grouped and labelled as in Settings: bow geometry, draw force
   with the curve mode, limbs, string track, cords and cam body;
 - the statistics of the target curve and the values of the Results panel,
@@ -531,7 +532,8 @@ Opening a link:
 - A link that is cut off or damaged, for example by a chat app that
   shortens long messages, changes nothing. A notice names the reason: ask
   for the whole link, or for a project file (Save to file).
-- A link from a newer version of the app asks to reload the page.
+- A link from a newer version of the app asks to reload the page. The link
+  stays in the address bar, so the reload opens it.
 - After the link is handled, the address bar shows the page address
   without `#design=`, so a reload does not open the link again.
 

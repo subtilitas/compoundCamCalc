@@ -1511,7 +1511,9 @@ html {
 
 body.printing-report > .app-header,
 body.printing-report > #app,
-body.printing-report > .app-footer {
+body.printing-report > .app-footer,
+body.printing-report > dialog,
+body.printing-report [popover] {
   display: none;
 }
 

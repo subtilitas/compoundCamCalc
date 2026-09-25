@@ -114,7 +114,9 @@ export function listDesigns(library) {
  * @returns {{ name: string, error: string | null }}
  */
 export function normalizeName(name) {
-  const n = String(name).normalize('NFC').replace(/\s+/g, ' ').trim();
+  // Control and format characters (bidirectional overrides, zero-width
+  // characters) would change how the text around a name reads.
+  const n = String(name).normalize('NFC').replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim();
   if (n.length === 0) return { name: n, error: 'Enter a name' };
   if (n.length > NAME_MAX) return { name: n, error: `A name has at most ${NAME_MAX} characters` };
   return { name: n, error: null };

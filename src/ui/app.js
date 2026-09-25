@@ -7,7 +7,7 @@
 
 import { createStore } from '../state/store.js';
 import { parseCurrent, serializeCurrent } from '../state/library.js';
-import { decodeShare } from '../state/share.js';
+import { LINK_DAMAGED, LINK_NEWER, decodeShare } from '../state/share.js';
 import { loadCurrent, startAutosave, loadSaved } from './autosave.js';
 import { createFileMenu } from './filemenu.js';
 import { createHelpButton } from './help.js';
@@ -451,11 +451,19 @@ export function startApp() {
         const text = pendingLink;
         pendingLink = null;
         const r = decodeShare(text);
-        if (r.state) await openLink(r.state, r.name, r.filled);
-        else showNotice(notices, `The shared design could not be opened. ${r.error}`);
+        try {
+          if (r.state) await openLink(r.state, r.name, r.filled);
+          else showNotice(notices, `The shared design could not be opened. ${r.error}`);
+        } catch {
+          showNotice(notices, `The shared design could not be opened. ${LINK_DAMAGED}`);
+        }
         // The fragment goes once the link is handled: a reload does not
-        // open it again. A newer link stays until its turn.
-        if (location.hash === SHARE_PREFIX + text) history.replaceState(null, '', location.pathname + location.search);
+        // open it again. A newer link stays until its turn. A link from a
+        // newer app keeps its fragment, so a reload that loads the newer
+        // app opens it.
+        if (location.hash === SHARE_PREFIX + text && r.error !== LINK_NEWER) {
+          history.replaceState(null, '', location.pathname + location.search);
+        }
       }
     } finally {
       handling = false;

@@ -149,7 +149,7 @@ export function decodeShare(text) {
   /** @param {string} error */
   const fail = (error) => ({ state: null, name: SHARED_NAME, error, filled: false });
   if (typeof text !== 'string' || text.length === 0) return fail(LINK_DAMAGED);
-  if (text.length > SHARE_MAX) return fail(`The link is longer than ${SHARE_MAX / 1024} KB`);
+  if (text.length > SHARE_MAX) return fail(`The link is longer than ${SHARE_MAX.toLocaleString('en-US')} characters. Ask for a project file instead.`);
   if (!text.startsWith(SHARE_VERSION)) {
     // A later format version: the app that made the link is newer.
     const v = /^v(\d{1,6})\./.exec(text);
@@ -157,7 +157,7 @@ export function decodeShare(text) {
   }
   const bytes = fromBase64url(text.slice(SHARE_VERSION.length));
   if (!bytes || bytes.length === 0) return fail(LINK_DAMAGED);
-  if (bytes.length > SHARE_BYTES_MAX) return fail(`The link is larger than ${SHARE_BYTES_MAX / 1024 / 1024} MB`);
+  if (bytes.length > SHARE_BYTES_MAX) return fail(`The link holds more than ${SHARE_BYTES_MAX / 1024 / 1024} MB of data. Ask for a project file instead.`);
   /** @type {any} */
   let data;
   try {
@@ -169,7 +169,15 @@ export function decodeShare(text) {
   if (!data || typeof data !== 'object' || Array.isArray(data) || !data.state || typeof data.state !== 'object') return fail(LINK_DAMAGED);
   const version = data.state.schemaVersion;
   if (typeof version === 'number' && version > SCHEMA_VERSION) return fail(LINK_NEWER);
-  const r = readProjectText(JSON.stringify(data.state), bytes.length, 'link');
+  /** @type {ReturnType<typeof readProjectText>} */
+  let r;
+  try {
+    // Serialising deeply nested data overflows the stack; such a link was
+    // not made by the app.
+    r = readProjectText(JSON.stringify(data.state), bytes.length, 'link');
+  } catch {
+    return fail(LINK_DAMAGED);
+  }
   if (!r.state) return fail(r.error ?? LINK_DAMAGED);
   return { state: r.state, name: shareName(data.name), error: null, filled: r.filled };
 }

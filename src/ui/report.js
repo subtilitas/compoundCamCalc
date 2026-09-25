@@ -14,7 +14,6 @@ import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
 import { designId } from '../export/files.js';
 import { createCamView } from './camview.js';
 import { h } from './dom.js';
-import { exportStatus } from './exportpanel.js';
 import { createLoadChart, loadMaxima, loadTable } from './loadchart.js';
 import { diagnosticItems, metricItems, warningItems } from './results.js';
 import { inputGroups } from './settings.js';
@@ -54,7 +53,7 @@ const LOADS_WIDTH = 640;
  * @property {string} printed local date and time, YYYY-MM-DD HH:MM
  * @property {string} version
  * @property {string} id design id of the cam
- * @property {string} status export status sentence
+ * @property {string} status which cam the report shows
  * @property {Units} units
  * @property {InputGroup[]} inputs
  * @property {{ key: string, label: string, text: string }[]} target
@@ -92,7 +91,9 @@ export function reportData(src) {
     printed: dateTimeText(src.date),
     version: src.version,
     id,
-    status: /** @type {string} */ (exportStatus({ hasCam: true, busy: false, pending: false, current: id === designId(src.now), id })),
+    status: id === designId(src.now)
+      ? `This report shows the current cam, design ${id}`
+      : `This report shows the last cam that met every check, design ${id}; later edits are not included`,
     units,
     inputs: inputGroups(state),
     target: statItems(state),

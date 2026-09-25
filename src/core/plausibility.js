@@ -24,7 +24,8 @@ export const CAM_SIZE_SHARE = 0.35;
  * @typedef {object} Warning
  * @property {'cam-size' | 'cam-overlap'} code
  * @property {[number, number] | null} xRange first and last affected nock
- *   position (m), null when not tied to the draw
+ *   position (m), null when not tied to the draw; the message lists each
+ *   separate range
  * @property {string} message what is implausible, with numbers and units
  * @property {string} suggestion which input to change and in which direction
  */
@@ -86,30 +87,33 @@ export function plausibility(input, fmt) {
       xRange: null,
       message: `The cam measures ${fmt.size(camMaxDimension)} across, ${fmt.percent(camMaxDimension / ata)} of the ` +
         `${fmt.size(ata)} axle-to-axle length; this app warns above ${fmt.percent(CAM_SIZE_SHARE)}`,
-      suggestion: 'The cable track takes up the limb travel while the cam turns: less limb travel at full draw ' +
-        '(a stiffer limb or a lower limb travel) makes it smaller, and a smaller string track radius makes the cam turn ' +
-        'further for the same power stroke, which also makes the cable track smaller',
+      suggestion: 'Less axle travel at full draw makes the cable track smaller: reduce "Axle travel, brace to full draw" ' +
+        'or raise "Limb stiffness at the axle". A smaller string track ("Radius", or "Semi-major axis" for an ellipse) ' +
+        'makes the cam turn further for the same power stroke, which also makes the cable track smaller',
     });
   }
   const low = lowestCamPoint(input);
   const x = input.achieved.x;
-  let first = -1;
-  let last = -1;
+  // Each run of overlapping samples; an unsolved sample ends a run.
+  /** @type {[number, number][]} */
+  const runs = [];
   let min = Infinity;
-  for (let i = 0; i < low.length; i++) {
-    if (low[i] < min) min = low[i];
-    if (low[i] <= 0) {
-      if (first < 0) first = i;
-      last = i;
+  let start = -1;
+  for (let i = 0; i <= low.length; i++) {
+    const over = i < low.length && low[i] <= 0;
+    if (over) {
+      if (start < 0) start = i;
+      if (low[i] < min) min = low[i];
+    } else if (start >= 0) {
+      runs.push([x[start], x[i - 1]]);
+      start = -1;
     }
   }
-  if (first >= 0) {
-    /** @type {[number, number]} */
-    const xRange = [x[first], x[last]];
+  if (runs.length > 0) {
     warnings.push({
       code: 'cam-overlap',
-      xRange,
-      message: `The two cams overlap ${fmt.drawRange(xRange)}, by up to ${fmt.size(-2 * min)}`,
+      xRange: [runs[0][0], runs[runs.length - 1][1]],
+      message: `The two cams overlap ${runs.map((r) => fmt.drawRange(r)).join(' and ')}, by up to ${fmt.size(-2 * min)}`,
       suggestion: 'Raise the axle-to-axle length or make the cam smaller (see the cam size)',
     });
   }

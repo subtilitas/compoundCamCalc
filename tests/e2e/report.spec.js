@@ -52,6 +52,16 @@ function duplicates(page) {
 const SECTIONS = ['inputs', 'target', 'results', 'force-chart', 'cam', 'plan', 'lengths', 'loads', 'table'];
 
 test.describe('print report', () => {
+  test('an open dialog does not print over the report', async ({ page }) => {
+    await page.goto('./');
+    await solved(page);
+    await page.getByTestId('help-button').click();
+    await expect(page.getByTestId('help-dialog')).toBeVisible();
+    await beforePrint(page);
+    await expect(page.getByTestId('report')).toBeVisible();
+    await expect(page.getByTestId('help-dialog')).toBeHidden();
+  });
+
   test('prints the current cam with every section and the values of the results card', async ({ page }) => {
     await page.goto('./');
     await solved(page);
@@ -73,7 +83,7 @@ test.describe('print report', () => {
     await expect(report.locator('h1')).toHaveText('Cam report: Untitled');
     await expect(report.locator('[data-key="version"]')).toHaveText(/^\d+\.\d+\.\d+$/);
     await expect(report.locator('[data-key="printed"]')).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
-    await expect(report.locator('[data-key="status"]')).toHaveText(/^Exports the current cam, design [0-9a-f]{6}$/);
+    await expect(report.locator('[data-key="status"]')).toHaveText(/^This report shows the current cam, design [0-9a-f]{6}$/);
 
     const results = page.getByTestId('report-results');
     await expect(results.locator('[data-key="peak"]')).toHaveText(/** @type {string} */ (peak));
@@ -129,7 +139,7 @@ test.describe('print report', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-solve-status', 'infeasible', { timeout: 20_000 });
     await beforePrint(page);
     await expect(page.getByTestId('report').locator('[data-key="status"]'))
-      .toHaveText(/^Exports the last cam that met every check, design [0-9a-f]{6}; later edits are not included$/);
+      .toHaveText(/^This report shows the last cam that met every check, design [0-9a-f]{6}; later edits are not included$/);
     // The cam of the report has the inputs of the last valid cam, in the current units.
     await expect(page.getByTestId('report-inputs')).not.toContainText('150.0°');
     await expect(page.getByTestId('report-results').locator('[data-key="peak"]')).toHaveText(/ lbf$/);

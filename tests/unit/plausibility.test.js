@@ -71,6 +71,15 @@ describe('plausibility', () => {
     expect(w[0].message).toMatch(/by up to 40\.0 mm$/);
   });
 
+  it('lists separate overlap ranges', () => {
+    // Overlap at the first and last sample only: two ranges, not one span.
+    const theta = [Math.PI / 2, 0, 0, Math.PI / 2];
+    const achieved = { x: Float64Array.from([0.2, 0.3, 0.4, 0.5]), theta: Float64Array.from(theta), axleY: Float64Array.from([0.1, 0.1, 0.1, 0.1]) };
+    const [w] = plausibility({ ata: 0.2, camMaxDimension: 0.05, outlines: [circle(0.02, 0.1, 0)], achieved }, fmt);
+    expect(w.message).toBe(`The two cams overlap ${fmt.drawRange([0.2, 0.2])} and ${fmt.drawRange([0.5, 0.5])}, by up to 40.0 mm`);
+    expect(w.xRange).toEqual([0.2, 0.5]);
+  });
+
   it('gives no warning for the samples and both for an oversized mini cam', () => {
     for (const s of SAMPLES) expect(solve(s.state()).warnings, s.id).toEqual([]);
     const st = SAMPLES[3].state();
