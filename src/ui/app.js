@@ -45,6 +45,36 @@ export function chipText(status, problems) {
   return 'Cam: the solver stopped with an error';
 }
 
+/**
+ * @template T
+ * @typedef {{ result: SolveResult, state: T }} Solved
+ */
+
+/**
+ * What the solve views show: the result the values come from (null after a
+ * solver error, whose latest result belongs to an older input), whether the
+ * cam shown is the last valid one in place of the current result, the
+ * status, the result drawn in the cam view and the result whose achieved
+ * curve the chart shows.
+ * @template T
+ * @param {Solved<T> | null} latest last delivered result
+ * @param {Solved<T> | null} lastGood last delivered result with status ok
+ * @param {'idle' | 'busy' | 'error'} solverStatus
+ */
+export function solveView(latest, lastGood, solverStatus) {
+  // After a solver error only the last valid cam stays in view, dimmed.
+  const failed = solverStatus === 'error';
+  const current = failed ? null : latest;
+  const stale = lastGood !== null && (failed || (current !== null && current.result.status !== 'ok'));
+  /** @type {'idle' | 'busy' | 'error' | SolveResult['status']} */
+  const status = solverStatus === 'busy' ? 'busy'
+    : failed ? 'error'
+      : current ? current.result.status : 'idle';
+  const shown = stale ? lastGood : current;
+  const withCurve = current?.result.achieved ? current : stale ? lastGood : null;
+  return { current, stale, status, shown, withCurve };
+}
+
 /** Start the application on the page. */
 export function startApp() {
   const root = byId('app', HTMLElement);
@@ -169,19 +199,13 @@ export function startApp() {
   root.dataset.solveState = 'idle';
 
   function showSolve() {
-    const current = latest;
+    const { current, stale, status, shown, withCurve } = solveView(latest, lastGood, solverStatus);
     const now = store.getState();
-    const stale = current !== null && current.result.status !== 'ok' && lastGood !== null;
-    const status = solverStatus === 'busy' ? 'busy'
-      : solverStatus === 'error' ? 'error'
-        : current ? current.result.status : 'idle';
     results.render({ status, result: current?.result ?? null, state: current?.state ?? now, stale });
     // The drawn cam keeps its geometry; labels follow the current units.
-    const shown = stale ? /** @type {NonNullable<typeof lastGood>} */ (lastGood) : current;
     camView.render(shown?.result ?? null, shown ? { ...shown.state, units: now.units } : now, stale, solverStatus);
     solveChip.textContent = status === 'idle' ? '' : chipText(status, current?.result.diagnostics.length ?? 0);
     solveChip.dataset.status = status;
-    const withCurve = current?.result.achieved ? current : stale ? lastGood : null;
     chart.setAchieved(withCurve?.result.achieved
       ? {
           x: withCurve.result.achieved.x,

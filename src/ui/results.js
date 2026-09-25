@@ -257,7 +257,8 @@ export function createResults(container) {
       // Writing the same text again makes some screen readers repeat it.
       if (status.textContent !== text) status.textContent = text;
       container.classList.toggle('results-stale', view.stale);
-      caption.hidden = !view.stale;
+      // The caption speaks about values, so it needs a result to show.
+      caption.hidden = !view.stale || !result;
 
       const items = metricItems(result, view.state.units);
       let fitShown = false;

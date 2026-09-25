@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCurve, pointMetrics } from '../../src/core/curve.js';
 import { INCH, toSI } from '../../src/core/units.js';
-import { chipText } from '../../src/ui/app.js';
+import { chipText, solveView } from '../../src/ui/app.js';
 import { moveLimitMessage, niceStep, ticks } from '../../src/ui/chart.js';
 import { amo, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain, pointLabel } from '../../src/ui/display.js';
 
@@ -84,5 +84,42 @@ describe('solve status link', () => {
     expect(chipText('infeasible', 3)).toBe('Cam: 3 problems, see Results');
     expect(chipText('no-convergence', 1)).toBe('Cam: the solver did not converge, see Results');
     expect(chipText('error', 0)).toBe('Cam: the solver stopped with an error');
+  });
+});
+
+describe('solve view selection', () => {
+  /**
+   * @param {'ok' | 'infeasible' | 'no-convergence'} status
+   * @param {boolean} [achieved]
+   */
+  const solved = (status, achieved = true) => ({
+    result: /** @type {import('../../src/core/solve.js').SolveResult} */ (/** @type {unknown} */ ({
+      status,
+      achieved: achieved ? { x: new Float64Array(2), F: new Float64Array(2) } : null,
+    })),
+    state: status,
+  });
+
+  it('shows the current result when it meets every check', () => {
+    const good = solved('ok');
+    expect(solveView(good, good, 'idle')).toEqual({ current: good, stale: false, status: 'ok', shown: good, withCurve: good });
+    expect(solveView(null, null, 'idle')).toEqual({ current: null, stale: false, status: 'idle', shown: null, withCurve: null });
+  });
+
+  it('keeps the last valid cam in view for a failing result', () => {
+    const good = solved('ok');
+    const bad = solved('infeasible');
+    expect(solveView(bad, good, 'idle')).toEqual({ current: bad, stale: true, status: 'infeasible', shown: good, withCurve: bad });
+    const noCurve = solved('no-convergence', false);
+    expect(solveView(noCurve, good, 'busy')).toMatchObject({ current: noCurve, stale: true, status: 'busy', shown: good, withCurve: good });
+    expect(solveView(bad, null, 'idle')).toMatchObject({ stale: false, shown: bad });
+  });
+
+  it('drops the older result after a solver error', () => {
+    const good = solved('ok');
+    const bad = solved('infeasible');
+    expect(solveView(good, good, 'error')).toEqual({ current: null, stale: true, status: 'error', shown: good, withCurve: good });
+    expect(solveView(bad, good, 'error')).toEqual({ current: null, stale: true, status: 'error', shown: good, withCurve: good });
+    expect(solveView(bad, null, 'error')).toEqual({ current: null, stale: false, status: 'error', shown: null, withCurve: null });
   });
 });

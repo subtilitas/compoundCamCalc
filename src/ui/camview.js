@@ -76,6 +76,8 @@ export const SOLVING_TEXT = 'Solving…';
 export const ERROR_TEXT = 'No cam: the solver stopped with an error';
 /** Caption shown over a stale drawing. */
 export const STALE_CAPTION = 'Last cam that met every check; the current inputs fail the checks, see Results';
+/** Caption shown over a stale drawing when the solver stopped with an error. */
+export const ERROR_STALE_CAPTION = 'Last cam that met every check; the solver stopped with an error on the current inputs';
 /** Keyboard help appended to the accessible label of the svg. */
 export const KEYS_HELP = 'arrow keys pan, plus and minus zoom, 0 fits';
 /** Arrow-key pan step as a fraction of the visible size (Shift: PAN_STEP_LARGE). */
@@ -451,9 +453,10 @@ export function createCamView(container) {
       if (!e.ctrlKey && !e.metaKey) return;
       const factor = e.deltaY < 0 ? ZOOM_STEP ** 0.5 : e.deltaY > 0 ? ZOOM_STEP ** -0.5 : 1;
       const { fx, fy } = locate(e.clientX, e.clientY);
+      // At a zoom limit the gesture still must not zoom the page.
+      e.preventDefault();
       const next = zoomView(view, base, factor, fx, fy);
       if (next.size === view.size) return;
-      e.preventDefault();
       view = next;
       applyView();
     },
@@ -583,7 +586,7 @@ export function createCamView(container) {
     draw(result, boreRadius, base.size);
     const o = result.outlines;
     const noCable = !o.cablePitch && !o.cableGroove && !o.cableFlange;
-    const lines = [isStale ? STALE_CAPTION : '', noCable ? NO_CABLE_CAPTION : ''].filter(Boolean);
+    const lines = [isStale ? (status === 'error' ? ERROR_STALE_CAPTION : STALE_CAPTION) : '', noCable ? NO_CABLE_CAPTION : ''].filter(Boolean);
     caption.textContent = lines.join('. ');
     caption.hidden = lines.length === 0;
     applyView();

@@ -143,6 +143,27 @@ test.describe('solver in the page', () => {
     await solved(page);
   });
 
+  test('Ctrl+wheel over the cam view never zooms the page, also at a zoom limit', async ({ page }) => {
+    await page.goto('./');
+    await solved(page);
+    const view = page.getByTestId('cam-view');
+    await view.scrollIntoViewIfNeeded();
+    const box = await view.boundingBox();
+    if (!box) throw new Error('the cam view is not visible');
+    await page.evaluate(() => {
+      /** @type {any} */ (window).wheelDefault = [];
+      window.addEventListener('wheel', (e) => /** @type {any} */ (window).wheelDefault.push(e.defaultPrevented), { passive: false });
+    });
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const fitted = await view.getAttribute('viewBox');
+    await page.keyboard.down('Control');
+    // Zoom out at the fitted view: the cam cannot zoom out further.
+    await page.mouse.wheel(0, 100);
+    await page.keyboard.up('Control');
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).wheelDefault)).toEqual([true]);
+    await expect(view).toHaveAttribute('viewBox', /** @type {string} */ (fitted));
+  });
+
   test('the zoomed cam view pans with the arrow keys', async ({ page }) => {
     await page.goto('./');
     await solved(page);
