@@ -138,10 +138,15 @@ function fitChecked(input) {
   const failed = failedFit;
   const m = psi.length;
   const span = end - start;
-  const intervals = input.intervals ?? Math.min(37, Math.max(17, Math.round(span / (10 * (Math.PI / 180)))));
-  const perInterval = input.gridPerInterval ?? 8;
-  const ends = input.ends ? [input.ends.start, input.ends.end] : [];
-  const through = input.through ?? [];
+  // Only undefined means an absent option: null, false, 0 or "" given for
+  // an option is malformed input.
+  const intervals = input.intervals === undefined ? Math.min(37, Math.max(17, Math.round(span / (10 * (Math.PI / 180))))) : input.intervals;
+  const perInterval = input.gridPerInterval === undefined ? 8 : input.gridPerInterval;
+  const given = input.ends;
+  const hasEnds = given !== undefined;
+  const endsObject = given !== undefined && given !== null && typeof given === 'object';
+  const ends = endsObject ? [given.start, given.end] : [];
+  const through = input.through === undefined ? [] : input.through;
   let finitePairs = 0;
   if (p.length === m) for (let i = 0; i < m; i++) if (Number.isFinite(psi[i]) && Number.isFinite(p[i])) finitePairs++;
   const valid =
@@ -161,12 +166,13 @@ function fitChecked(input) {
     perInterval >= 1 &&
     perInterval <= MAX_GRID &&
     span / intervals >= KNOT_SPACING_MIN &&
+    hasEnds === endsObject &&
     ends.every((v) => v !== null && v !== undefined && v.length === 3 && Array.from(v).every(Number.isFinite)) &&
     Array.isArray(through) &&
     through.every((q) => q !== null && q !== undefined && q.psi > start && q.psi <= end && Number.isFinite(q.p) && Number.isFinite(q.integral));
   if (!valid) return failed('invalid');
   // Two prescribed values of p(ψ_0) that differ cannot both hold.
-  if (input.startValue !== undefined && input.ends && Math.abs(input.startValue - input.ends.start[0]) > START_TOLERANCE) {
+  if (input.startValue !== undefined && input.ends !== undefined && Math.abs(input.startValue - input.ends.start[0]) > START_TOLERANCE) {
     return failed('infeasible');
   }
   const knots = uniformKnots(start, end, intervals);
@@ -239,7 +245,7 @@ function fitChecked(input) {
     equalities.push({ row: rows(q.psi).rp, value: q.p / MM });
     equalities.push({ row: Float64Array.from(basis, (s) => s.P(q.psi) / unit), value: q.integral / MM });
   }
-  if (input.ends) {
+  if (input.ends !== undefined) {
     for (const [at, values] of /** @type {[number, ArrayLike<number>][]} */ ([[start, input.ends.start], [end, input.ends.end]])) {
       const r = rows(at);
       if (!(at === start && input.startValue !== undefined)) equalities.push({ row: r.rp, value: values[0] / MM });

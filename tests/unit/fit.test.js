@@ -190,6 +190,9 @@ describe('constrained cable track fit', () => {
       { startValue: NaN },
       { margin: NaN },
       { p: Float64Array.from(data.p, () => NaN) },
+      // Only undefined means an absent option.
+      ...[null, false, 0, ''].flatMap((v) => /** @type {any[]} */ ([{ ends: v }, { through: v }, { intervals: v }, { gridPerInterval: v }])),
+      ...[null, false, ''].map((v) => /** @type {any} */ ({ margin: v })),
       { ends: { start: [0.02, NaN, 0], end: [0.02, 0, 0] } },
       { ends: { start: [0.02, 0, 0], end: [0.02, 0] } },
       { through: [{ psi: NaN, p: 0.02, integral: 0.01 }] },
