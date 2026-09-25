@@ -16,6 +16,7 @@
  *    fitted by an interpolating C2 spline, and the brace blend on
  *    [ψ_c0, ψ(x_1)] (core/inverse).
  * 5. Radius of curvature and clearance of the ideal track; when violated,
+ *    or when the closed ideal track dips below a limit between the samples,
  *    the constrained fit (core/fit) replaces it.
  * 6. Closed outline from the brace contact of the track, offsets, posts and
  *    marks (core/outline).
@@ -560,11 +561,18 @@ function solveState(state, resolution, maxIterations, trials) {
   const checked = ideal ? checkCableTrack(ideal, psiToX, blendEnd, rhoLimitCable, pMin, state, samples, fmt) : null;
   const violations = checked ? checked.violations : [];
   res.idealTrack = checked ? checked.summary : null;
-  /** @type {{ active: import('./outline.js').Piecewise, pointsMatched: number, rms: number, maxDeviation: number }[]} */
+  /**
+   * @typedef {{ active: import('./outline.js').Piecewise, pointsMatched: number, rms: number, maxDeviation: number,
+   *   fitted: boolean }} Candidate
+   */
+  /** @type {Candidate[]} */
   const candidates = [];
-  if (ideal && violations.length === 0) {
-    candidates.push({ active: ideal, pointsMatched: 0, rms: 0, maxDeviation: 0 });
-  } else {
+  /**
+   * Constrained fits of the cable track, added to list; returns the status
+   * of the least-squares fit.
+   * @param {Candidate[]} list
+   */
+  const addFitCandidates = (list) => {
     const data = fitData(ideal, samples, i1);
     const end = Math.max(psiCF, psiC0 + 10 * DEG);
     const startValue = samples.pC[0] >= pMin ? samples.pC[0] : undefined;
@@ -581,7 +589,7 @@ function solveState(state, resolution, maxIterations, trials) {
     const add = (f, matched) => {
       if (f.spline) {
         const active = createPiecewise([{ kind: 'spline', start: psiC0, end, data: f.spline }]);
-        candidates.push({ active, pointsMatched: matched, rms: f.rms, maxDeviation: f.maxDeviation });
+        list.push({ active, pointsMatched: matched, rms: f.rms, maxDeviation: f.maxDeviation, fitted: true });
       }
     };
     // Candidate 1: through the target state of the curve points. Points
@@ -599,13 +607,19 @@ function solveState(state, resolution, maxIterations, trials) {
     let plain = fitCableTrack({ ...base, startValue });
     if (plain.status !== 'optimal') plain = fitCableTrack(base);
     add(plain, 0);
+    return plain.status;
+  };
+  if (ideal && violations.length === 0) {
+    candidates.push({ active: ideal, pointsMatched: 0, rms: 0, maxDeviation: 0, fitted: false });
+  } else {
+    const status = addFitCandidates(candidates);
     res.fit.used = true;
     res.fit.reason = violations.length > 0 ? violations.map((v) => v.code).join(', ') : 'no ideal track';
     if (candidates.length === 0) {
       diags.push(
         diagnostic(
           'no-convergence',
-          `No cable track meets the radius limit of ${fmt.size(rhoLimitCable)} and the lever arm limit of ${fmt.size(pMin)} (fit status: ${plain.status})`,
+          `No cable track meets the radius limit of ${fmt.size(rhoLimitCable)} and the lever arm limit of ${fmt.size(pMin)} (fit status: ${status})`,
           'Reduce let-off or the peak draw force, or increase the string track radius',
         ),
       );
@@ -624,75 +638,101 @@ function solveState(state, resolution, maxIterations, trials) {
   // achieved curve is closest to the target (largest force difference) wins,
   // a closable one before one whose closing blend fails.
   /**
-   * @type {{ candidate: (typeof candidates)[number], active: import('./outline.js').Piecewise,
+   * @typedef {{ candidate: Candidate, active: import('./outline.js').Piecewise,
    *   closed: import('./outline.js').ClosedCable, forward: import('./forward.js').ForwardResult, maxDiff: number,
-   *   maxAt: number } | null}
+   *   maxAt: number }} Evaluated
    */
-  let best = null;
+  // Cast, so the narrowing to null does not outlive the assignments in evaluate.
+  let best = /** @type {Evaluated | null} */ (null);
   // The first active track whose closed track leaves the input domain of
   // support.js: reported when no candidate closes and no cable-wrap
   // diagnostic explains it.
   /** @type {import('./outline.js').Piecewise | null} */
   let unclosed = null;
   const D0 = 2 * ctx.bow.braceAxleY;
-  for (const candidate of candidates) {
-    const tOutline = now();
-    // A fit without the brace value p(ψ_c0) = p_c0 has its brace contact
-    // after ψ_c0; the lead-in then starts at that contact.
-    const psiBrace = braceContact(candidate.active, D0);
-    const active = psiBrace > candidate.active.start + BRACE_CONTACT_TOLERANCE && psiBrace < candidate.active.end
-      ? trimTrack(candidate.active, psiBrace)
-      : candidate.active;
-    const wrap = active.end - active.start + body.leadInWrap;
-    if (wrap >= 2 * Math.PI) {
-      const reduce = wrap - 2 * Math.PI + 5 * DEG;
-      diags.push(
-        diagnostic(
-          'cable-wrap',
-          `The power cable wraps ${fmt.angle(wrap)} on its track at full draw, including the ${fmt.angle(body.leadInWrap)} lead-in wrap; a groove holds less than one turn`,
-          body.leadInWrap > reduce
-            ? `Reduce the lead-in wrap to at most ${fmt.angle(body.leadInWrap - reduce)}`
-            : 'Increase the string track radius, so the cam turns less over the draw',
-          { psiRange: [active.start - body.leadInWrap, active.end] },
-        ),
-      );
-      unclosed = null;
-      break;
-    }
-    const closed = closeCableTrack(active, { leadIn: body.leadInWrap, rhoMin: rhoLimitCable, pMin, step: settings.step });
-    res.timings.outline += now() - tOutline;
-    if (!closed) {
-      unclosed ??= active;
-      continue;
-    }
-    const tForward = now();
-    const forward = solveForward({
-      geometry,
-      stringTrack: stringPitch,
-      cableTrack: closed.support,
-      limb: limbData,
-      samples: settings.forward,
-      maxIterations,
-      stringTermination: stringEnd,
-      cableTermination: closed.psiStart,
-    });
-    res.timings.forward += now() - tForward;
-    let maxDiff = 0;
-    let maxAt = -1;
-    for (let i = 0; i < forward.n; i++) {
-      const d = Math.abs(forward.F[i] - res.target.F[i]);
-      if (!Number.isFinite(d)) {
-        maxDiff = Infinity;
-        maxAt = -1;
-        break;
+  const targetF = res.target.F;
+  /**
+   * Close and solve each candidate, keeping the best in best.
+   * @param {Candidate[]} list
+   * @returns {boolean} false when a candidate wraps a full turn (cable-wrap)
+   */
+  const evaluate = (list) => {
+    for (const candidate of list) {
+      const tOutline = now();
+      // A fit without the brace value p(ψ_c0) = p_c0 has its brace contact
+      // after ψ_c0; the lead-in then starts at that contact.
+      const psiBrace = braceContact(candidate.active, D0);
+      const active = psiBrace > candidate.active.start + BRACE_CONTACT_TOLERANCE && psiBrace < candidate.active.end
+        ? trimTrack(candidate.active, psiBrace)
+        : candidate.active;
+      const wrap = active.end - active.start + body.leadInWrap;
+      if (wrap >= 2 * Math.PI) {
+        const reduce = wrap - 2 * Math.PI + 5 * DEG;
+        diags.push(
+          diagnostic(
+            'cable-wrap',
+            `The power cable wraps ${fmt.angle(wrap)} on its track at full draw, including the ${fmt.angle(body.leadInWrap)} lead-in wrap; a groove holds less than one turn`,
+            body.leadInWrap > reduce
+              ? `Reduce the lead-in wrap to at most ${fmt.angle(body.leadInWrap - reduce)}`
+              : 'Increase the string track radius, so the cam turns less over the draw',
+            { psiRange: [active.start - body.leadInWrap, active.end] },
+          ),
+        );
+        unclosed = null;
+        return false;
       }
-      if (d > maxDiff) {
-        maxDiff = d;
-        maxAt = i;
+      const closed = closeCableTrack(active, { leadIn: body.leadInWrap, rhoMin: rhoLimitCable, pMin, step: settings.step });
+      res.timings.outline += now() - tOutline;
+      if (!closed) {
+        unclosed ??= active;
+        continue;
+      }
+      const tForward = now();
+      const forward = solveForward({
+        geometry,
+        stringTrack: stringPitch,
+        cableTrack: closed.support,
+        limb: limbData,
+        samples: settings.forward,
+        maxIterations,
+        stringTermination: stringEnd,
+        cableTermination: closed.psiStart,
+      });
+      res.timings.forward += now() - tForward;
+      let maxDiff = 0;
+      let maxAt = -1;
+      for (let i = 0; i < forward.n; i++) {
+        const d = Math.abs(forward.F[i] - targetF[i]);
+        if (!Number.isFinite(d)) {
+          maxDiff = Infinity;
+          maxAt = -1;
+          break;
+        }
+        if (d > maxDiff) {
+          maxDiff = d;
+          maxAt = i;
+        }
+      }
+      if (!best || (closed.ok && !best.closed.ok) || (closed.ok === best.closed.ok && maxDiff < best.maxDiff)) {
+        best = { candidate, active, closed, forward, maxDiff, maxAt };
       }
     }
-    if (!best || (closed.ok && !best.closed.ok) || (closed.ok === best.closed.ok && maxDiff < best.maxDiff)) {
-      best = { candidate, active, closed, forward, maxDiff, maxAt };
+    return true;
+  };
+  const wrapped = !evaluate(candidates);
+  // The sampled check of the ideal track can pass while the exact periodic
+  // spline of its closed track dips below a limit between the samples: the
+  // constrained fits then join the comparison, and one that closes wins.
+  if (!wrapped && ideal && !res.fit.used && best && !best.closed.ok) {
+    const tRefit = now();
+    /** @type {Candidate[]} */
+    const refits = [];
+    addFitCandidates(refits);
+    res.timings.fit += now() - tRefit;
+    evaluate(refits);
+    if (best.candidate.fitted) {
+      res.fit.used = true;
+      res.fit.reason = 'closed track below a limit between the samples of the ideal track';
     }
   }
   /**

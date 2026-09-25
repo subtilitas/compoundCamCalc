@@ -620,7 +620,12 @@ throwing. Non-finite samples of the ideal track are left out of the least
 squares.
 
 The solver fits when the ideal track violates ρ_lim or p_min, when its
-contact angle does not increase, or when it cannot be sampled. It then runs
+contact angle does not increase, or when it cannot be sampled. It also fits
+when the ideal track passes its sampled checks (every 0.1°) but the exact
+periodic spline of its closed track dips below a limit between the
+samples: the fitted candidates then join the comparison, and one that
+closes wins (a 9.850 mm limit on the known-circle test cam: the samples keep
+9.851 mm, the closed spline reaches 9.849 mm). It then runs
 the forward model on the fitted cam and compares the achieved curve with
 the target. A fitted cam whose force differs from the target by at most
 3 % of the peak (8.0 N at 267 N, at least 2 N) everywhere and whose draw
@@ -905,6 +910,7 @@ Measured values are the largest errors over the tested samples.
 | Final cam decides: residual wrap 1.46396 rad on the default preset wraps the ideal track 360.003°, the final cam 359.997°, and solves without diagnostics, 1.4641 rad gives `string-wrap` (360.01°); a fitted cam at 16.975° with an ideal track at 16.983° passes a 16.979° limit | | passes |
 | Maximum limb rotation 15.893° on the default preset (ideal track 15.8923°, fitted cam 15.8940°, coarse and full): `limb-rotation` alone, message with 3 decimals | | passes |
 | Constrained fit with p(ψ_0) prescribed twice: 0.03 m and 0.02 m infeasible, 0.02 m twice optimal with p(ψ_0) = 0.02 m to 1e-12 m | | passes |
+| Known-circle cam with a 9.850 mm bend radius (full solve): the closed ideal track dips to 9.849 mm between the 0.1° samples; the fit runs, the cam closes without diagnostics and keeps ρ ≥ 9.850 mm | 1e-6 m | passes |
 | Lead-in wrap 137.55° on the default preset (0.06° left to close, coarse and full): `closing-blend` alone, no cable track, achieved curve or metrics, string outlines only, suggestion a lead-in wrap of at most 105.0°, which solves without diagnostics; 100 random valid states: every solve without diagnostics has a cable track, an achieved curve and metrics | | passes |
 | `closing-blend` trials: point 2 at 12 in and 120 N names a 55.0 mm string track radius (full solve; 50 mm fails, 55 mm solves without diagnostics; the coarse solve runs no trials and names the force curve); a 45 mm × 35 mm ellipse with point 2 at 11 in and 100 N names both semi-axes 15 mm larger; point 2 at 10 in and 50 N names none, and each larger string track raises the largest force difference; trial states within the field range, the bend radius tried only when it sets ρ_lim | | passes |
 | Offsets, maximum dimension, termination and cable stop posts, timing marks | 5e-16 m to 1e-6 m | passes |

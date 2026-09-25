@@ -932,6 +932,20 @@ describe('solve: ideal cable track without the fit', () => {
     const forwardBrace = /** @type {import('../../src/core/forward.js').BraceState} */ (f.brace);
     expect(Math.abs(forwardBrace.slope / /** @type {SolveBrace} */ (r.brace).slope - 1)).toBeLessThan(1e-9);
   });
+  it('fits the track when its closed spline dips below the radius limit between the ideal samples', () => {
+    // A 9.850 mm limit: the ideal samples keep 9.851 mm, the exact periodic
+    // spline of the closed ideal track reaches 9.849 mm. The constrained fit
+    // joins the comparison and closes.
+    const tight = structuredClone(state);
+    tight.body.minBendRadius = 9.85e-3;
+    const r = solve(tight, { resolution: 'full' });
+    expect(codes(r)).not.toContain('closing-blend');
+    expect(r.status).toBe('ok');
+    expect(r.fit.used).toBe(true);
+    expect(r.fit.reason).toBe('closed track below a limit between the samples of the ideal track');
+    const m = /** @type {import('../../src/core/solve.js').SolveMetrics} */ (r.metrics);
+    expect(m.cableMinRho).toBeGreaterThanOrEqual(9.85e-3 - 1e-6);
+  });
 });
 
 describe('solve: fit through the curve points', () => {

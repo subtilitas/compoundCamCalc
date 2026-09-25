@@ -142,7 +142,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   means the defaults, and for input whose fields cannot be read (a test
   passes a throwing getter, a thrown value without text, null, undefined
   and a number to every never-throw export); the inverse model refuses an
-  iteration limit outside the integers 1 to 200; an iteration limit outside the integers 1 to 200
+  iteration limit outside the integers 1 to 200; an ideal cable track whose
+  closed spline dips below a limit between its 0.1° samples gets the
+  constrained fit instead of a `closing-blend` result; an iteration limit outside the integers 1 to 200
   gives `invalid-input` before any solving. A `closing-blend` message names
   the smallest radius of curvature or lever arm of the returned closed
   track, which decides whether the track closes.
