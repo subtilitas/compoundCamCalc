@@ -9,10 +9,16 @@ import { solve } from '../../src/core/solve.js';
 
 /** An object whose every property read throws, as a malformed untyped input can. */
 const hostile = () => new Proxy({}, { get() { throw new Error('unreadable'); }, has() { return true; } });
+/** The same, but the thrown value cannot be turned into text either. */
+const opaque = () => new Proxy({}, {
+  get() {
+    throw { toString() { throw new Error('no text'); } };
+  },
+});
 
 // Every export documented as never throwing, with the field of its result
-// that reports the failure. A throwing getter, null and a number stand for
-// malformed deserialized input.
+// that reports the failure. A throwing getter, a getter that throws a value
+// without text, null and a number stand for malformed deserialized input.
 const CASES = /** @type {const} */ ([
   ['solve', (/** @type {any} */ v) => solve(v, v), (/** @type {any} */ r) => r.status !== 'ok'],
   ['solveForward', (/** @type {any} */ v) => solveForward(v), (/** @type {any} */ r) => r.status !== 'ok'],
@@ -27,7 +33,7 @@ const CASES = /** @type {const} */ ([
 describe('never-throw contracts', () => {
   for (const [name, call, failed] of CASES) {
     it(`${name} returns its failure result for malformed input`, () => {
-      for (const make of [hostile, () => null, () => undefined, () => 5]) {
+      for (const make of [hostile, opaque, () => null, () => undefined, () => 5]) {
         /** @type {any} */
         let r;
         expect(() => (r = call(make()))).not.toThrow();

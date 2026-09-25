@@ -29,6 +29,7 @@
 
 import { MIN_FORCE, curveMetrics, drawRange } from './curve.js';
 import { CODES, diagnostic, formatter, runs } from './diagnostics.js';
+import { describeError } from './errors.js';
 import { fitCableTrack } from './fit.js';
 import { COARSE_SAMPLES, FULL_SAMPLES, MAX_ITERATION_LIMIT, drawGrid, solveForward } from './forward.js';
 import { createCurve } from './interp.js';
@@ -318,7 +319,7 @@ function guardedSolve(state, resolution, maxIterations, trials) {
     result.diagnostics.push(
       diagnostic(
         'no-convergence',
-        `The solver stopped with an internal error: ${err instanceof Error ? err.message : String(err)}`,
+        `The solver stopped with an internal error: ${describeError(err)}`,
         'Change the last edited input; if the error stays, report it with the project file',
       ),
     );

@@ -36,8 +36,9 @@
  * @module core/inverse
  */
 
-import { describeError } from './errors.js';
 import { STRING_SIDE, createContact, solveContact } from './contact.js';
+import { describeError } from './errors.js';
+import { MAX_ITERATION_LIMIT } from './forward.js';
 import { bowGeometry } from './geometry.js';
 import { createLimb } from './limb.js';
 import { solveLinear } from './linalg.js';
@@ -170,13 +171,17 @@ export function createInverse(input) {
  * @returns {ReturnType<typeof createInverse>}
  */
 function createInverseChecked(input) {
+  const maxIterations = input.maxIterations === undefined ? MAX_ITERATIONS : input.maxIterations;
+  if (!(Number.isInteger(maxIterations) && maxIterations >= 1 && maxIterations <= MAX_ITERATION_LIMIT)) {
+    return { context: null, error: `The iteration limit must be an integer from 1 to ${MAX_ITERATION_LIMIT}` };
+  }
   let stringSupport;
   let limb;
   try {
     stringSupport = createSupport(input.stringTrack);
     limb = createLimb(input.limb);
   } catch (err) {
-    return { context: null, error: err instanceof Error ? err.message : String(err) };
+    return { context: null, error: describeError(err) };
   }
   const { bow, error } = bowGeometry(input.geometry, stringSupport);
   if (!bow) return { context: null, error };
@@ -195,7 +200,7 @@ function createInverseChecked(input) {
       stringSupport,
       limb,
       reduced: contact.reduced,
-      maxIterations: input.maxIterations ?? MAX_ITERATIONS,
+      maxIterations,
       energy0,
       moment0,
       span: contact.span,

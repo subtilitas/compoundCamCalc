@@ -326,6 +326,17 @@ describe('inverse model: statics and kinematics', () => {
 });
 
 describe('inverse model: helpers and failures', () => {
+  it('refuses an iteration limit outside the integers 1 to 200', () => {
+    const base = /** @type {any} */ ({ geometry, stringTrack: eccentricCircle({ radius: 0.03, offset: 0.01, phase: 0 }), limb: limbData });
+    for (const maxIterations of [0, -1, 1.5, 201, null, NaN]) {
+      const r = createInverse({ ...base, maxIterations });
+      expect(r.context).toBeNull();
+      expect(r.error).toBe('The iteration limit must be an integer from 1 to 200');
+    }
+    expect(createInverse({ ...base, maxIterations: 200 }).context?.maxIterations).toBe(200);
+    expect(createInverse(base).context?.maxIterations).toBe(30);
+  });
+
   it('differentiates the polynomial through unevenly spaced points exactly', () => {
     const f = (/** @type {number} */ x) => 3 - 2 * x + 0.5 * x ** 2 - x ** 3 + 0.25 * x ** 4;
     const xs = [0.1, 0.13, 0.2, 0.26, 0.4];

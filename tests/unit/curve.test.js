@@ -137,6 +137,13 @@ describe('generateCurve', () => {
     }
   });
 
+  it('matches a valley that the four flat-length steps leave 1.8 % wide', () => {
+    // Let-off 6 %, rise 50.5 %: the steps stop at a 5.834 in valley; the
+    // bracketed root of the width error over the flat length gives 5.73 in.
+    const points = generateCurve({ ...defaults, letOff: 0.06, riseFraction: 0.505, valleyWidth: 5.73 * INCH });
+    expect(pointMetrics(points).valleyWidth / INCH).toBeCloseTo(5.73, 6);
+  });
+
   it('moves the let-off transition point on the line towards the valley start for a narrow valley', () => {
     const wide = generateCurve({ ...defaults, letOff: 0.75 });
     const narrow = generateCurve({ ...defaults, letOff: 0.75, valleyWidth: 0.9 * INCH });

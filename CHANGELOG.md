@@ -26,7 +26,10 @@ All notable changes are listed here. Versions follow semantic versioning.
   valley width (5 % band), draw energy and power stroke; parametric
   generator with seven points whose let-off transition point moves on the
   straight line towards the valley start for a narrow valley (smallest
-  width about 0.49 in at 75 % let-off on the default bow, 1.54 in at 20 %);
+  width about 0.49 in at 75 % let-off on the default bow, 1.54 in at 20 %)
+  and a flat valley length matched to the requested width by four steps,
+  then a bracketed root over the flat range where the steps stop short
+  (5.834 in instead of 5.73 in at 6 % let-off and 50.5 % rise before);
   move, add and remove point operations with a
   0.1 in (2.54 mm) minimum gap and a 1 N to 5000 N force range; peak scaling
   and a let-off mapping that stays invertible down to 0 %.
@@ -137,8 +140,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   carry numbers and units and whose suggestions name the input to change;
   never throws, also for a missing or non-object options container, which
   means the defaults, and for input whose fields cannot be read (a test
-  passes a throwing getter, null, undefined and a number to every
-  never-throw export); an iteration limit outside the integers 1 to 200
+  passes a throwing getter, a thrown value without text, null, undefined
+  and a number to every never-throw export); the inverse model refuses an
+  iteration limit outside the integers 1 to 200; an iteration limit outside the integers 1 to 200
   gives `invalid-input` before any solving. A `closing-blend` message names
   the smallest radius of curvature or lever arm of the returned closed
   track, which decides whether the track closes.

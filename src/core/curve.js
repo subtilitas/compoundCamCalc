@@ -275,6 +275,8 @@ function clamp(v, lo, hi) {
 
 /** Relative valley width excess that makes the generator move the transition point: 1 %. */
 const VALLEY_TOLERANCE = 0.01;
+/** Intervals of the flat valley length scanned for a bracket of the width error. */
+const FLAT_SCAN = 32;
 /** Samples of the transition span factor scanned for a bracket. */
 const TRANSITION_SCAN = 16;
 /** Largest number of Illinois steps of the transition span search. */
@@ -367,7 +369,38 @@ export function generateCurve(input) {
     if (Math.abs(next - flat) < X_TOLERANCE) break;
     flat = next;
   }
-  if (flat > flatMin) return curvePoints(args, flat);
+  if (flat > flatMin) {
+    // The four steps converge where the valley width grows about one to one
+    // with the flat part; elsewhere a root of the width error over the flat
+    // range finishes it: the bracket nearest the step result on a scan of
+    // FLAT_SCAN intervals, then the Illinois method. Without a bracket the
+    // scanned flat length closest to the requested width stays.
+    /** @param {number} f */
+    const error = (f) => pointMetrics(curvePoints(args, f)).valleyWidth - target;
+    const e0 = error(flat);
+    if (Math.abs(e0) <= X_TOLERANCE) return curvePoints(args, flat);
+    let bracket = null;
+    let closest = { x: flat, value: e0 };
+    let prev = { x: flatMin, value: error(flatMin) };
+    for (let k = 1; k <= FLAT_SCAN; k++) {
+      const x = flatMin + ((flatMax - flatMin) * k) / FLAT_SCAN;
+      const cur = { x, value: error(x) };
+      if (Math.abs(cur.value) < Math.abs(closest.value)) closest = cur;
+      if (Math.sign(prev.value) !== Math.sign(cur.value)) {
+        const distance = Math.min(Math.abs(prev.x - flat), Math.abs(cur.x - flat));
+        if (!bracket || distance < bracket.distance) bracket = { a: prev, b: cur, distance };
+      }
+      prev = cur;
+    }
+    if (bracket) {
+      const { a, b } = bracket;
+      // transitionRoot needs f(a) ≤ 0 < f(b): flip the sign for a falling error.
+      const sign = a.value <= 0 ? 1 : -1;
+      const root = transitionRoot((f) => sign * error(f), a.x, sign * a.value, b.x, sign * b.value);
+      return curvePoints(args, root);
+    }
+    return curvePoints(args, closest.x);
+  }
   /** @param {number} tau */
   const excess = (tau) => pointMetrics(curvePoints(args, flat, tau)).valleyWidth - target;
   let b = 1;
