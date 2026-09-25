@@ -21,6 +21,7 @@
  * @module core/fit
  */
 
+import { ANGLE_MAX, KNOT_SPACING_MIN } from './domain.js';
 import { solveQP } from './qp.js';
 import { createSupport, splineSupport } from './support.js';
 
@@ -29,11 +30,6 @@ import { createSupport, splineSupport } from './support.js';
 /** Scale of the internal unit (1 mm). */
 const MM = 1e-3;
 
-/** Smallest knot spacing relative to max(1, |start|, |end|). */
-const MIN_SPACING = 1e-9;
-
-/** Largest |start| and |end| (rad). */
-const MAX_ANGLE = 1e6;
 
 /** Largest number of knot intervals and of constraint points per interval. */
 const MAX_INTERVALS = 200;
@@ -60,7 +56,7 @@ const MAX_GRID = 50;
 
 /**
  * @typedef {object} FitResult
- * @property {'optimal' | 'infeasible' | 'max-iterations' | 'not-convex' | 'invalid'} status
+ * @property {'optimal' | 'infeasible' | 'max-iterations' | 'not-convex' | 'invalid' | 'out-of-domain'} status
  * @property {SplineData | null} spline clamped spline over [start, end]
  * @property {number} rms root mean square deviation from the samples (m)
  * @property {number} maxDeviation largest deviation from the samples (m)
@@ -88,13 +84,14 @@ const finiteOrUndefined = (values) => values.every((v) => v === undefined || Num
 
 /**
  * Fit the cable track. Never throws. The status is 'invalid' unless
- * start < end with |start| and |end| at most 1e6 rad, psi and p have the
+ * start < end with |start| and |end| at most 1e4 rad, psi and p have the
  * same length of at least 2 with at least one finite pair, rhoMin, pMin and
  * the optional numbers are finite, intervals is an integer from 1 to 200,
  * gridPerInterval an integer from 1 to 50, each end holds three finite
  * numbers, each through point has its angle in (start, end] and a finite
- * lever arm and integral, and the knot spacing exceeds
- * 1e-9·max(1, |start|, |end|). Non-finite samples are left out.
+ * lever arm and integral, and the knot spacing is at least 1e-6 rad (the
+ * input domain of core/domain.js). The status is 'out-of-domain' when the
+ * optimum leaves that domain. Non-finite samples are left out.
  * @param {FitInput} input
  * @returns {FitResult}
  */
@@ -112,8 +109,8 @@ export function fitCableTrack(input) {
   let finitePairs = 0;
   if (p.length === m) for (let i = 0; i < m; i++) if (Number.isFinite(psi[i]) && Number.isFinite(p[i])) finitePairs++;
   const valid =
-    Math.abs(start) <= MAX_ANGLE &&
-    Math.abs(end) <= MAX_ANGLE &&
+    Math.abs(start) <= ANGLE_MAX &&
+    Math.abs(end) <= ANGLE_MAX &&
     end > start &&
     m >= 2 &&
     p.length === m &&
@@ -127,7 +124,7 @@ export function fitCableTrack(input) {
     Number.isInteger(perInterval) &&
     perInterval >= 1 &&
     perInterval <= MAX_GRID &&
-    span / intervals > MIN_SPACING * Math.max(1, Math.abs(start), Math.abs(end)) &&
+    span / intervals >= KNOT_SPACING_MIN &&
     ends.every((v) => v.length === 3 && Array.from(v).every(Number.isFinite)) &&
     Array.isArray(through) &&
     through.every((q) => q.psi > start && q.psi <= end && Number.isFinite(q.p) && Number.isFinite(q.integral));
@@ -135,15 +132,19 @@ export function fitCableTrack(input) {
   const knots = uniformKnots(start, end, intervals);
   const nv = intervals + 1;
   const n = nv + 2;
-  // Basis: spline of the unit vector of each unknown (values, then end slopes).
+  // Basis: spline of A in each unknown (values, then end slopes), read back
+  // per mm, the unit of the unknowns. A = min(1 mm, h²) with h the knot
+  // spacing keeps |p'| ≈ A/h and |p''| ≈ A/h² inside the input domain of
+  // support.js; the splines are linear in A, so the rows do not depend on it.
+  const unit = Math.min(MM, ((end - start) / intervals) ** 2);
   /** @type {import('./support.js').Support[]} */
   const basis = [];
   for (let j = 0; j < n; j++) {
     const values = new Float64Array(nv);
     /** @type {[number, number]} */
     const slopes = [0, 0];
-    if (j < nv) values[j] = 1;
-    else slopes[j - nv] = 1;
+    if (j < nv) values[j] = unit;
+    else slopes[j - nv] = unit;
     basis.push(createSupport(splineSupport(knots, values, { endSlopes: slopes })));
   }
   const buf = new Float64Array(3);
@@ -157,9 +158,9 @@ export function fitCableTrack(input) {
     const r2 = new Float64Array(n);
     for (let j = 0; j < n; j++) {
       basis[j].evaluate(at, buf);
-      rp[j] = buf[0];
-      r1[j] = buf[1];
-      r2[j] = buf[2];
+      rp[j] = buf[0] / unit;
+      r1[j] = buf[1] / unit;
+      r2[j] = buf[2] / unit;
     }
     return { rp, r1, r2 };
   };
@@ -196,7 +197,7 @@ export function fitCableTrack(input) {
   if (input.startValue !== undefined) equalities.push({ row: rows(start).rp, value: input.startValue / MM });
   for (const q of through) {
     equalities.push({ row: rows(q.psi).rp, value: q.p / MM });
-    equalities.push({ row: Float64Array.from(basis, (s) => s.P(q.psi)), value: q.integral / MM });
+    equalities.push({ row: Float64Array.from(basis, (s) => s.P(q.psi) / unit), value: q.integral / MM });
   }
   if (input.ends) {
     for (const [at, values] of /** @type {[number, ArrayLike<number>][]} */ ([[start, input.ends.start], [end, input.ends.end]])) {
@@ -229,7 +230,15 @@ export function fitCableTrack(input) {
   const x = result.x;
   const values = Float64Array.from(x.subarray(0, nv), (v) => v * MM);
   const spline = splineSupport(knots, values, { endSlopes: [x[nv] * MM, x[nv + 1] * MM] });
-  const s = createSupport(spline);
+  /** @type {import('./support.js').Support} */
+  let s;
+  try {
+    s = createSupport(spline);
+  } catch {
+    // The optimum leaves the input domain of support.js (|p| or |p'| above
+    // 10 m): no track of the size of a cam meets the conditions.
+    return { ...failed('out-of-domain'), unknowns: n };
+  }
   let sum = 0;
   let count = 0;
   let maxDeviation = 0;

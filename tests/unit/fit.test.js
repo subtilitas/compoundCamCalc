@@ -113,6 +113,17 @@ describe('constrained cable track fit', () => {
     expect(fitCableTrack({ ...holes, start, end, rhoMin: 0.005, pMin: 0.008 }).status).toBe('optimal');
   });
 
+  it('reports an optimum outside the input domain instead of throwing', () => {
+    // Samples at a 20 m lever arm: the fitted track would be 20 m in size.
+    const huge = samples(() => 20, start, end, 100);
+    const r = fitCableTrack({ ...huge, start, end, rhoMin: 0.005, pMin: 0.008 });
+    expect(r.status).toBe('out-of-domain');
+    expect(r.spline).toBeNull();
+    // Knots 2e-6 rad apart: the basis stays inside the domain.
+    const tiny = samples(() => 0.02, 1, 1 + 2e-6, 10);
+    expect(fitCableTrack({ ...tiny, start: 1, end: 1 + 2e-6, intervals: 1, rhoMin: 0.005, pMin: 0.008 }).status).toBe('optimal');
+  });
+
   it('returns invalid instead of throwing or ignoring a limit for out-of-range input', () => {
     const data = samples(() => 0.02, start, end, 100);
     const base = { ...data, start, end, rhoMin: 0.005, pMin: 0.008 };
@@ -155,9 +166,9 @@ describe('constrained cable track fit', () => {
       expect(r.status).toBe('invalid');
       expect(r.spline).toBeNull();
     }
-    // The smallest accepted knot spacing is 1e-9·max(1, |start|, |end|).
-    expect(fitCableTrack({ ...base, start: 1, end: 1 + 2e-9, intervals: 1 }).status).toBe('optimal');
-    expect(fitCableTrack({ ...base, start: 1, end: 1 + 5e-10, intervals: 1 }).status).toBe('invalid');
+    // The smallest accepted knot spacing is 1e-6 rad, the input domain.
+    expect(fitCableTrack({ ...base, start: 1, end: 1 + 2e-6, intervals: 1 }).status).toBe('optimal');
+    expect(fitCableTrack({ ...base, start: 1, end: 1 + 5e-7, intervals: 1 }).status).toBe('invalid');
     expect(fitCableTrack({ ...base, intervals: 200, gridPerInterval: 1 }).status).toBe('optimal');
   });
 });

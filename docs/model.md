@@ -871,7 +871,7 @@ first 123 mm of the power stroke.
 | Inverse string closure | Newton, residual below 1e-10 m, at most 30 iterations |
 | Ideal cable resampling | 0.5° (coarse), 0.25° (full); Illinois search stopped within 0.1 % of the step |
 | Constrained fit | one knot interval per about 10° (17 to 37), 8 constraint points per interval, margin 1e-6 m, penalty 1e-8·trace on second differences |
-| Constrained fit input | \|ψ\| ≤ 1e6 rad, 1 to 200 knot intervals, 1 to 50 constraint points per interval, knot spacing above 1e-9·max(1, \|ψ_0\|, \|ψ_1\|), points to pass through at ψ_0 < ψ ≤ ψ_1 with finite lever arm and integral |
+| Constrained fit input | \|ψ\| ≤ 1e4 rad, 1 to 200 knot intervals, 1 to 50 constraint points per interval, knot spacing at least 1e-6 rad (the input domain), points to pass through at ψ_0 < ψ ≤ ψ_1 with finite lever arm and integral; an optimum outside the input domain gives the status `out-of-domain`, and a closed cable track outside it cannot be closed |
 | Quadratic programme | violation tolerance 1e-10 of the row scale, for active constraints of max(row scale, size of the terms), for redundant equalities of that size plus the sizes of the rows they combine; dependence at \|z\|_G ≤ 1e-8 of the cancelled terms; two refinement passes per added constraint; at most 10·(n + m) + 20 steps |
 | Fit tolerance | force 3 % of the peak, at least 2 N; draw energy 0.5 % |
 | `closing-blend` trials | lead-in wraps k·5° down to 0° (closing only); coarse trial solves with the string track radius, or both semi-axes, 5, 10, 15 and 20 mm larger, then half the minimum bend radius |

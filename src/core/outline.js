@@ -257,7 +257,8 @@ function pieceKnots(piece, step) {
  *   smallest lever arm on the blend (m, default 0), knot spacing of the
  *   closed spline (rad)
  * @returns {ClosedCable | null} null when the active track leaves no arc to
- *   close (lead-in plus active range of a full turn or more)
+ *   close (lead-in plus active range of a full turn or more), or when the
+ *   closed track leaves the input domain of support.js
  */
 export function closeCableTrack(active, { leadIn, rhoMin, pMin = 0, step }) {
   const psiBrace = active.start;
@@ -317,11 +318,19 @@ export function closeCableTrack(active, { leadIn, rhoMin, pMin = 0, step }) {
   const buf = new Float64Array(3);
   for (let k = 0; k < knots.length - 1; k++) values[k] = track.evaluate(knots[k], buf)[0];
   values[knots.length - 1] = values[0];
+  const support = splineSupport(knots, values, { periodic: true });
+  try {
+    createSupport(support);
+  } catch {
+    // The closed track leaves the input domain of support.js (|p| or |p'|
+    // above 10 m): it is no cam.
+    return null;
+  }
   return {
     // The fitted blend meets the limits on its constraint grid; allow the
     // micrometre dips between grid points.
     ok: low.rho.value >= rhoMin - 1e-5 && low.p >= pMin - 1e-6,
-    support: splineSupport(knots, values, { periodic: true }),
+    support,
     psiStart,
     psiBrace,
     psiFull,
