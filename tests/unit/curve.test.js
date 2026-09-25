@@ -119,7 +119,7 @@ describe('generateCurve', () => {
 
   it('follows peak, let-off, rise and valley inputs', () => {
     for (const [peak, letOff, riseFraction, valleyWidth] of [
-      [100, 0.5, 0.2, 2 * INCH],
+      [100, 0.5, 0.2, 2.5 * INCH],
       [600, 0.9, 0.5, 1.5 * INCH],
       [267, 0.65, 0.3, 3 * INCH],
     ]) {

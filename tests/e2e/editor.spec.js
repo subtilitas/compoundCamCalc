@@ -25,7 +25,7 @@ test('dragging a point with the mouse moves it, undo restores it', async ({ page
   await expect(force).not.toHaveValue('267.0');
   // Dragging down lowers the force; the draw length stays.
   expect(Number(await force.inputValue())).toBeLessThan(267);
-  await expect(page.getByTestId('point-x-4')).toHaveValue('22.99');
+  await expect(page.getByTestId('point-x-4')).toHaveValue('21.13');
   await expect(app).toHaveAttribute('data-curve-mode', 'custom');
   await expect(page.getByTestId('curve-mode')).toHaveText('Custom');
 
@@ -43,31 +43,32 @@ test('arrow keys move a focused point by 1 N, Shift by 10 N, Ctrl+Z undoes', asy
   await point.focus();
   await expect(page.locator('#app')).toHaveAttribute('data-selected', '3');
   await page.keyboard.press('ArrowUp');
-  await expect(point).toHaveAttribute('aria-label', /^Point 3: 14\.5 in, 268 N\. Arrow keys move it\.$/);
+  await expect(point).toHaveAttribute('aria-label', /^Point 3: 17\.8 in, 268 N\. Arrow keys move it\.$/);
   await expect(page.getByTestId('point-f-3')).toHaveValue('268.0');
   await page.keyboard.press('Shift+ArrowUp');
   await expect(page.getByTestId('point-f-3')).toHaveValue('278.0');
   await page.keyboard.press('ArrowRight');
-  await expect(page.getByTestId('point-x-3')).toHaveValue('14.57');
+  await expect(page.getByTestId('point-x-3')).toHaveValue('17.89');
   await page.keyboard.press('Control+z');
-  await expect(page.getByTestId('point-x-3')).toHaveValue('14.47');
+  await expect(page.getByTestId('point-x-3')).toHaveValue('17.79');
   await page.keyboard.press('Control+Shift+z');
-  await expect(page.getByTestId('point-x-3')).toHaveValue('14.57');
+  await expect(page.getByTestId('point-x-3')).toHaveValue('17.89');
 });
 
 test('the toolbar adds a point and the Delete key removes it', async ({ page }) => {
   const app = page.locator('#app');
   await page.getByTestId('btn-add-point').click();
   await expect(app).toHaveAttribute('data-point-count', '8');
-  await expect(page.getByTestId('chart-point-4')).toBeFocused();
-  await expect(page.getByTestId('edit-status')).toHaveText('Point 4 added');
+  // The widest gap lies between points 2 and 3.
+  await expect(page.getByTestId('chart-point-3')).toBeFocused();
+  await expect(page.getByTestId('edit-status')).toHaveText('Point 3 added');
   await page.keyboard.press('Delete');
   await expect(app).toHaveAttribute('data-point-count', '7');
-  await expect(page.getByTestId('edit-status')).toHaveText('Point 4 removed');
-  await expect(page.getByTestId('chart-point-3')).toBeFocused();
+  await expect(page.getByTestId('edit-status')).toHaveText('Point 3 removed');
+  await expect(page.getByTestId('chart-point-2')).toBeFocused();
   await page.keyboard.press('+');
   await expect(app).toHaveAttribute('data-point-count', '8');
-  await expect(page.getByTestId('chart-point-4')).toBeFocused();
+  await expect(page.getByTestId('chart-point-3')).toBeFocused();
 });
 
 test('the brace and full-draw points cannot be removed', async ({ page }) => {
@@ -131,7 +132,7 @@ test('invalid table entries show an inline message and are not applied', async (
   await expect(x).toHaveAttribute('aria-invalid', 'true');
   await x.fill('40');
   await x.press('Enter');
-  await expect(message).toHaveText(/^Enter a draw length between 10\.84 and 22\.88 in$/);
+  await expect(message).toHaveText(/^Enter a draw length between 12\.17 and 21\.02 in$/);
   await expect(page.locator('#app')).toHaveAttribute('data-curve-mode', 'parametric');
   await x.fill('15,5');
   await x.press('Enter');
@@ -168,7 +169,7 @@ test('settings fields validate and sliders update the curve live', async ({ page
   await page.getByTestId('field-letoff').press('Enter');
   await expect(page.getByTestId('stat-letoff')).toHaveText('70.0 %');
   await page.getByTestId('btn-undo').click();
-  await expect(page.getByTestId('stat-letoff')).toHaveText('80.0 %');
+  await expect(page.getByTestId('stat-letoff')).toHaveText('75.0 %');
 });
 
 test('the peak slider reaches the bounds of its field in lbf', async ({ page }) => {

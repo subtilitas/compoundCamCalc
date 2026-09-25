@@ -29,13 +29,15 @@ function median(fn, runs) {
 describe('forward model performance', () => {
   it(`solves ${COARSE_SAMPLES} samples within ${COARSE_BUDGET} ms and ${FULL_SAMPLES} samples within ${FULL_BUDGET} ms`, () => {
     const state = defaultState();
-    // A 45 mm string groove: the 36 mm groove of the current preset wraps the
-    // string more than one turn over the 29 in draw ('wrap-overlap').
+    // Default geometry with a 45 mm eccentric string groove (offset 6 mm),
+    // an eccentric cable groove and a 27 N/mm limb with 30 mm preload.
     const input = {
       geometry: state.geometry,
-      stringTrack: stringTrackSupport({ ...state.stringTrack, radius: 0.045 }, state.cords.stringDiameter),
+      stringTrack: stringTrackSupport({ ...state.stringTrack, shape: 'eccentric', radius: 0.045, offset: 0.006, phase: 0 }, state.cords.stringDiameter),
       cableTrack: offset(eccentricCircle({ radius: 0.018, offset: 0.008, phase: -Math.PI / 6 }), state.cords.cableDiameter / 2),
-      limb: /** @type {import('../../src/core/limb.js').LimbData} */ (limbFromState(state.limb, state.geometry.limbLength).limb),
+      limb: /** @type {import('../../src/core/limb.js').LimbData} */ (
+        limbFromState({ ...state.limb, mode: 'stiffness', stiffness: 27e3, preloadTravel: 0.03 }, state.geometry.limbLength).limb
+      ),
     };
     const t0 = performance.now();
     const first = solveForward(input);

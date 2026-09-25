@@ -39,7 +39,7 @@ describe('default preset', () => {
     expect(s.geometry.braceHeight / INCH).toBeCloseTo(6.5, 12);
     expect(s.geometry.drawLength / INCH).toBeCloseTo(29, 12);
     expect(s.curve.params.peak).toBe(267);
-    expect(s.curve.params.letOff).toBe(0.8);
+    expect(s.curve.params.letOff).toBe(0.75);
     expect(s.cords.stringDiameter).toBe(0.0025);
     expect(s.curve.mode).toBe('parametric');
     expect(s.units).toEqual({ draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' });
@@ -50,7 +50,7 @@ describe('default preset', () => {
     expect(validate(s)).toEqual([]);
     const m = pointMetrics(s.curve.points);
     expect(m.peak).toBeCloseTo(267, 9);
-    expect(m.letOff).toBeCloseTo(0.8, 9);
+    expect(m.letOff).toBeCloseTo(0.75, 9);
     expect(s.curve.points[0].x).toBe(s.geometry.braceHeight);
     expect(s.curve.points.at(-1)?.x).toBeCloseTo(s.geometry.drawLength - AMO_OFFSET, 15);
   });
@@ -125,15 +125,15 @@ describe('validate', () => {
   });
 
   it('checks track and limb consistency', () => {
-    expect(messagesAt(modified((s) => (s.stringTrack.offset = 0.04)), 'stringTrack.offset')).toEqual([
+    expect(messagesAt(modified((s) => (s.stringTrack.offset = 0.05)), 'stringTrack.offset')).toEqual([
       'String track offset must be smaller than the radius',
     ]);
     const ellipse = modified((s) => {
       s.stringTrack.shape = 'ellipse';
-      s.stringTrack.offset = 0.035;
+      s.stringTrack.offset = 0.045;
     });
     expect(messagesAt(ellipse, 'stringTrack.offset')).toEqual(['String track offset must be smaller than the semi-minor axis']);
-    const wide = modified((s) => (s.stringTrack.semiMinor = 0.045));
+    const wide = modified((s) => (s.stringTrack.semiMinor = 0.055));
     expect(messagesAt(wide, 'stringTrack.semiMinor')).toEqual([
       'String track semi-minor axis must not exceed the semi-major axis',
     ]);

@@ -30,21 +30,24 @@ export const MIN_LET_OFF = 1e-6;
 /**
  * Fractions used by the parametric generator.
  * - rampX, rampF: the ramp point sits at rampX of the rise with rampF of the peak
- *   (a concave rise from brace).
+ *   (a gentle start: the slope at brace sets the brace string tension
+ *   F'(x_b)·l_0/2, which the limb moment at brace must hold).
  * - plateau: the peak plateau takes this fraction of the space between peak
  *   start and valley start.
  * - transitionF: the let-off transition point sits halfway between plateau end
  *   and valley start, at this fraction of the drop from peak to holding weight.
  * - riseFraction: rise from brace to peak as a fraction of the power stroke.
- * - valleyWidth: target valley width in m (1.25 in).
+ * - valleyWidth: target valley width in m (1.2 in).
+ * The values give the default preset a cam that the solver builds without
+ * diagnostics (see docs/PLAN.md, default preset).
  */
 export const GENERATOR_DEFAULTS = Object.freeze({
   rampX: 0.4,
-  rampF: 0.7,
-  plateau: 0.6,
-  transitionF: 0.5,
-  riseFraction: 0.3,
-  valleyWidth: 1.25 * INCH,
+  rampF: 0.38,
+  plateau: 0.3,
+  transitionF: 0.67,
+  riseFraction: 0.46,
+  valleyWidth: 1.2 * INCH,
 });
 
 /**

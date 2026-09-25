@@ -30,7 +30,7 @@ All notable changes are listed here. Versions follow semantic versioning.
 - Project state (`src/state/`): schema version 1 in SI units with
   validation messages in plain words, migration of saved data, JSON codec
   that never throws, default preset (ATA 33 in, brace height 6.5 in, draw
-  length 29 in, peak 267 N, let-off 80 %, string diameter 2.5 mm) and a
+  length 29 in, peak 267 N, let-off 75 %, string diameter 2.5 mm) and a
   store with undo and redo of 100 steps and transactions for drag gestures,
   during which undo and redo wait; geometry changes keep the 0.1 in gap
   between custom points.
@@ -70,3 +70,30 @@ All notable changes are listed here. Versions follow semantic versioning.
   input, so no intermediate quantity reaches the floating-point limits.
 - Model description with derivations and verification tolerances
   (`docs/model.md`).
+- Inverse model (`src/core/inverse.js`): power-cable track from the target
+  force curve, the string track and the limb, sample by sample from the
+  energy balance, the string closure and the cam and limb balance, with the
+  cable lever arm in closed form; brace conditions with the analytic
+  F''(x_b); brace blend of the cable track over the first curve segment
+  that keeps the target state at point 2; cable samples near a uniform
+  0.25° grid. Round trip forward → inverse recovers an eccentric cable
+  track to 1e-12 m and the concentric case to 6e-13 m.
+- Constrained fit of the cable track (`src/core/fit.js`): C2 spline by
+  least squares with the limits on radius of curvature and lever arm and
+  with the target force and energy at the curve points, solved by a dense
+  dual active-set quadratic programming solver (`src/core/qp.js`).
+- Closed cam outline (`src/core/outline.js`): lead-in arc, closing blend,
+  periodic cable track, groove bottom and flange offsets, string, cable and
+  cable stop posts, timing marks, sampled outlines and the cam maximum
+  dimension.
+- Solver entry point (`src/core/solve.js`): project state to cable track,
+  outlines, achieved force curve, tensions and metrics in about 17 ms
+  (coarse) and 25 ms (full) for the default preset, with 19 diagnostic
+  codes whose messages carry numbers and units and whose suggestions name
+  the input to change; never throws.
+- Default preset tuned so the solver builds its cam without diagnostics:
+  let-off 75 %, limb 2.6 N/mm with 192 mm preload travel, eccentric string
+  groove of radius 45 mm with 22 mm offset towards −122°, parametric
+  generator with a gentle start (ramp point at 38 % of the peak) and a
+  later peak (rise 46 % of the power stroke); draw energy 93.0 J. Let-off
+  80 % misses the fit tolerance (`docs/PLAN.md`).
