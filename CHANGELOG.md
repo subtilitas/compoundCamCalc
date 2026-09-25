@@ -6,6 +6,33 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Plausibility warnings (`src/core/plausibility.js`) for a cam wider than
+  35 % of the axle-to-axle length and for cams that overlap at a draw
+  position. The results card, the status line and the print report list
+  them; they do not stop the exports.
+- Share link (`src/state/share.js`): File → Copy share link copies a link
+  whose `#design=` fragment holds the inputs and name as base64url JSON
+  (about 1.6 KB for the default design). Opening the link asks first when
+  the working copy has unsaved changes (Save mine first…, Open without
+  saving, Keep my design) and keeps the display units of the person who
+  opens it. A cut-off or damaged link shows a notice and changes nothing.
+- Help dialog from a Help button in the page header (`src/ui/help.js`):
+  quick start in 5 steps, the keyboard shortcuts, every glossary term and a
+  link to the user guide in the wiki. No keyboard shortcut opens it.
+- Glossary terms for limb energy, axle travel, cam rotation, lever arm,
+  radius of curvature, minimum bend radius and minimum wall, with info
+  buttons on the minimum wall and minimum bend radius settings, on the
+  results values (achieved peak, limb energy, axle travel, cam rotation and
+  the smallest radii of curvature) and on the lever arm in the cam view
+  legend. The Terms section of the user guide repeats every glossary text
+  word for word; a unit test checks it.
+- Print report: a Print report button in the Export panel and the print
+  command of the browser print the last cam that met every check with its
+  inputs, target statistics, results, diagnostics, force chart, cam at
+  brace, string plan, build lengths, loads and a force table at 10 % steps,
+  in the current display units and light colours (`src/ui/report.js`,
+  `src/ui/staticchart.js`). Save as PDF through the print dialog of the
+  browser.
 - File menu in the page header: Save, Save as…, Open… (with Rename and
   Delete), Open sample…, Reset to default, Save to file (.json) and Open
   from file…; named designs in the browser (`src/state/library.js`), an

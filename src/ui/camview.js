@@ -16,6 +16,7 @@
 import { fromSI } from '../core/units.js';
 import { DIMS_DECIMALS, angleText, dimsText, drawText, fixed } from './display.js';
 import { h, setAttrs, svg } from './dom.js';
+import { infoButton } from './glossary.js';
 import { FIT_PADDING, KEYS_HELP, coord, createViewport, viewBoxFor } from './viewport.js';
 
 export {
@@ -30,6 +31,7 @@ export {
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../state/schema.js').Units} Units */
 /** @typedef {import('./viewport.js').Bounds} Bounds */
+/** @typedef {keyof typeof import('./glossary.js').GLOSSARY} GlossaryKey */
 
 /** Draw order: cable flange under string flange, then grooves and pitch lines. */
 const LAYERS = /** @type {const} */ ([
@@ -68,10 +70,11 @@ export const PENDING_CAPTION = 'Cam of the previous inputs; solving the current 
 /** Caption shown over a stale drawing when the solver stopped with an error. */
 export const ERROR_STALE_CAPTION = 'Last cam that met every check; the solver stopped with an error on the current inputs';
 /**
- * Legend rows: label and swatch shape with its classes.
- * @type {readonly { label: string, shape: 'rect' | 'line' | 'dashed' | 'circle', cls: string }[]}
+ * Legend rows: label, swatch shape with its classes, and the glossary entry
+ * of an info button.
+ * @type {readonly { label: string, shape: 'rect' | 'line' | 'dashed' | 'circle', cls: string, glossary?: GlossaryKey }[]}
  */
-const LEGEND = Object.freeze([
+export const LEGEND = Object.freeze([
   { label: 'String track', shape: 'rect', cls: 'cam-flange cam-string' },
   { label: 'Cable track', shape: 'rect', cls: 'cam-flange cam-cable' },
   { label: 'Groove bottom (dashed)', shape: 'dashed', cls: 'cam-groove cam-string' },
@@ -80,7 +83,7 @@ const LEGEND = Object.freeze([
   { label: 'Axle bore', shape: 'circle', cls: 'cam-bore' },
   { label: 'Timing mark', shape: 'line', cls: 'cam-mark' },
   { label: 'Contact point', shape: 'circle', cls: 'cam-contact' },
-  { label: 'Lever arm (axle to cord)', shape: 'dashed', cls: 'cam-lever' },
+  { label: 'Lever arm (axle to cord)', shape: 'dashed', cls: 'cam-lever', glossary: 'leverArm' },
   { label: 'Cord direction', shape: 'line', cls: 'cam-cord' },
 ]);
 
@@ -324,7 +327,8 @@ export function createCamView(container) {
   const legend = h(
     'ul',
     { class: 'camview-legend', id: legendId, 'data-testid': 'camview-legend', 'aria-label': 'Cam view legend' },
-    ...LEGEND.map((row) => h('li', { class: 'camview-legend-item' }, swatch(row.shape, row.cls), row.label)),
+    ...LEGEND.map((row) => h('li', { class: 'camview-legend-item' }, swatch(row.shape, row.cls), row.label,
+      ...(row.glossary ? [infoButton(row.glossary)] : []))),
   );
   container.append(viewport.controls, root, poseLine, legend, caption);
 

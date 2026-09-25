@@ -42,6 +42,7 @@ import {
   CLOSED_TOLERANCE, cableStopPost, closeCableTrack, createPiecewise, maxDimension, minimumOn, sampleOutline, terminationPost,
   trackMark, trackOffsets,
 } from './outline.js';
+import { plausibility } from './plausibility.js';
 import { createSupport, stringTrackSupport, toSupportData } from './support.js';
 import { FIELDS, validate } from '../state/schema.js';
 
@@ -181,6 +182,9 @@ export const RESOLUTIONS = Object.freeze({
  * @typedef {object} SolveResult
  * @property {'ok' | 'infeasible' | 'no-convergence'} status
  * @property {SolveDiagnostic[]} diagnostics
+ * @property {import('./plausibility.js').Warning[]} warnings designs that meet
+ *   every check but cannot be built or used as drawn; they do not change the
+ *   status
  * @property {'coarse' | 'full'} resolution
  * @property {{ x: Float64Array, F: Float64Array } | null} target target force
  *   curve after the brace correction, on the forward grid
@@ -233,6 +237,7 @@ function emptyResult(resolution) {
   return {
     status: 'infeasible',
     diagnostics: [],
+    warnings: [],
     resolution,
     target: null,
     achieved: null,
@@ -920,6 +925,12 @@ function solveState(state, resolution, maxIterations, trials) {
   }
   diags.push(...violations);
   suggestChange(closing);
+  res.warnings = plausibility({
+    ata: geometry.ata,
+    camMaxDimension: res.metrics.camMaxDimension,
+    outlines: [res.outlines.stringFlange, res.outlines.cableFlange].filter((o) => o !== undefined),
+    achieved: { x: forward.x, theta: forward.theta, axleY: forward.axleY, n: forward.n },
+  }, fmt);
   return res;
 }
 

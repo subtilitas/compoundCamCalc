@@ -18,7 +18,7 @@ results, the draw position, the cam view, the string plan and the loads.
 - **Loads** panel: string tension, cable tension and limb tip load against
   the draw.
 - **Export** panel: cut files of the cam plates, drawings and the force
-  table.
+  table, and the print report.
 - **Settings** panel: bow geometry, draw force, limbs, string track, cords,
   cam body and display units.
 
@@ -184,6 +184,13 @@ older solve that finishes late is shown until the newer one arrives.
 - **Problems** lists each problem with numbers and units and a suggestion
   that names the input to change. Draw ranges of problems are shaded on the
   chart.
+- **Warnings** lists designs the solver accepts but that cannot be built
+  or used as drawn. Warnings do not change the status and do not stop the
+  exports; the status line counts them ("; 1 warning"). Two checks exist:
+  - The cam is wider than 35 % of the axle-to-axle length. The sample
+    designs lie between 10 % and 21 %.
+  - The top and bottom cams overlap at a draw position. The message gives
+    the draw range and the overlap in the dimension unit.
 
 The chart shows the achieved force curve of the cam as a dashed line over
 the target. When the latest input fails a check, the dashed line is labelled
@@ -381,6 +388,43 @@ comma, open it with the text import and choose comma as the separator.
 On a phone, some in-app browsers block downloads; open the page in the
 browser app instead.
 
+## Print report
+
+**Print report** in the Export panel opens the print dialog of the browser
+with a report of the cam. The print command of the browser (Ctrl+P, or
+Cmd+P on a Mac) prints the same report. To keep a PDF (Portable Document
+Format) file, choose **Save as PDF** as the printer in the print dialog.
+
+The report describes the same cam as the export files: the last cam that
+met every check, with the inputs it was solved for. Values show in the
+display units selected now. The report contains:
+
+- the design name, the date and time of printing, the app version and a
+  sentence that names the cam: "This report shows the current cam" or,
+  when the inputs changed after that cam, "This report shows the last cam
+  that met every check", ending with "later edits are not included";
+- the inputs, grouped and labelled as in Settings: bow geometry, draw force
+  with the curve mode, limbs, string track, cords and cam body;
+- the statistics of the target curve and the values of the Results panel,
+  with its problems and suggestions;
+- the force chart with the target and the achieved curve, and lines at
+  brace and full draw;
+- the cam and the string plan at brace;
+- the build lengths of the string plan;
+- the loads chart and the largest loads;
+- a force table at 10 % steps of the draw from brace to full draw: draw
+  force, string tension, cable tension, limb tip load and cam rotation;
+- the note that the model is static.
+
+The report prints in light colours, also when the screen uses a dark
+colour scheme. Page margins are 12 mm; the page size comes from the print
+dialog, so A4 and Letter both work. Figures and table rows do not split
+across pages, and the force table repeats its header on each page.
+
+Before any cam meets every check, the button does nothing and the status
+line says why; the print command of the browser then prints the page as
+it is.
+
 ## Parametric and custom curves
 
 The badge next to the chart title shows the curve mode.
@@ -430,6 +474,7 @@ the name:
 | Open sample… | Lists the sample designs. A sample opens as an unsaved design. |
 | Reset to default | Replaces all inputs with the default design. The name stays; Undo restores the inputs. |
 | Save to file (.json) | Downloads the inputs as `<name>.json`. |
+| Copy share link | Copies a link to the design to the clipboard. See [Share link](#share-link). |
 | Open from file… | Reads such a file. A file that is empty, larger than 1 MB or not a valid project changes nothing and the message names the reason. Missing values take their defaults, and the message says so. A file without force curve points gets the curve generated from its geometry and curve parameters. |
 
 Opening a design, a sample or a file asks first when the current inputs
@@ -459,6 +504,48 @@ perimeters of a 0.4 mm nozzle) and uses 1.4 mm plates (7 layers of
 0.2 mm); a printed part holds about ±0.1 to 0.2 mm, coarser than the
 0.01 mm of the export files.
 
+## Share link
+
+**File → Copy share link** copies a link that opens the current design.
+The message "Share link copied (N characters)" gives its length. When the
+browser does not allow copying, a dialog shows the link in a selected
+field: copy it with Ctrl+C, or Command+C on a Mac.
+
+What the link contains:
+
+- Every input of the design and its name, as text in the link after
+  `#design=`. There is no server copy: the link is the design.
+- Anyone who has the link can read all inputs. Share it only with people
+  who may see the design.
+- The browser does not send the part after `#` to the web server.
+
+Opening a link:
+
+- Over an unchanged working copy, the design opens at once as an unsaved
+  design, marked "(not saved)", with the name from the link. Display units
+  stay those of the person who opens it.
+- With unsaved changes, or inputs of a deleted design, a dialog asks
+  first. **Save mine first…** stores the working copy under a name, then
+  opens the shared design. **Open without saving** discards the changes.
+  **Keep my design** leaves the inputs as they are; a notice then offers
+  **Open shared design** for later.
+- A link that is cut off or damaged, for example by a chat app that
+  shortens long messages, changes nothing. A notice names the reason: ask
+  for the whole link, or for a project file (Save to file).
+- A link from a newer version of the app asks to reload the page. The link
+  stays in the address bar, so the reload opens it.
+- After the link is handled, the address bar shows the page address
+  without `#design=`, so a reload does not open the link again.
+
+The browser keeps one working copy for all tabs. Opening a link in a
+second tab replaces that saved working copy; the design in the first tab
+stays on screen until that tab is reloaded. Save a design under a name
+first to keep it.
+
+A link of the default design has about 1,600 characters. Most browsers
+and chat apps handle this, but some shorten long messages. A link longer
+than 64 KB (65,536 characters) is refused.
+
 ## Saving
 
 The working copy is saved in the browser (localStorage) 300 ms after each change,
@@ -481,24 +568,47 @@ when the page closes.
 | Draw energy | Area under the curve from brace to full draw, in J or ft·lbf |
 | Power stroke | Distance from brace to full draw: draw length − 1.75 in − brace height |
 
+## Help
+
+The **Help** button next to the File button opens the help dialog. No
+keyboard shortcut opens it; Tab to the button and press Enter or Space. The
+dialog holds:
+
+- a quick start in 5 steps;
+- the keyboard shortcuts of the force chart, undo and redo, the cam view
+  and string plan, the draw position slider, and the dialogs;
+- every term of the list below, with the same text;
+- a link to this user guide on GitHub, which opens in a new tab.
+
+The focus starts on the dialog heading. The page behind the dialog does not
+respond while it is open. **Close** at the top or the bottom, or Escape,
+closes the dialog, and the focus returns to the Help button. The dialog
+scrolls within 90 % of the window height.
+
 ## Terms
 
-- **ATA** (axle-to-axle length): distance between the two cam axles of the
-  braced bow.
-- **Brace height**: distance from the grip pivot point to the string of the
-  braced bow at rest.
-- **Draw length (AMO)**: distance from the nock point to the grip pivot
-  point at full draw plus 1.75 in.
-- **Let-off**: drop from the peak draw force to the holding weight, as a
-  percentage of the peak.
-- **Holding weight**: lowest draw force between the peak and full draw, the
-  force the archer holds at full draw.
-- **Valley**: draw range around the holding weight where the force stays
-  below the holding weight plus 5 % of the peak.
-- **Power stroke**: distance the string travels from brace to full draw.
-- **Draw energy**: energy stored by drawing the bow.
+The definitions below are the texts of the info buttons and of the help
+dialog, word for word. A unit test keeps them the same.
 
-The info buttons next to these terms show the same definitions. They open
+- Axle-to-axle length (ATA): distance between the two cam axles of the braced bow.
+- Brace height: distance from the grip pivot point to the string of the braced bow at rest.
+- Draw length (AMO): distance from the nock point to the grip pivot point at full draw plus 1.75 in, as defined by the Archery Manufacturers Organization (AMO).
+- Peak draw force: highest force on the draw force curve.
+- Let-off: drop from the peak draw force to the holding weight, as a percentage of the peak.
+- Holding weight: lowest draw force between the peak and full draw, the force the archer holds at full draw.
+- Valley: draw length range around the holding weight in which the force stays below the holding weight plus 5 % of the peak.
+- Power stroke: distance the string travels from brace to full draw, equal to draw length minus 1.75 in minus brace height.
+- Draw energy: energy stored by drawing the bow, the area under the force curve from brace to full draw.
+- Limb energy: elastic energy stored in both limbs at full draw, counted from the unstrung limbs, so it includes the preload energy at brace.
+- Axle travel: length of the arc the axle moves from brace to full draw, the limb lever length times the limb rotation at full draw.
+- Cam rotation: angle the cam turns about its axle, counted from its position at brace. The results give the rotation at full draw.
+- Lever arm: perpendicular distance from the axle centre to the line of a cord at its contact point on the track pitch line. The cord tension times the lever arm is the torque of that cord on the cam.
+- Radius of curvature: radius of the circle that matches the bend of a track pitch line at a point, ρ = p + p'' with the lever arm p as a function of the contact angle. A smaller value is a sharper bend.
+- Minimum bend radius: smallest radius of curvature allowed on a track pitch line. The solver uses the larger of this value and half the cord diameter plus 0.2 mm, so the groove bottom stays convex.
+- Minimum wall: smallest material thickness between the bottom of a track groove and the axle bore. Every groove bottom stays at least the bore radius plus this wall from the axle centre.
+
+Info buttons stand next to the settings, stats and results values with a
+term, and next to the lever arm in the cam view legend. They open
 with a click, a tap, or Enter and Space on the keyboard, below the button or
 above it near the bottom of the window, and close with Escape, a click
 outside, or when the page scrolls.

@@ -14,7 +14,7 @@ import { fromJSON, migrate, toJSON, validate } from './schema.js';
 export const LIBRARY_VERSION = 1;
 /** Longest design name, in characters. */
 export const NAME_MAX = 80;
-/** Largest project file accepted by Open from file, in bytes. */
+/** Largest project file accepted by Open from file, and largest decoded share link, in bytes. */
 export const FILE_MAX = 1024 * 1024;
 
 /**
@@ -114,7 +114,9 @@ export function listDesigns(library) {
  * @returns {{ name: string, error: string | null }}
  */
 export function normalizeName(name) {
-  const n = String(name).normalize('NFC').replace(/\s+/g, ' ').trim();
+  // Control and format characters (bidirectional overrides, zero-width
+  // characters) would change how the text around a name reads.
+  const n = String(name).normalize('NFC').replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim();
   if (n.length === 0) return { name: n, error: 'Enter a name' };
   if (n.length > NAME_MAX) return { name: n, error: `A name has at most ${NAME_MAX} characters` };
   return { name: n, error: null };
@@ -237,8 +239,20 @@ export function nameOfFile(fileName) {
  * @returns {{ state: ProjectState | null, error: string | null, filled: boolean }}
  */
 export function readProjectFile(text, bytes) {
-  if (bytes > FILE_MAX) return { state: null, error: `The file is larger than ${FILE_MAX / 1024 / 1024} MB`, filled: false };
-  if (bytes === 0 || text.trim() === '') return { state: null, error: 'The file is empty', filled: false };
+  return readProjectText(text, bytes, 'file');
+}
+
+/**
+ * Read project text from a source the messages name: "The <noun> is
+ * empty", "The <noun> is larger than 1 MB".
+ * @param {string} text
+ * @param {number} bytes size of the source
+ * @param {string} noun 'file' or 'link'
+ * @returns {{ state: ProjectState | null, error: string | null, filled: boolean }}
+ */
+export function readProjectText(text, bytes, noun) {
+  if (bytes > FILE_MAX) return { state: null, error: `The ${noun} is larger than ${FILE_MAX / 1024 / 1024} MB`, filled: false };
+  if (bytes === 0 || text.trim() === '') return { state: null, error: `The ${noun} is empty`, filled: false };
   const { state, errors } = fromJSON(text);
   if (errors.length > 0) return { state: null, error: errors[0].message, filled: false };
   // A field of the state the file lacks took its default value; extra

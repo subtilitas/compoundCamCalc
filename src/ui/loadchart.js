@@ -89,18 +89,60 @@ export function tableRows(ctx) {
 }
 
 /**
+ * Largest value of each load series with its draw position, and the limb
+ * tip load at brace, as label, test id and text.
+ * @param {LayoutContext['loads']} L
+ * @param {Units} u
+ * @returns {{ label: string, key: string, text: string }[]}
+ */
+export function loadMaxima(L, u) {
+  const f = (/** @type {number} */ v) => `${forceText(v, u, true)} ${u.force}`;
+  const at = (/** @type {number} */ x) => `${drawText(x, u, true)} ${u.draw}`;
+  return [
+    { label: 'String tension', key: 'load-peak-Ts', text: `${f(L.maxTs.value)} at ${at(L.maxTs.x)}` },
+    { label: 'Cable tension, each cable', key: 'load-peak-Tc', text: `${f(L.maxTc.value)} at ${at(L.maxTc.x)}` },
+    { label: 'Load on each limb tip', key: 'load-peak-axle', text: `${f(L.maxAxle.value)} at ${at(L.maxAxle.x)}` },
+    { label: 'Limb tip load at brace', key: 'load-brace-axle', text: f(L.braceAxle) },
+  ];
+}
+
+/**
+ * Load table as text at 10 % steps of the draw (tableRows): header and one
+ * row per step, in the display units. A step without values shows '—'.
+ * @param {LayoutContext} ctx
+ * @param {Units} u
+ * @returns {{ head: string[], rows: string[][] }}
+ */
+export function loadTable(ctx, u) {
+  const head = [`Draw (AMO), ${u.draw}`, `Draw force, ${u.force}`, `String tension, ${u.force}`, `Cable tension, ${u.force}`,
+    `Limb tip load, ${u.force}`, 'Cam turned'];
+  const rows = tableRows(ctx).map(({ fraction, pose }) => {
+    const x = fraction === 1 ? ctx.xFull : ctx.xBrace + fraction * (ctx.xFull - ctx.xBrace);
+    const cells = pose
+      ? [forceText(pose.F, u), forceText(pose.Ts, u), forceText(pose.Tc, u), forceText(pose.axleLoad, u), angleText(pose.theta)]
+      : ['—', '—', '—', '—', '—'];
+    return [drawText(x, u), ...cells];
+  });
+  return { head, rows };
+}
+
+/**
  * @typedef {object} LoadChart
  * @property {(ctx: LayoutContext | null, units: Units, stale: boolean, outdated?: boolean) => void} render
  *   draw the loads of a layout; the same layout, units and stale flag again do nothing
  * @property {(pose: BowPose | null, units: Units) => void} setPose move the marker and the readout
+ * @property {() => void} destroy remove the elements and stop following the width
  */
 
 /**
- * Build the loads chart inside a container.
+ * Build the loads chart inside a container. With a fixed width the chart
+ * keeps that size and shows only the chart, its legend and caption, as in
+ * the print report; otherwise it follows the width of the container.
  * @param {HTMLElement} container
+ * @param {{ width?: number }} [options] width (px)
  * @returns {LoadChart}
  */
-export function createLoadChart(container) {
+export function createLoadChart(container, { width: fixedWidth } = {}) {
   const root = svg('svg', { class: 'chart load-chart', 'data-testid': 'load-chart', role: 'img', 'aria-label': 'Loads chart: no cam yet' });
   const bg = svg('rect', { class: 'chart-bg' });
   const grid = svg('g', { class: 'chart-grid', 'aria-hidden': 'true' });
@@ -133,7 +175,8 @@ export function createLoadChart(container) {
       h('table', {}, h('caption', { class: 'visually-hidden' }, 'Loads at 10 % steps of the draw'), thead, tbody)));
   const caption = h('p', { class: 'camview-caption', 'data-testid': 'load-caption', 'aria-live': 'polite' });
   caption.hidden = true;
-  container.append(root, legend, now, peaksHeading, peaks, table, caption);
+  if (fixedWidth) container.append(root, legend, caption);
+  else container.append(root, legend, now, peaksHeading, peaks, table, caption);
 
   /** @type {LayoutContext | null} */
   let ctx = null;
@@ -153,7 +196,7 @@ export function createLoadChart(container) {
     }
     const c = ctx;
     const u = units;
-    const W = Math.max(Math.round(container.clientWidth), 200);
+    const W = fixedWidth ?? Math.max(Math.round(container.clientWidth), 200);
     const H = Math.round(Math.min(360, Math.max(220, W * 0.5)));
     const left = MARGIN.left;
     const right = W - MARGIN.right;
@@ -238,12 +281,13 @@ export function createLoadChart(container) {
 
   // Redraw on width changes only.
   let observedWidth = -1;
-  new ResizeObserver((entries) => {
+  const resize = fixedWidth ? null : new ResizeObserver((entries) => {
     const width = Math.round(entries[entries.length - 1].contentRect.width);
     if (width === observedWidth) return;
     observedWidth = width;
     requestAnimationFrame(draw);
-  }).observe(container);
+  });
+  resize?.observe(container);
 
   return {
     render(next, u, isStale, outdated = false) {
@@ -277,26 +321,14 @@ export function createLoadChart(container) {
       const f = (/** @type {number} */ v) => `${forceText(v, u, true)} ${u.force}`;
       const at = (/** @type {number} */ x) => `${drawText(x, u, true)} ${u.draw}`;
       const L = next.loads;
-      fill(peaks, [
-        ['String tension', 'load-peak-Ts', `${f(L.maxTs.value)} at ${at(L.maxTs.x)}`],
-        ['Cable tension, each cable', 'load-peak-Tc', `${f(L.maxTc.value)} at ${at(L.maxTc.x)}`],
-        ['Load on each limb tip', 'load-peak-axle', `${f(L.maxAxle.value)} at ${at(L.maxAxle.x)}`],
-        ['Limb tip load at brace', 'load-brace-axle', f(L.braceAxle)],
-      ]);
+      fill(peaks, loadMaxima(L, u).map((m) => /** @type {[string, string, string]} */ ([m.label, m.key, m.text])));
       setAttrs(root, {
         'aria-label': `Loads chart: string tension, cable tension and limb tip load against the draw; ` +
           `largest limb tip load ${f(L.maxAxle.value)} at ${at(L.maxAxle.x)}; the table below lists the values`,
       });
-      thead.replaceChildren(h('tr', {},
-        ...[`Draw (AMO), ${u.draw}`, `Draw force, ${u.force}`, `String tension, ${u.force}`, `Cable tension, ${u.force}`,
-          `Limb tip load, ${u.force}`, 'Cam turned'].map((t) => h('th', { scope: 'col' }, t))));
-      tbody.replaceChildren(...tableRows(next).map(({ fraction, pose }) => {
-        const x = next.xBrace + fraction * (next.xFull - next.xBrace);
-        const cells = pose
-          ? [forceText(pose.F, u), forceText(pose.Ts, u), forceText(pose.Tc, u), forceText(pose.axleLoad, u), angleText(pose.theta)]
-          : ['—', '—', '—', '—', '—'];
-        return h('tr', {}, h('td', {}, drawText(fraction === 1 ? next.xFull : x, u)), ...cells.map((c) => h('td', {}, c)));
-      }));
+      const t = loadTable(next, u);
+      thead.replaceChildren(h('tr', {}, ...t.head.map((text) => h('th', { scope: 'col' }, text))));
+      tbody.replaceChildren(...t.rows.map((cells) => h('tr', {}, ...cells.map((c) => h('td', {}, c)))));
     },
     setPose(pose, u) {
       lastPose = pose;
@@ -313,6 +345,10 @@ export function createLoadChart(container) {
         ['Cable tension, each cable', 'load-now-Tc', f(pose.Tc)],
         ['Load on each limb tip', 'load-now-axle', `${f(pose.axleLoad)}${dir ? `, ${dir}` : ''}`],
       ]);
+    },
+    destroy() {
+      resize?.disconnect();
+      for (const el of [root, legend, now, peaksHeading, peaks, table, caption]) el.remove();
     },
   };
 }

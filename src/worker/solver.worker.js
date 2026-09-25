@@ -46,6 +46,7 @@ export function failedResult(resolution, error) {
         'Change any input to solve again, or reload the page if the error repeats',
       ),
     ],
+    warnings: [],
     resolution,
     target: null,
     achieved: null,
