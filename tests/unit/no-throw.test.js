@@ -3,6 +3,7 @@ import { fitCableTrack } from '../../src/core/fit.js';
 import { solveForward } from '../../src/core/forward.js';
 import { bowGeometry } from '../../src/core/geometry.js';
 import { createInverse, inverseAt } from '../../src/core/inverse.js';
+import { bowPoseAt, createBowPose, createLayout } from '../../src/core/layout.js';
 import { limbFromState, tableLimb } from '../../src/core/limb.js';
 import { solveQP } from '../../src/core/qp.js';
 import { solve } from '../../src/core/solve.js';
@@ -28,6 +29,8 @@ const CASES = /** @type {const} */ ([
   ['inverseAt', (/** @type {any} */ v) => inverseAt(v, v, 0.3, 100, 10, 0, 0, v), (/** @type {any} */ r) => r.ok === false],
   ['bowGeometry', (/** @type {any} */ v) => bowGeometry(v, v), (/** @type {any} */ r) => r.bow === null && typeof r.error === 'string'],
   ['tableLimb', (/** @type {any} */ v) => tableLimb(v), (/** @type {any} */ r) => r.limb === null && typeof r.error === 'string'],
+  ['createLayout', (/** @type {any} */ v) => createLayout(v, v), (/** @type {any} */ r) => r.layout === null && typeof r.error === 'string'],
+  ['bowPoseAt', (/** @type {any} */ v) => bowPoseAt(v, 0.3, createBowPose()), (/** @type {any} */ r) => r === false],
   ['limbFromState', (/** @type {any} */ v) => limbFromState(v, v, v), (/** @type {any} */ r) => r.limb === null && typeof r.error === 'string'],
 ]);
 

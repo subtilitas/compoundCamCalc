@@ -551,7 +551,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 3 | Inverse solver, brace conditions, diagnostics, constrained fit, closed outline, achieved-curve overlay (needs the cable track from the inverse solver), cam view, results card, worker |
 | 3a | Model code of slice 3 in `src/core` (inverse, fit, QP solver, outline, diagnostics, `solve`) and the tuned default preset; no user interface |
 | 3b | User interface of slice 3: solver worker (latest request wins, coarse while dragging, full on release), results card with diagnostics, achieved-curve overlay, cam view, settings for limbs, string track, cords and cam body |
-| 4 | String plan layout, build lengths, loads chart, draw-position scrubber |
+| 4 | String plan layout, build lengths, loads chart, draw-position scrubber. Pose and loads in `src/core/layout.js` from the forward-model samples, linear between samples; no change to the solver, the worker or the project schema. The draw position is view state: not saved, not in the undo history, no solve. Zoom and pan shared in `src/ui/viewport.js` |
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export |
 | 6 | STEP export |
 | 7 | Additional presets, JSON save/load, share URL, glossary and help, print report, wiki user guide |

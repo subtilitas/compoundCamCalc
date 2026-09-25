@@ -60,6 +60,8 @@ test.describe('solver in the page', () => {
     await expect(diag).toContainText(/Suggestion: Reduce the lead-in wrap to at most \d+\.\d°/);
     await expect(page.getByTestId('cam-view')).toHaveClass(/cam-stale/);
     await expect(page.getByTestId('cam-cableFlange')).toHaveCount(1);
+    // The pose overlay belongs to the same stale cam and dims with it.
+    await expect(page.getByTestId('cam-overlay')).toHaveCSS('opacity', '0.65');
     // Undo restores the buildable state.
     await page.getByTestId('btn-undo').click();
     await expect(page.locator('#app')).toHaveAttribute('data-solve-status', 'ok', { timeout: 20_000 });
@@ -126,10 +128,16 @@ test.describe('solver in the page', () => {
     await solved(page);
     const view = page.getByTestId('cam-view');
     const fitted = await view.getAttribute('viewBox');
-    const scale = await page.getByTestId('camview-scale').textContent();
+    // Scale bar length as a share of the visible width: a zoom always changes it.
+    const share = () => page.evaluate(() => {
+      const bar = Number(document.querySelector('[data-testid="camview-scale"]')?.getAttribute('data-length'));
+      const size = Number(document.querySelector('[data-testid="cam-view"]')?.getAttribute('viewBox')?.split(' ')[2]);
+      return bar / size;
+    });
+    const before = await share();
     await page.getByTestId('camview-zoom-in').click();
     await expect(view).not.toHaveAttribute('viewBox', /** @type {string} */ (fitted));
-    await expect(page.getByTestId('camview-scale')).not.toHaveText(/** @type {string} */ (scale));
+    expect(Math.abs((await share()) - before)).toBeGreaterThan(0.01);
     await page.getByTestId('camview-fit').click();
     await expect(view).toHaveAttribute('viewBox', /** @type {string} */ (fitted));
   });
@@ -208,6 +216,10 @@ test.describe('solver in the page', () => {
     await page.goto('./');
     await expect(page.getByTestId('camview-caption')).toHaveText('Solving…');
     await expect(page.getByTestId('camview-zoom-in')).toBeDisabled();
+    // No scale bar without a drawing.
+    await expect(page.getByTestId('camview-scale')).toBeHidden();
+    // No full-draw legend row without a full-draw outline.
+    await expect(page.getByTestId('plan-legend').getByText('At full draw (dotted)')).toBeHidden();
     const view = page.getByTestId('cam-view');
     await view.focus();
     await page.keyboard.press('+');
@@ -217,6 +229,8 @@ test.describe('solver in the page', () => {
     await solved(page);
     // Fitted: nothing to zoom out of.
     await expect(page.getByTestId('camview-zoom-out')).toBeDisabled();
+    await expect(page.getByTestId('camview-scale')).toBeVisible();
+    await expect(page.getByTestId('plan-legend').getByText('At full draw (dotted)')).toBeVisible();
     await expect(page.getByTestId('camview-zoom-in')).toBeEnabled();
   });
 

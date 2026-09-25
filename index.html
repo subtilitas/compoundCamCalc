@@ -57,13 +57,32 @@
         <div id="results-body" data-testid="results"></div>
         <p class="hint">Static model: string stretch, cam timing and dynamics are not modelled.</p>
       </section>
-      <section class="panel panel-cam" aria-labelledby="cam-title">
-        <h2 id="cam-title">Cam</h2>
-        <p class="hint">
-          One cam at brace in the cam frame. The buttons, Ctrl and the wheel, or the plus and minus keys zoom; dragging or the arrow keys pan once zoomed in.
-        </p>
-        <div id="cam-body" class="cam-body"></div>
-      </section>
+      <div class="views" data-testid="views">
+        <section id="scrub-panel" class="panel panel-scrub" aria-labelledby="scrub-title" hidden>
+          <h2 id="scrub-title" class="visually-hidden">Draw position</h2>
+          <div id="scrub-body" class="scrub-body"></div>
+        </section>
+        <section class="panel panel-cam" aria-labelledby="cam-title">
+          <h2 id="cam-title">Cam</h2>
+          <p class="hint">
+            The top cam seen from the side, turned to the draw position. The axle stays fixed; x points towards the archer.
+            The buttons, Ctrl and the wheel, or the plus and minus keys zoom; dragging or the arrow keys pan once zoomed in.
+          </p>
+          <div id="cam-body" class="cam-body"></div>
+        </section>
+        <section class="panel panel-plan" aria-labelledby="plan-title">
+          <h2 id="plan-title">String plan</h2>
+          <p class="hint">
+            The whole bow seen from the side: grip at the origin, archer to the right. Pitch-line lengths are the cord centre
+            line between the termination points; add loops, serving and stretch for the build.
+          </p>
+          <div id="plan-body" class="cam-body"></div>
+        </section>
+        <section class="panel panel-loads" aria-labelledby="loads-title">
+          <h2 id="loads-title">Loads</h2>
+          <div id="loads-body" class="loads-body"></div>
+        </section>
+      </div>
       <section class="panel panel-settings" aria-labelledby="settings-title">
         <h2 id="settings-title">Settings</h2>
         <a id="solve-chip" class="solve-chip" href="#results-title" data-testid="solve-chip" aria-live="polite"></a>

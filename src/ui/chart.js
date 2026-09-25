@@ -136,6 +136,26 @@ function achievedRuns(overlay, scales) {
 }
 
 /**
+ * Force of the achieved curve at nock position x, linear between its
+ * samples; NaN outside its finite samples.
+ * @param {Pick<AchievedOverlay, 'x' | 'F'>} overlay samples in SI units (m, N)
+ * @param {number} x (m)
+ */
+export function forceAt(overlay, x) {
+  const n = Math.min(overlay.x.length, overlay.F.length);
+  for (let j = 0; j + 1 < n; j++) {
+    const a = overlay.x[j];
+    const b = overlay.x[j + 1];
+    if (x < a || x > b) continue;
+    const Fa = overlay.F[j];
+    const Fb = overlay.F[j + 1];
+    if (!Number.isFinite(Fa) || !Number.isFinite(Fb)) return NaN;
+    return b > a ? Fa + ((x - a) / (b - a)) * (Fb - Fa) : Fa;
+  }
+  return NaN;
+}
+
+/**
  * Force at the top of the plot (N): 15 % above the largest target force and
  * 5 % above the largest finite achieved force, at least 11.5 N. The achieved
  * curve therefore never leaves the plot at the top.
@@ -252,6 +272,10 @@ let clipCount = 0;
  * @property {(state: ProjectState) => void} render redraw for a state
  * @property {(overlay: AchievedOverlay | null) => void} setAchieved show the
  *   achieved curve and diagnostic ranges, or hide them with null
+ * @property {(x: number | null, onCurve?: boolean) => void} setMarker show the
+ *   draw position (nock position, m) as a vertical line, with a dot on the
+ *   achieved curve when onCurve is true (the drawn curve belongs to the
+ *   pose), or hide it with null
  */
 
 /**
@@ -294,6 +318,11 @@ export function createChart(wrap, editor) {
   });
   const legend = svg('g', { class: 'chart-legend', 'data-testid': 'chart-legend', 'pointer-events': 'none' });
   const axes = svg('g', { class: 'chart-axes', 'aria-hidden': 'true' });
+  const marker = svg('g', { class: 'chart-marker', 'data-testid': 'chart-marker', 'aria-hidden': 'true', 'pointer-events': 'none' });
+  const markerLine = svg('line', { class: 'chart-marker-line' });
+  const markerDot = svg('circle', { class: 'chart-marker-dot', r: 5 });
+  marker.append(markerLine, markerDot);
+  marker.style.display = 'none';
   const pointLayer = svg('g', { class: 'chart-points' });
   // Copy of the selected point drawn above all points, so a neighbour never
   // covers it; the focusable points keep their order.
@@ -304,7 +333,7 @@ export function createChart(wrap, editor) {
     'data-testid': 'chart-selected-mark',
   });
   selectedMark.append(svg('circle', { class: 'pt-ring', r: 11 }), svg('circle', { class: 'pt-dot', r: 6.5 }));
-  root.append(defs, plotBg, grid, rangeLayer, refs, curvePath, achievedLayer, axes, legend, pointLayer, selectedMark);
+  root.append(defs, plotBg, grid, rangeLayer, refs, curvePath, achievedLayer, axes, legend, marker, pointLayer, selectedMark);
   const readout = h('div', { class: 'chart-readout', 'data-testid': 'chart-readout', 'aria-hidden': 'true' });
   readout.hidden = true;
   wrap.append(root, readout);
@@ -328,6 +357,9 @@ export function createChart(wrap, editor) {
   let pointEls = [];
   /** @type {AchievedOverlay | null} */
   let overlay = null;
+  /** @type {number | null} */
+  let markerX = null;
+  let markerOnCurve = false;
   /**
    * Target curve samples of the last render (px), for the legend placement.
    * @type {[number, number][]}
@@ -603,6 +635,7 @@ export function createChart(wrap, editor) {
     renderCurve(s, layout);
     renderOverlay(s, layout);
     renderPoints(s, layout);
+    renderMarker();
     if (!readout.hidden) {
       const active = drag ? drag.index : pointEls.indexOf(/** @type {SVGGElement} */ (document.activeElement));
       if (active > 0) showReadout(active);
@@ -780,6 +813,39 @@ export function createChart(wrap, editor) {
     requestAnimationFrame(() => render(store.getState()));
   }).observe(wrap);
 
+  /** Marker at markerX, hidden outside the draw range of the chart. */
+  function renderMarker() {
+    const L = layout;
+    const pts = state.curve.points;
+    const x = markerX;
+    const inside = L !== null && x !== null && Number.isFinite(x) && x >= pts[0].x - 1e-9 && x <= pts[pts.length - 1].x + 1e-9;
+    if (!inside) {
+      marker.style.display = 'none';
+      return;
+    }
+    const X = L.px(/** @type {number} */ (x)).toFixed(1);
+    setAttrs(markerLine, { x1: X, x2: X, y1: L.top, y2: L.bottom });
+    const F = overlay && markerOnCurve ? forceAt(overlay, /** @type {number} */ (x)) : NaN;
+    const Y = L.py(F);
+    if (Number.isFinite(Y) && Y >= L.top && Y <= L.bottom) {
+      setAttrs(markerDot, { cx: X, cy: Y.toFixed(1) });
+      markerDot.style.display = '';
+    } else {
+      markerDot.style.display = 'none';
+    }
+    marker.style.display = '';
+  }
+
+  /**
+   * @param {number | null} x
+   * @param {boolean} [onCurve]
+   */
+  function setMarker(x, onCurve = false) {
+    markerX = x;
+    markerOnCurve = onCurve;
+    renderMarker();
+  }
+
   /** @param {AchievedOverlay | null} next */
   function setAchieved(next) {
     overlay = next;
@@ -787,5 +853,5 @@ export function createChart(wrap, editor) {
     // drag, where it stays frozen).
     if (layout) render(state);
   }
-  return { render, setAchieved };
+  return { render, setAchieved, setMarker };
 }
