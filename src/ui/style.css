@@ -978,6 +978,11 @@ input[aria-invalid='true'] {
   color: var(--muted);
 }
 
+.results-warning {
+  border-left: 3px solid var(--warn);
+  padding-left: 8px;
+}
+
 /* Cam view */
 
 .cam-body {

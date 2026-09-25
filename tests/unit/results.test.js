@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FT_LBF, INCH, LBF } from '../../src/core/units.js';
 import {
-  METRIC_KEYS, OUTDATED_CAPTION, STALE_CAPTION, diagnosticItems, resultsCaption, fitTolerance, metricItems, statusText,
+  METRIC_KEYS, OUTDATED_CAPTION, STALE_CAPTION, diagnosticItems, resultsCaption, fitTolerance, metricItems, statusText, warningItems,
 } from '../../src/ui/results.js';
 
 /** @typedef {import('../../src/core/solve.js').SolveResult} SolveResult */
@@ -70,6 +70,21 @@ describe('statusText', () => {
       .toBe('The cam does not meet every check: 2 problems. The cam shown is the last one that met every check.');
     expect(statusText('busy', 0, true)).toBe('Solving… The cam shown is the last one that met every check.');
     expect(statusText('idle', 0, true)).toBe('The cam shown is the last one that met every check.');
+  });
+
+  it('counts plausibility warnings of a solved cam', () => {
+    expect(statusText('ok', 0, false, 1)).toBe('The cam meets the target and every check; 1 warning');
+    expect(statusText('infeasible', 1, true, 2))
+      .toBe('The cam does not meet every check: 1 problem; 2 warnings. The cam shown is the last one that met every check.');
+    expect(statusText('busy', 0, false, 2)).toBe('Solving…');
+  });
+});
+
+describe('warningItems', () => {
+  it('lists the warnings of a result', () => {
+    expect(warningItems(null)).toEqual([]);
+    const w = { code: /** @type {const} */ ('cam-size'), xRange: null, message: 'm', suggestion: 's' };
+    expect(warningItems(/** @type {any} */ ({ warnings: [w] }))).toEqual([{ code: 'cam-size', message: 'm', suggestion: 's' }]);
   });
 });
 

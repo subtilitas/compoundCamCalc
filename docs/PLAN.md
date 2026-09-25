@@ -316,6 +316,23 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   `no-convergence`, `slack-string`, `wrap-exhausted`; the table with the
   suggestions is in `docs/model.md`.
 
+### Plausibility warnings
+
+`src/core/plausibility.js` checks a solved cam for designs that meet every
+diagnostic check but cannot be built or used as drawn. The result carries
+them in `warnings` (`{code, xRange, message, suggestion}`); they leave the
+status and the exports unchanged, and the results card, the status line and
+the print report list them.
+
+- `cam-size`: the cam maximum dimension exceeds 35 % of the axle-to-axle
+  length. The sample designs lie between 10 % and 21 %.
+- `cam-overlap`: the twin cams are mirror images about the line through the
+  grip pivot perpendicular to the axles, and their flange outlines are
+  convex, so they overlap exactly when the top cam reaches that line. At
+  each forward sample the lowest point of the top cam is
+  O_y − max over the outline points (u, v) of (sin θ·u − cos θ·v); a value
+  at or below 0 is an overlap of twice its depth.
+
 ### Closed cam outline
 
 - The active part of each track covers the draw. Extensions: lead-in wrap at

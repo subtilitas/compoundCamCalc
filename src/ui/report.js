@@ -16,7 +16,7 @@ import { createCamView } from './camview.js';
 import { h } from './dom.js';
 import { exportStatus } from './exportpanel.js';
 import { createLoadChart, loadMaxima, loadTable } from './loadchart.js';
-import { diagnosticItems, metricItems } from './results.js';
+import { diagnosticItems, metricItems, warningItems } from './results.js';
 import { inputGroups } from './settings.js';
 import { staticChartModel, staticChartSvg } from './staticchart.js';
 import { statItems } from './stats.js';
@@ -60,6 +60,7 @@ const LOADS_WIDTH = 640;
  * @property {{ key: string, label: string, text: string }[]} target
  * @property {MetricItem[]} metrics
  * @property {DiagnosticItem[]} diagnostics
+ * @property {DiagnosticItem[]} warnings plausibility warnings
  * @property {LayoutContext | null} ctx layout of the cam, null when it cannot be built
  * @property {{ label: string, key: string, text: string }[]} lengths build lengths
  * @property {{ label: string, key: string, text: string }[]} loads load maxima
@@ -97,6 +98,7 @@ export function reportData(src) {
     target: statItems(state),
     metrics: metricItems(src.result, units),
     diagnostics: diagnosticItems(src.result),
+    warnings: warningItems(src.result),
     ctx,
     lengths: ctx ? planDims(ctx, units) : [],
     loads: ctx ? loadMaxima(ctx.loads, units) : [],
@@ -170,7 +172,11 @@ export function buildReport(src) {
     ...(data.diagnostics.length > 0
       ? [h('h3', {}, 'Problems'), h('ol', { class: 'report-diagnostics' }, ...data.diagnostics.map((d) =>
           h('li', {}, h('p', {}, d.message), h('p', {}, `Suggestion: ${d.suggestion}`))))]
-      : [h('p', {}, 'No problems.')]));
+      : [h('p', {}, 'No problems.')]),
+    ...(data.warnings.length > 0
+      ? [h('h3', {}, 'Warnings'), h('ol', { class: 'report-diagnostics' }, ...data.warnings.map((d) =>
+          h('li', {}, h('p', {}, d.message), h('p', {}, `Suggestion: ${d.suggestion}`))))]
+      : []));
 
   const model = staticChartModel(src.result, units);
   const force = section('force-chart', 'Force chart',

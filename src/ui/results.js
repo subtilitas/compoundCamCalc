@@ -73,9 +73,10 @@ export function resultsCaption(view) {
  * @param {ResultsStatus} status
  * @param {number} count number of diagnostics of the result
  * @param {boolean} stale
+ * @param {number} [warnings] number of plausibility warnings of the result
  * @returns {string}
  */
-export function statusText(status, count, stale) {
+export function statusText(status, count, stale, warnings = 0) {
   /** @type {string} */
   let text;
   switch (status) {
@@ -86,6 +87,9 @@ export function statusText(status, count, stale) {
     case 'no-convergence': text = 'The solver did not converge'; break;
     case 'error': text = 'The solver stopped with an error; change an input to try again'; break;
     default: text = '';
+  }
+  if (warnings > 0 && (status === 'ok' || status === 'infeasible')) {
+    text += `; ${warnings} ${warnings === 1 ? 'warning' : 'warnings'}`;
   }
   if (!stale) return text;
   if (!text) return STALE_TEXT;
@@ -217,6 +221,16 @@ export function diagnosticItems(result) {
   return (result?.diagnostics ?? []).map((d) => ({ code: d.code, message: d.message, suggestion: d.suggestion }));
 }
 
+/**
+ * Plausibility warnings of a result: the cam meets the checks, or not, but
+ * cannot be built or used as drawn. They do not block the exports.
+ * @param {SolveResult | null} result
+ * @returns {DiagnosticItem[]}
+ */
+export function warningItems(result) {
+  return (result?.warnings ?? []).map((d) => ({ code: d.code, message: d.message, suggestion: d.suggestion }));
+}
+
 /** Number of results cards created, for unique element ids. */
 let cards = 0;
 
@@ -261,6 +275,16 @@ export function createResults(container) {
     'aria-labelledby': headingId,
     hidden: true,
   });
+  const warnHeadingId = `results-warnings-heading-${cards}`;
+  const warnHeading = h('h3', { class: 'results-diagnostics-heading', id: warnHeadingId, hidden: true }, 'Warnings');
+  const warnings = h('ol', {
+    class: 'results-diagnostics results-warnings',
+    'data-testid': 'results-warnings',
+    'aria-labelledby': warnHeadingId,
+    hidden: true,
+  });
+  const warnNote = h('p', { class: 'hint', hidden: true },
+    'Warnings do not stop the exports: the cam meets the solver checks, but it cannot be built or used as drawn.');
 
   /** @type {Map<string, { row: HTMLDivElement, dd: HTMLElement }>} */
   const rows = new Map();
@@ -276,7 +300,7 @@ export function createResults(container) {
   fitRow.hidden = true;
 
   container.classList.add('results');
-  container.append(status, caption, metrics, diagHeading, diagnostics);
+  container.append(status, caption, metrics, diagHeading, diagnostics, warnHeading, warnings, warnNote);
 
   let diagKey = '';
 
@@ -286,7 +310,7 @@ export function createResults(container) {
       const count = result?.diagnostics.length ?? 0;
       const statusClass = `results-status results-status-${view.status}`;
       if (status.className !== statusClass) status.className = statusClass;
-      const text = statusText(view.status, count, view.stale);
+      const text = statusText(view.status, count, view.stale, result?.warnings?.length ?? 0);
       // Writing the same text again makes some screen readers repeat it.
       if (status.textContent !== text) status.textContent = text;
       container.classList.toggle('results-stale', view.stale || view.outdated === true);
@@ -308,9 +332,19 @@ export function createResults(container) {
       fitRow.hidden = !fitShown;
 
       const diags = diagnosticItems(result);
-      const key = JSON.stringify(diags);
+      const warns = warningItems(result);
+      const key = JSON.stringify([diags, warns]);
       if (key === diagKey) return;
       diagKey = key;
+      warnHeading.hidden = warns.length === 0;
+      warnings.hidden = warns.length === 0;
+      warnNote.hidden = warns.length === 0;
+      warnings.replaceChildren(...warns.map((d) => h(
+        'li',
+        { class: 'results-diagnostic results-warning', 'data-testid': `warn-${d.code}` },
+        h('p', { class: 'results-diag-message' }, d.message),
+        h('p', { class: 'results-diag-suggestion' }, `Suggestion: ${d.suggestion}`),
+      )));
       diagHeading.hidden = diags.length === 0;
       diagnostics.hidden = diags.length === 0;
       diagnostics.replaceChildren(...diags.map((d) => h(

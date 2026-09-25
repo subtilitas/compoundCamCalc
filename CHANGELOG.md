@@ -6,6 +6,10 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Plausibility warnings (`src/core/plausibility.js`) for a cam wider than
+  35 % of the axle-to-axle length and for cams that overlap at a draw
+  position. The results card, the status line and the print report list
+  them; they do not stop the exports.
 - Share link (`src/state/share.js`): File → Copy share link copies a link
   whose `#design=` fragment holds the inputs and name as base64url JSON
   (about 1.6 KB for the default design). Opening the link asks first when

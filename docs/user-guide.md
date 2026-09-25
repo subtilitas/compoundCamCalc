@@ -184,6 +184,13 @@ older solve that finishes late is shown until the newer one arrives.
 - **Problems** lists each problem with numbers and units and a suggestion
   that names the input to change. Draw ranges of problems are shaded on the
   chart.
+- **Warnings** lists designs the solver accepts but that cannot be built
+  or used as drawn. Warnings do not change the status and do not stop the
+  exports; the status line counts them ("; 1 warning"). Two checks exist:
+  - The cam is wider than 35 % of the axle-to-axle length. The sample
+    designs lie between 10 % and 21 %.
+  - The top and bottom cams overlap at a draw position. The message gives
+    the draw range and the overlap in the dimension unit.
 
 The chart shows the achieved force curve of the cam as a dashed line over
 the target. When the latest input fails a check, the dashed line is labelled
