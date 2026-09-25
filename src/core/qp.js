@@ -84,10 +84,11 @@ const ROUNDING = 4 * Number.EPSILON;
 /**
  * @typedef {object} QuadraticProgram
  * @property {number} n unknowns, a positive integer
- * @property {Float64Array} G n×n row-major, symmetric positive definite
- * @property {Float64Array} a length n
- * @property {Float64Array} C m×n row-major constraint rows
- * @property {Float64Array} b length m
+ * @property {ArrayLike<number>} G n×n row-major, symmetric positive definite
+ * @property {ArrayLike<number>} a length n
+ * @property {ArrayLike<number>} C m×n row-major constraint rows
+ * @property {ArrayLike<number>} b length m (any array-like: the solver
+ *   works on Float64Array copies)
  * @property {number} [meq] number of leading equality constraints, an
  *   integer from 0 to m (default 0)
  */
@@ -129,15 +130,40 @@ function finiteArray(v, length) {
  * @returns {QPResult}
  */
 export function solveQP(qp, options = {}) {
+  try {
+    return solveChecked(qp, options);
+  } catch {
+    // Any exception while reading malformed input.
+    return invalidResult();
+  }
+}
+
+/** @returns {QPResult} */
+function invalidResult() {
+  return { status: 'invalid', x: new Float64Array(0), lambda: new Float64Array(0), active: [], value: NaN, iterations: 0 };
+}
+
+/** @param {ArrayLike<number>} v */
+const toFloat64 = (v) => (v instanceof Float64Array ? v : Float64Array.from(v));
+
+/**
+ * Body of {@link solveQP}, which guards it.
+ * @param {QuadraticProgram} qp
+ * @param {{ maxIterations?: number, tolerance?: number }} options
+ * @returns {QPResult}
+ */
+function solveChecked(qp, options) {
   // A missing or non-object programme or options container is invalid
-  // input, not an exception.
-  const program = qp !== null && typeof qp === 'object' ? qp : /** @type {Partial<QuadraticProgram>} */ ({});
+  // input; only undefined means an omitted option.
+  /** @type {any} */
+  const program = qp !== null && typeof qp === 'object' ? qp : {};
+  /** @type {any} */
   const opts = options !== null && typeof options === 'object' ? options : {};
-  const { n, G, a, C, b } = /** @type {QuadraticProgram} */ (program);
-  const meq = program.meq ?? 0;
-  const m = b?.length;
-  const tolerance = opts.tolerance ?? 1e-10;
-  const maxIterations = opts.maxIterations ?? 10 * (n + m) + 20;
+  const n = program.n;
+  const meq = program.meq === undefined ? 0 : program.meq;
+  const m = program.b?.length;
+  const tolerance = opts.tolerance === undefined ? 1e-10 : opts.tolerance;
+  const maxIterations = opts.maxIterations === undefined ? 10 * (n + m) + 20 : opts.maxIterations;
   const valid =
     qp === program &&
     (options === undefined || options === opts) &&
@@ -151,13 +177,20 @@ export function solveQP(qp, options = {}) {
     tolerance >= 0 &&
     Number.isInteger(maxIterations) &&
     maxIterations >= 0 &&
-    finiteArray(G, n * n) &&
-    finiteArray(a, n) &&
-    finiteArray(C, m * n) &&
-    finiteArray(b, m);
-  if (!valid) {
-    return { status: 'invalid', x: new Float64Array(0), lambda: new Float64Array(0), active: [], value: NaN, iterations: 0 };
-  }
+    finiteArray(program.G, n * n) &&
+    finiteArray(program.a, n) &&
+    finiteArray(program.C, m * n) &&
+    finiteArray(program.b, m);
+  if (!valid) return invalidResult();
+  // Typed copies of array-like input, so the solver may slice and index them.
+  /** @type {Float64Array} */
+  const G = toFloat64(program.G);
+  /** @type {Float64Array} */
+  const a = toFloat64(program.a);
+  /** @type {Float64Array} */
+  const C = toFloat64(program.C);
+  /** @type {Float64Array} */
+  const b = toFloat64(program.b);
   const x = new Float64Array(n);
   const lambda = new Float64Array(m);
   /** @type {number[]} */

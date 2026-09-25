@@ -76,7 +76,7 @@ function bruteForce(qp) {
     /** @type {number[]} */
     const set = [];
     for (let i = 0; i < m; i++) if (mask & (1 << i)) set.push(i);
-    if (set.length > n || !independent(C, n, set)) continue;
+    if (set.length > n || !independent(Float64Array.from(C), n, set)) continue;
     const size = n + set.length;
     const K = new Float64Array(size * size);
     const rhs = new Float64Array(size);
@@ -554,6 +554,18 @@ describe('solveQP', () => {
     // A missing or non-object programme or options container.
     for (const qp of [null, undefined, 5]) expect(solveQP(/** @type {any} */ (qp)).status).toBe('invalid');
     for (const options of [null, 5]) expect(solveQP(one, /** @type {any} */ (options)).status).toBe('invalid');
+    // Only undefined means an omitted option or meq.
+    for (const options of [{ tolerance: null }, { maxIterations: null }, { tolerance: false }, { maxIterations: '' }]) {
+      expect(solveQP(one, /** @type {any} */ (options)).status).toBe('invalid');
+    }
+    for (const meq of [null, false, '']) expect(solveQP(/** @type {any} */ ({ ...one, meq })).status).toBe('invalid');
+    // Array-like data without typed-array methods is solved on copies.
+    const plain = solveQP(/** @type {any} */ ({ n: 1, G: [1], a: [0], C: { 0: 1, length: 1 }, b: { 0: 1, length: 1 } }));
+    expect(plain.status).toBe('optimal');
+    expect(plain.x[0]).toBeCloseTo(1, 12);
+    // An exception while reading the input: a getter that throws.
+    const hostile = { ...one, get a() { throw new Error('unreadable'); } };
+    expect(solveQP(/** @type {any} */ (hostile)).status).toBe('invalid');
   });
 
   it('meets the KKT conditions on random convex problems to 1e-10', () => {

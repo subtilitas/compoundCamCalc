@@ -95,7 +95,7 @@ All notable changes are listed here. Versions follow semantic versioning.
   after each step while the largest active residual falls or stays above
   rounding (at most 8 passes), reports `infeasible` when rounding leaves
   an active constraint or a skipped equality outside the tolerance, and
-  returns `invalid` for mismatched sizes, non-finite data or a missing programme or options container; the fit
+  returns `invalid` for mismatched sizes, non-finite data, a missing programme or options container, an option other than undefined that is not a number, or any exception while reading the input (array-like data is solved on Float64Array copies); the fit
   programmes of 600 random near-default states end with the constraints
   met to 1e-10 of the row scale. With two rows 1e-8 to 1e-6 apart, 4 % to
   13 % of feasible random problems come back `infeasible`, and 44 of
