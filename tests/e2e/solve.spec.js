@@ -60,6 +60,8 @@ test.describe('solver in the page', () => {
     await expect(diag).toContainText(/Suggestion: Reduce the lead-in wrap to at most \d+\.\d°/);
     await expect(page.getByTestId('cam-view')).toHaveClass(/cam-stale/);
     await expect(page.getByTestId('cam-cableFlange')).toHaveCount(1);
+    // The pose overlay belongs to the same stale cam and dims with it.
+    await expect(page.getByTestId('cam-overlay')).toHaveCSS('opacity', '0.65');
     // Undo restores the buildable state.
     await page.getByTestId('btn-undo').click();
     await expect(page.locator('#app')).toHaveAttribute('data-solve-status', 'ok', { timeout: 20_000 });

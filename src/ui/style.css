@@ -804,7 +804,8 @@ input[aria-invalid='true'] {
   cursor: grabbing;
 }
 
-.cam-view.cam-stale .cam-drawing {
+.cam-view.cam-stale .cam-drawing,
+.cam-view.cam-stale .cam-overlay {
   opacity: 0.65;
 }
 
