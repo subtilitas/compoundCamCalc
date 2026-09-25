@@ -55,7 +55,8 @@ const MAX_ALPHA_STEP = 0.1;
 
 /**
  * @typedef {'invalid-input' | 'brace' | 'no-convergence' | 'slack-string' | 'slack-cable'
- *   | 'wrap-exhausted' | 'wrap-overlap' | 'cable-lever' | 'cam-reversal' | 'non-finite'} DiagnosticCode
+ *   | 'wrap-exhausted' | 'wrap-overlap' | 'cable-lever' | 'cam-reversal' | 'non-finite'
+ *   | 'concave-track'} DiagnosticCode
  */
 
 /**
@@ -172,6 +173,7 @@ const MESSAGES = /** @type {Record<DiagnosticCode, string>} */ ({
   'cable-lever': 'The limbs do not pull the cable: c_a, the cable length change per limb rotation, is zero or negative',
   'cam-reversal': 'The cam turns backwards while the string is drawn (dθ/dx ≤ 0)',
   'non-finite': 'The solution contains values outside the floating-point range; the input magnitudes are too large',
+  'concave-track': 'A cord wraps or touches a concave part of its track (radius of curvature p + p″ < 0), which a cord bridges instead of following',
 });
 
 /**
@@ -441,6 +443,29 @@ function solveForwardChecked(input) {
       message: `${MESSAGES['wrap-exhausted']}: a cord termination lies beyond the end of its track`,
     });
   }
+  // The contact search and the length identity assume a convex track on the
+  // wrapped range: string from its smallest contact angle to its
+  // termination, cable from its termination to its largest contact angle.
+  let minPsiS = brace.psiS;
+  let maxPsiC = brace.psiC;
+  for (let i = 0; i < solved; i++) {
+    minPsiS = Math.min(minPsiS, out.psiS[i]);
+    maxPsiC = Math.max(maxPsiC, out.psiC[i]);
+  }
+  for (const [support, a, b, name] of /** @type {const} */ ([
+    [stringSupport, minPsiS, stringTermination, 'string'],
+    [cableSupport, cableTermination, maxPsiC, 'cable'],
+  ])) {
+    const concave = concaveRange(support, a, b);
+    if (concave) {
+      const deg = (/** @type {number} */ v) => ((v * 180) / Math.PI).toFixed(1);
+      diagnostics.push({
+        code: 'concave-track',
+        xRange: [grid[0], grid[n - 1]],
+        message: `${MESSAGES['concave-track']}: ${name} track between ψ = ${deg(concave[0])}° and ${deg(concave[1])}°`,
+      });
+    }
+  }
   if (failedAt >= 0) {
     diagnostics.unshift({
       code: 'no-convergence',
@@ -474,6 +499,32 @@ function solveForwardChecked(input) {
     ...energies,
     iterations,
   };
+}
+
+/** Angle step of the convexity check (rad), 0.25°. */
+const CONVEXITY_STEP = Math.PI / 720;
+
+/**
+ * First and last angle in [a, b] where the radius of curvature is negative,
+ * sampled every 0.25° and at both ends, or null when the range is convex.
+ * @param {import('./support.js').Support} support
+ * @param {number} a
+ * @param {number} b
+ * @returns {[number, number] | null}
+ */
+function concaveRange(support, a, b) {
+  if (!(b >= a) || !Number.isFinite(a) || !Number.isFinite(b)) return null;
+  const steps = Math.min(Math.ceil((b - a) / CONVEXITY_STEP), 16 * 1440);
+  let first = NaN;
+  let last = NaN;
+  for (let j = 0; j <= steps; j++) {
+    const psi = steps === 0 ? a : a + ((b - a) * j) / steps;
+    if (support.rho(psi) < 0) {
+      if (Number.isNaN(first)) first = psi;
+      last = psi;
+    }
+  }
+  return Number.isNaN(first) ? null : [first, last];
 }
 
 /**

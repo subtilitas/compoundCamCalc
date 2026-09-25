@@ -269,7 +269,18 @@ export function createLimb(data) {
   if (!(Number.isFinite(alpha0) && alpha0 >= 0)) {
     throw new RangeError('The limb preload rotation alpha0 must be a finite number of at least 0');
   }
-  if (kind === 'table') return { ...data, ...tableMethods(/** @type {TableLimbData} */ (data)) };
+  if (kind === 'table') {
+    // Serialized table data: rebuild the curve from its knots and values so
+    // that the invariants of tableLimb hold (unstrung moment 0, rotations
+    // increasing, moments at least 0) and the coefficients match them.
+    const curve = /** @type {TableLimbData} */ (data).curve;
+    const rebuilt = tableLimb({ rotation: curve?.knots ?? [], moment: curve?.values ?? [], alpha0 });
+    if (!rebuilt.limb) throw new RangeError(rebuilt.error ?? 'Invalid limb table');
+    if (rebuilt.limb.curve.knots.length !== curve.knots.length) {
+      throw new RangeError('A limb table curve must start at zero rotation (unstrung)');
+    }
+    return { ...rebuilt.limb, ...tableMethods(rebuilt.limb) };
+  }
   const k = /** @type {LinearLimbData} */ (data).torsionalStiffness;
   if (!(Number.isFinite(k) && k > 0)) throw new RangeError('The limb torsional stiffness must be a finite positive number');
   return { ...data, ...linearMethods(/** @type {LinearLimbData} */ (data)) };

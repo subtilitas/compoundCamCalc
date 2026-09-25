@@ -675,6 +675,7 @@ describe('forward model: diagnostics', () => {
         }),
       }),
       input({ limb: { kind: 'linear', torsionalStiffness: -1000, alpha0: -0.2 } }),
+      input({ limb: /** @type {any} */ ({ kind: 'table', curve: { knots: [0, 0.4], values: [100, 200] }, alpha0: 0 }) }),
       input({ maxIterations: 0 }),
       input({ maxIterations: 1.5 }),
       input({ maxIterations: 1e9 }),
@@ -865,6 +866,18 @@ describe('forward model: diagnostics', () => {
     expect(later.n).toBe(51);
     expect(codes(later)).toContain('wrap-overlap');
     expect(later.diagnostics.find((d) => d.code === 'wrap-overlap')?.xRange?.[0]).toBe(bow.xBrace);
+  });
+
+  it('concave-track: a periodic spline string track with negative curvature', () => {
+    const knots = Array.from({ length: 9 }, (_, i) => (i * Math.PI) / 4);
+    const values = [0.05, 0.046, 0.044, 0.078, 0.031, 0.052, 0.076, 0.079, 0.05];
+    const bumpy = splineSupport(knots, values, { periodic: true });
+    const r = solveForward(input({ stringTrack: bumpy, samples: 100 }));
+    const d = r.diagnostics.find((q) => q.code === 'concave-track');
+    expect(d?.message).toMatch(/string track between ψ = /);
+    expect(r.status).not.toBe('ok');
+    // Convex tracks never report it.
+    expect(codes(solveForward(input({ samples: 100 })))).not.toContain('concave-track');
   });
 
   it('wrap-overlap: a cable termination almost one turn before the brace contact', () => {

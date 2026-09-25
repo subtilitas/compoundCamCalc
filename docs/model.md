@@ -289,7 +289,8 @@ limb.
   the last row falls, that line reaches M = 0 at q_peak, where E1 is
   largest. The project table (axle travel from brace, force at the axle)
   converts with q = (travel + s_0)/R_L and M = force·R_L; travel and force
-  are at least 0.
+  are at least 0. Serialized table data is rebuilt from its knots and
+  values, so these invariants hold for every table limb.
 - Travel mode: the stiffness that stores the draw energy W over the axle
   travel s_f from brace to full draw is k = W / ((s_f + s_0)² − s_0²).
 - E1', E1'' and the inverse E1⁻¹ (Newton inside a bracket, residual below
@@ -318,6 +319,7 @@ each run of affected samples.
 | `cable-lever` | c_a ≤ 0: limb rotation no longer takes up cable |
 | `cam-reversal` | dθ/dx ≤ 0 after brace |
 | `non-finite` | the force, a tension, θ or α at a sample, or the limb energy, is not finite (input magnitudes beyond the floating-point range) |
+| `concave-track` | the radius of curvature p + p″ is negative somewhere on the wrapped range of a track (checked every 0.25°): string from its smallest contact angle to its termination, cable from its termination to its largest contact angle |
 
 ## Verification
 

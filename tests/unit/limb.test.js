@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   INVERSE_TOLERANCE, createLimb, limbEnergies, limbFromState, linearLimb, stiffnessForTravel, tableLimb,
 } from '../../src/core/limb.js';
+import { buildCurveData } from '../../src/core/interp.js';
 import { defaultState } from '../../src/state/presets.js';
 import { derivative, integrate } from './numeric.js';
 
@@ -236,6 +237,17 @@ describe('createLimb', () => {
     const data = /** @type {any} */ ({ kind: 'spring', torsionalStiffness: 100, alpha0: 0.1 });
     expect(() => createLimb(data)).toThrow(/Unknown limb kind/);
     expect(() => createLimb(/** @type {any} */ (null))).toThrow(/Unknown limb kind/);
+  });
+
+  it('rebuilds serialized table data and rejects a moment at zero rotation', () => {
+    const bad = /** @type {TableLimbData} */ ({ kind: 'table', curve: buildCurveData([{ x: 0, F: 100 }, { x: 0.4, F: 200 }]), alpha0: 0 });
+    expect(() => createLimb(bad)).toThrow(/unstrung/);
+    const late = /** @type {TableLimbData} */ ({ kind: 'table', curve: buildCurveData([{ x: 0.1, F: 100 }, { x: 0.4, F: 200 }]), alpha0: 0.1 });
+    expect(() => createLimb(late)).toThrow(/zero rotation/);
+    // Tampered coefficients are replaced by the curve through the knots.
+    const good = /** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.2, 0.4], moment: [0, 100, 250], alpha0: 0.1 }).limb);
+    const tampered = { ...good, curve: { ...good.curve, coeffs: good.curve.coeffs.map(() => 1e9) } };
+    expect(createLimb(tampered).moment(0)).toBeCloseTo(createLimb(good).moment(0), 12);
   });
 
   it('rejects serialized limb data with a non-positive stiffness or a negative preload', () => {
