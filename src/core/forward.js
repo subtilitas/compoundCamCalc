@@ -210,7 +210,9 @@ function failed(code, detail) {
 }
 
 /**
- * Nock positions of the solve, or an error message.
+ * Nock positions of the solve, or an error message. The solve always starts
+ * at brace: an explicit grid that starts later gets x_b prepended, so every
+ * check also covers the brace state.
  * @param {ForwardInput} input
  * @param {number} xBrace
  * @param {number} xFull
@@ -218,15 +220,21 @@ function failed(code, detail) {
  */
 function gridFor(input, xBrace, xFull) {
   if (input.x !== undefined) {
-    const x = Float64Array.from(input.x ?? []);
-    if (x.length < 1) return 'the x grid is empty';
-    if (x.length > MAX_SAMPLES) return `the x grid has more than ${MAX_SAMPLES} samples`;
-    for (let i = 0; i < x.length; i++) {
-      const outside = x[i] < xBrace - FULL_DRAW_TOLERANCE || x[i] > xFull + FULL_DRAW_TOLERANCE;
-      if (!Number.isFinite(x[i]) || outside || (i > 0 && !(x[i] > x[i - 1]))) {
+    const source = input.x;
+    const length = source === null || typeof source !== 'object' ? NaN : Number(source.length);
+    if (!Number.isInteger(length) || length < 1) return 'the x grid must be a non-empty array of numbers';
+    if (length > MAX_SAMPLES) return `the x grid has more than ${MAX_SAMPLES} samples`;
+    const given = Float64Array.from(source);
+    for (let i = 0; i < given.length; i++) {
+      const outside = given[i] < xBrace - FULL_DRAW_TOLERANCE || given[i] > xFull + FULL_DRAW_TOLERANCE;
+      if (!Number.isFinite(given[i]) || outside || (i > 0 && !(given[i] > given[i - 1]))) {
         return 'the x grid must be finite, increasing and lie between brace and full draw';
       }
     }
+    if (given[0] <= xBrace + FULL_DRAW_TOLERANCE) return given;
+    const x = new Float64Array(given.length + 1);
+    x[0] = xBrace;
+    x.set(given, 1);
     return x;
   }
   const samples = input.samples ?? FULL_SAMPLES;
@@ -406,12 +414,6 @@ export function solveForward(input) {
   const cableTermination = input.cableTermination ?? minPsiC - DEFAULT_WRAP;
 
   const diagnostics = collectDiagnostics(out, solved, bow.xBrace, stringTermination, cableTermination, stringSupport, cableSupport);
-  // A grid that starts after brace does not sample the brace tensions.
-  if (!(grid[0] <= bow.xBrace)) {
-    const braceRange = /** @type {[number, number]} */ ([bow.xBrace, bow.xBrace]);
-    if (!(brace.stringTension > 0)) diagnostics.unshift({ code: 'slack-string', xRange: braceRange, message: MESSAGES['slack-string'] });
-    if (!(brace.cableTension > 0)) diagnostics.push({ code: 'slack-cable', xRange: braceRange, message: MESSAGES['slack-cable'] });
-  }
   // The terminations must lie on the defined part of an open track.
   const outside = (/** @type {number} */ psi, /** @type {import('./support.js').Support} */ s) => psi < s.min || psi > s.max;
   if (outside(stringTermination, stringSupport) || outside(cableTermination, cableSupport)) {
@@ -433,6 +435,14 @@ export function solveForward(input) {
   const energies = reachesFull
     ? limbEnergies(limb, out.alpha[n - 1])
     : { drawEnergy: NaN, limbEnergy: NaN, preloadEnergy: 2 * limb.energy(0) };
+  const energyOk = Number.isFinite(energies.preloadEnergy) && (!reachesFull || (Number.isFinite(energies.drawEnergy) && Number.isFinite(energies.limbEnergy)));
+  if (failedAt < 0 && !energyOk) {
+    diagnostics.push({
+      code: 'non-finite',
+      xRange: [grid[n - 1], grid[n - 1]],
+      message: `${MESSAGES['non-finite']}: the limb energy overflows`,
+    });
+  }
   return {
     status: failedAt >= 0 ? 'no-convergence' : diagnostics.length > 0 ? 'infeasible' : 'ok',
     diagnostics,

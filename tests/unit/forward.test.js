@@ -654,6 +654,9 @@ describe('forward model: diagnostics', () => {
       input({ samples: Number.MAX_SAFE_INTEGER }),
       input({ samples: MAX_SAMPLES + 1 }),
       input({ x: Array.from({ length: MAX_SAMPLES + 1 }, (_, i) => geometry.braceHeight + i * 1e-9) }),
+      input({ x: /** @type {any} */ ({ length: Number.MAX_SAFE_INTEGER }) }),
+      input({ x: /** @type {any} */ ({ length: -1 }) }),
+      input({ x: /** @type {any} */ (0.3) }),
       input({ maxIterations: 0 }),
       input({ maxIterations: 1.5 }),
       input({ maxIterations: 1e9 }),
@@ -668,10 +671,14 @@ describe('forward model: diagnostics', () => {
   });
 
   it('non-finite: values beyond the floating-point range are reported; representable ones stay finite', () => {
-    // M(0) = 1e307·10 = 1e308: 2·M overflows, but F = 2·(M·dα/dx) and the tensions do not.
+    // M(0) = 1e307·10 = 1e308: 2·M overflows, but F = 2·(M·dα/dx) and the
+    // tensions do not. The limb energy ½·k_t·(α + α_0)² ≈ 5e308 does.
     const large = solveForward(input({ limb: { kind: 'linear', torsionalStiffness: 1e307, alpha0: 10 }, samples: 20 }));
-    expect(large.status).toBe('ok');
     expect(large.F.every(Number.isFinite)).toBe(true);
+    expect(large.Ts.every(Number.isFinite)).toBe(true);
+    expect(large.status).toBe('infeasible');
+    expect(codes(large)).toEqual(['non-finite']);
+    expect(large.diagnostics[0].message).toMatch(/limb energy overflows/);
     // M(0) = 1.7e308: T_c = M·p_s/det overflows.
     const huge = solveForward(input({ limb: { kind: 'linear', torsionalStiffness: 1e307, alpha0: 17 }, samples: 20 }));
     expect(huge.status).toBe('infeasible');
@@ -808,6 +815,22 @@ describe('forward model: diagnostics', () => {
     expect(r.stringTermination - r.psiS[0]).toBeGreaterThan(2 * Math.PI + 30 * DEG);
     expect(r.stringTermination - r.psiS[last]).toBeGreaterThanOrEqual(2 * Math.PI);
     expect(r.stringTermination - r.psiS[last + 1]).toBeLessThan(2 * Math.PI);
+  });
+
+  it('wrap-overlap: found at brace also when the explicit grid starts after the overlap', () => {
+    const small = {
+      stringTrack: offset(eccentricCircle({ radius: 0.036, offset: 0.006, phase: 45 * DEG }), 0.00125),
+      cableTrack: offset(eccentricCircle({ radius: 0.018, offset: 0.008, phase: -30 * DEG }), 0.00125),
+    };
+    const full = solveForward(input({ ...small, samples: 200 }));
+    const overlapEnd = /** @type {[number, number]} */ (full.diagnostics[0].xRange)[1];
+    const bow = bowFor(small.stringTrack);
+    const x = Array.from({ length: 50 }, (_, i) => overlapEnd + 1e-4 + ((bow.xFull - overlapEnd - 1e-4) * i) / 49);
+    const later = solveForward(input({ ...small, x }));
+    expect(later.x[0]).toBe(bow.xBrace);
+    expect(later.n).toBe(51);
+    expect(codes(later)).toContain('wrap-overlap');
+    expect(later.diagnostics.find((d) => d.code === 'wrap-overlap')?.xRange?.[0]).toBe(bow.xBrace);
   });
 
   it('wrap-overlap: a cable termination almost one turn before the brace contact', () => {

@@ -157,7 +157,10 @@ Newton–bisection finishes it. When no sign change exists on the scan, a
 golden-section search refines the largest f over the two grid cells next to
 the largest grid value, including the cell beyond the window end when that
 value sits at an end; f ≤ 0 everywhere means that B lies inside the track
-(status `inside`). The golden-section search stops at an interval of 1e-12
+(status `inside`). A point on the track has no free span: a largest f below
+256·ε·max(|B|, |p|) or a free span below √(256·ε)·max(|B|, |p|) (ε the
+machine epsilon, 2.2e-16) also gives `inside`, so rounding noise never makes a
+tangent from a point on the track. The golden-section search stops at an interval of 1e-12
 relative to |ψ| or after 100 steps, so it also ends at warm starts of
 thousands of radians. The solver never throws.
 
@@ -197,7 +200,9 @@ given string track, cable track and limb.
    closure, so the terminations only add constants).
 2. Grid: nock positions x − x_b = s² with s uniform, which puts more samples
    near brace; 1500 samples by default, 100 for a coarse solve, or an
-   explicit increasing list of positions between x_b and x_f.
+   explicit increasing list of positions between x_b and x_f. The solve
+   always starts at brace: an explicit list that starts later gets x_b
+   prepended, so every check also covers the brace state.
 3. Closure at each x: Newton on (θ, α) with
 
    ```
@@ -301,16 +306,16 @@ each run of affected samples.
 
 | Code | Condition |
 |---|---|
-| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, unknown limb kind, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace (for example a NaN preload) |
+| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, unknown limb kind, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not a non-empty array, not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace (for example a NaN preload) |
 | `brace` | the string cannot leave its track at ψ = 0 towards the nock, the anchor lies inside the cable track, or det = 0 at brace |
 | `no-convergence` | a sample does not close within 30 iterations, or a contact is lost; later samples are NaN |
-| `slack-string` | T_s ≤ 0, including the brace tension when the x grid starts after brace |
-| `slack-cable` | T_c ≤ 0, including the brace tension when the x grid starts after brace |
+| `slack-string` | T_s ≤ 0 |
+| `slack-cable` | T_c ≤ 0 |
 | `wrap-exhausted` | a contact passes its termination (σ·(ψ_c − ψ_e) < 0), a contact leaves the defined range of an open track, or a termination lies outside that range |
 | `wrap-overlap` | a cord wraps a full turn or more, σ·(ψ_c − ψ_e) ≥ 2π, and would overlap itself in its groove; the string wrap is largest at brace, the cable wrap at full draw |
 | `cable-lever` | c_a ≤ 0: limb rotation no longer takes up cable |
 | `cam-reversal` | dθ/dx ≤ 0 after brace |
-| `non-finite` | the force, a tension, θ or α at a sample is not finite (input magnitudes beyond the floating-point range) |
+| `non-finite` | the force, a tension, θ or α at a sample, or the limb energy, is not finite (input magnitudes beyond the floating-point range) |
 
 ## Verification
 

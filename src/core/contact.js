@@ -32,6 +32,14 @@ const SCAN_POINTS = 96;
 const BRACKET_STEPS = 100;
 /** Iteration cap of the golden-section search; 60 steps shrink one grid cell below 1e-12 rad. */
 const GOLDEN_STEPS = 100;
+/**
+ * Relative rounding allowance for the largest tangency residual: a point
+ * whose distance beyond the track is at rounding level counts as on the
+ * track, which has no free span.
+ */
+const ON_TRACK_TOLERANCE = 256 * Number.EPSILON;
+/** Relative free span below which B counts as on the track, √ON_TRACK_TOLERANCE. */
+const ON_TRACK_SPAN = Math.sqrt(ON_TRACK_TOLERANCE);
 
 /**
  * Contact result. One object is reused across calls in the solver loops.
@@ -106,7 +114,10 @@ function finish(support, bx, by, sigma, psi, buf, out) {
   out.uy = sigma * c;
   out.reduced = sigma * (bt + support.P(psi));
   out.inRange = psi >= support.min && psi <= support.max;
-  out.status = out.span > 0 ? 'ok' : 'inside';
+  // A span at rounding level means B lies on the track (see ON_TRACK_TOLERANCE:
+  // a residual of ε·scale beyond the track gives a span of about √(2ρε·scale)).
+  const scale = Math.max(Math.hypot(bx, by), Math.abs(buf[0]));
+  out.status = out.span > ON_TRACK_SPAN * scale ? 'ok' : 'inside';
   return out;
 }
 
@@ -227,7 +238,8 @@ function bracketed(support, bx, by, sigma, psi0, out, evaluations) {
     const right = psi0 - Math.PI + (k + 1) * h;
     const top = goldenMax(support, bx, by, left, right);
     evaluations += top.evaluations;
-    if (!(top.value > 0)) return fail(Number.isFinite(top.value) ? 'inside' : 'no-convergence');
+    const scale = Math.max(Math.hypot(bx, by), Math.abs(support.p(top.psi)));
+    if (!(top.value > ON_TRACK_TOLERANCE * scale)) return fail(Number.isFinite(top.value) ? 'inside' : 'no-convergence');
     lo = sigma > 0 ? left : top.psi;
     hi = sigma > 0 ? top.psi : right;
   }

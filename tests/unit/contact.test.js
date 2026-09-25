@@ -181,6 +181,13 @@ describe('solveContact', () => {
   it('reports B inside or on the track and non-finite input', () => {
     expect(solveContact(circle, 0.001, 0.002, CABLE_SIDE, 0).status).toBe('inside');
     expect(solveContact(circle, 0.03, 0, STRING_SIDE, 0).status).toBe('inside');
+    // On the track the tangency residual peaks at rounding level: no free span.
+    expect(solveContact(circle, 0.03, 0, CABLE_SIDE, 0).status).toBe('inside');
+    for (const angle of [0.3, 1.7, -2.4]) {
+      const on = { x: 0.03 * Math.cos(angle), y: 0.03 * Math.sin(angle) };
+      expect(solveContact(circle, on.x, on.y, CABLE_SIDE, angle).status).toBe('inside');
+      expect(solveContact(circle, on.x, on.y, STRING_SIDE, angle).status).toBe('inside');
+    }
     expect(solveContact(circle, NaN, 0.5, CABLE_SIDE, 0).status).toBe('no-convergence');
     expect(solveContact(circle, 0.5, 0.5, CABLE_SIDE, NaN).status).toBe('no-convergence');
     const nan = createSupport(eccentricCircle({ radius: NaN }));
