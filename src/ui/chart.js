@@ -208,6 +208,29 @@ export function legendPosition(plot, w, h, samples) {
 }
 
 /**
+ * Split a legend label into lines of at most maxChars characters at spaces;
+ * a word longer than maxChars stays whole on its own line.
+ * @param {string} label
+ * @param {number} maxChars
+ * @returns {string[]}
+ */
+export function wrapLabel(label, maxChars) {
+  /** @type {string[]} */
+  const lines = [];
+  let line = '';
+  for (const word of label.split(' ')) {
+    if (line && line.length + 1 + word.length > maxChars) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+/**
  * @typedef {object} Layout
  * @property {number} W
  * @property {number} H
@@ -466,16 +489,20 @@ export function createChart(wrap, editor) {
     if (overlay) items.push({ label: overlay.label ?? 'Achieved', kind: 'achieved' });
     if (overlay && overlay.ranges.length > 0) items.push({ label: 'Problem range', kind: 'range' });
     const rowH = 18;
-    // Width from the longest label at about 6.6 px per character (12 px font).
-    const boxW = 52 + Math.ceil(6.6 * Math.max(...items.map((it) => it.label.length)));
-    const boxH = items.length * rowH + 8;
+    // Width from the longest label at about 6.6 px per character (12 px
+    // font); labels wrap to the width of the plot.
+    const maxChars = Math.max(8, Math.floor((L.right - L.left - 52) / 6.6));
+    const lines = items.map((it) => wrapLabel(it.label, maxChars));
+    const boxW = 52 + Math.ceil(6.6 * Math.max(...lines.flat().map((l) => l.length)));
+    const boxH = lines.flat().length * rowH + 8;
     const { x, y } = legendPosition(L, boxW, boxH, samples);
     add(legend, 'rect', {
       class: 'chart-legend-bg', x, y, width: boxW, height: boxH, rx: 4,
       'fill-opacity': 0.85, style: 'fill: var(--chart-bg); stroke: var(--chart-grid)',
     });
-    items.forEach(({ label, kind }, k) => {
-      const cy = y + 4 + rowH * k + rowH / 2;
+    let row = 0;
+    items.forEach(({ kind }, k) => {
+      const cy = y + 4 + rowH * row + rowH / 2;
       if (kind === 'range') {
         add(legend, 'rect', {
           class: 'chart-legend-range', x: x + 8, y: cy - 6, width: 28, height: 12,
@@ -490,10 +517,14 @@ export function createChart(wrap, editor) {
           style: dash ? 'stroke: var(--chart-achieved, var(--chart-point-selected))' : 'stroke: var(--chart-curve)',
         });
       }
-      add(legend, 'text', {
+      const text = add(legend, 'text', {
         x: x + 44, y: cy + 4, 'font-size': 12, style: 'fill: var(--chart-axis)',
         'data-testid': `chart-legend-${kind}`,
-      }, label);
+      });
+      lines[k].forEach((line, j) => {
+        add(text, 'tspan', { x: x + 44, dy: j === 0 ? 0 : rowH }, j < lines[k].length - 1 ? `${line} ` : line);
+      });
+      row += lines[k].length;
     });
   }
 

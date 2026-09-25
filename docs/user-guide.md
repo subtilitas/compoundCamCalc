@@ -173,6 +173,10 @@ The chart shows the achieved force curve of the cam as a dashed line over
 the target. When the latest input fails a check, the dashed line is labelled
 "Achieved, latest attempt", the values belong to that attempt, and the cam
 view keeps the last cam that met every check, dimmed and labelled. When the
+latest attempt has no achieved curve, the chart shows the curve of the last
+valid cam, dimmed and labelled "Achieved, last valid cam". When a solve
+takes longer than 250 ms, the values, the cam and the curve dim and a
+caption says that they belong to the previous inputs. When the
 solver stops with an error, the values are empty and the cam view and the
 chart keep the last cam that met every check, dimmed and labelled.
 

@@ -102,14 +102,14 @@ describe('solve view selection', () => {
 
   it('shows the current result when it meets every check', () => {
     const good = solved('ok');
-    expect(solveView(good, good, 'idle')).toEqual({ current: good, stale: false, status: 'ok', shown: good, withCurve: good });
-    expect(solveView(null, null, 'idle')).toEqual({ current: null, stale: false, status: 'idle', shown: null, withCurve: null });
+    expect(solveView(good, good, 'idle')).toEqual({ current: good, stale: false, outdated: false, status: 'ok', shown: good, withCurve: good });
+    expect(solveView(null, null, 'idle')).toEqual({ current: null, stale: false, outdated: false, status: 'idle', shown: null, withCurve: null });
   });
 
   it('keeps the last valid cam in view for a failing result', () => {
     const good = solved('ok');
     const bad = solved('infeasible');
-    expect(solveView(bad, good, 'idle')).toEqual({ current: bad, stale: true, status: 'infeasible', shown: good, withCurve: bad });
+    expect(solveView(bad, good, 'idle')).toEqual({ current: bad, stale: true, outdated: false, status: 'infeasible', shown: good, withCurve: bad });
     const noCurve = solved('no-convergence', false);
     expect(solveView(noCurve, good, 'busy')).toMatchObject({ current: noCurve, stale: true, status: 'busy', shown: good, withCurve: good });
     expect(solveView(bad, null, 'idle')).toMatchObject({ stale: false, shown: bad });
@@ -118,9 +118,19 @@ describe('solve view selection', () => {
   it('drops the older result after a solver error', () => {
     const good = solved('ok');
     const bad = solved('infeasible');
-    expect(solveView(good, good, 'error')).toEqual({ current: null, stale: true, status: 'error', shown: good, withCurve: good });
-    expect(solveView(bad, good, 'error')).toEqual({ current: null, stale: true, status: 'error', shown: good, withCurve: good });
-    expect(solveView(bad, null, 'error')).toEqual({ current: null, stale: false, status: 'error', shown: null, withCurve: null });
+    expect(solveView(good, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good });
+    expect(solveView(bad, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good });
+    expect(solveView(bad, null, 'error')).toEqual({ current: null, stale: false, outdated: false, status: 'error', shown: null, withCurve: null });
+  });
+});
+
+describe('outdated results', () => {
+  it('marks the current result outdated only while a solve has run for a while', () => {
+    const good = { result: /** @type {any} */ ({ status: 'ok', achieved: null }), state: 1 };
+    expect(solveView(good, good, 'busy', true)).toMatchObject({ outdated: true, stale: false, shown: good, status: 'busy' });
+    expect(solveView(good, good, 'busy', false).outdated).toBe(false);
+    expect(solveView(good, good, 'idle', true).outdated).toBe(false);
+    expect(solveView(null, null, 'busy', true).outdated).toBe(false);
   });
 });
 

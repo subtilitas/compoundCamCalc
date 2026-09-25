@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AMO_OFFSET, INCH, toSI } from '../../src/core/units.js';
 import { CODES } from '../../src/core/diagnostics.js';
-import { achievedPath, forceTop, legendPosition, rangeTitle } from '../../src/ui/chart.js';
+import { achievedPath, forceTop, legendPosition, rangeTitle, wrapLabel } from '../../src/ui/chart.js';
 import { amo } from '../../src/ui/display.js';
 
 /** @type {import('../../src/state/schema.js').Units} */
@@ -148,5 +148,18 @@ describe('legendPosition', () => {
     const { x, y } = legendPosition(small, 100, 50, []);
     expect(x).toBe(10);
     expect(y).toBe(10);
+  });
+});
+
+describe('wrapLabel', () => {
+  it('keeps a short label on one line', () => {
+    expect(wrapLabel('Achieved', 20)).toEqual(['Achieved']);
+  });
+  it('splits at spaces to fit the width', () => {
+    expect(wrapLabel('Achieved, latest attempt', 18)).toEqual(['Achieved, latest', 'attempt']);
+    expect(wrapLabel('Achieved, last valid cam', 10)).toEqual(['Achieved,', 'last valid', 'cam']);
+  });
+  it('keeps a long word whole', () => {
+    expect(wrapLabel('Supercalifragilistic x', 8)).toEqual(['Supercalifragilistic', 'x']);
   });
 });

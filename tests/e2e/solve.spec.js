@@ -66,6 +66,21 @@ test.describe('solver in the page', () => {
     await expect(page.getByTestId('cam-view')).not.toHaveClass(/cam-stale/);
   });
 
+  test('the chart legend stays inside a 320 px wide chart', async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto('./');
+    await solved(page);
+    await setField(page, 'lead-in', '150');
+    await expect(page.locator('#app')).toHaveAttribute('data-solve-status', 'infeasible', { timeout: 20_000 });
+    await expect(page.getByTestId('chart-legend-achieved')).toHaveText('Achieved, last valid cam');
+    const fits = await page.evaluate(() => {
+      const chart = /** @type {SVGSVGElement} */ (document.querySelector('[data-testid="force-chart"]'));
+      const bg = /** @type {SVGRectElement} */ (chart.querySelector('.chart-legend-bg'));
+      return Number(bg.getAttribute('x')) + Number(bg.getAttribute('width')) <= Number(chart.getAttribute('width'));
+    });
+    expect(fits).toBe(true);
+  });
+
   test('switching the dimension unit re-labels the results', async ({ page }) => {
     await page.goto('./');
     await solved(page);

@@ -24,6 +24,8 @@ import { infoButton } from './glossary.js';
  * @property {SolveResult | null} result
  * @property {ProjectState} state
  * @property {boolean} stale the cam shown is the last one that met every check
+ * @property {boolean} [outdated] the values belong to older inputs while a
+ *   newer solve runs
  */
 
 /**
@@ -50,6 +52,9 @@ export const STALE_TEXT = 'The cam shown is the last one that met every check.';
 /** Caption above the metrics when the cam view shows an older cam than the metrics. */
 export const STALE_CAPTION = 'These values belong to the latest attempt, which fails the checks; ' +
   'the cam view shows the last cam that met every check.';
+
+/** Caption above the metrics while a newer solve runs. */
+export const OUTDATED_CAPTION = 'These values belong to the previous inputs; solving the current inputs.';
 
 /**
  * Status line text.
@@ -261,9 +266,12 @@ export function createResults(container) {
       const text = statusText(view.status, count, view.stale);
       // Writing the same text again makes some screen readers repeat it.
       if (status.textContent !== text) status.textContent = text;
-      container.classList.toggle('results-stale', view.stale);
+      const outdated = view.outdated === true;
+      container.classList.toggle('results-stale', view.stale || outdated);
       // The caption speaks about values, so it needs a result to show.
-      caption.hidden = !view.stale || !result;
+      const captionText = view.stale ? STALE_CAPTION : OUTDATED_CAPTION;
+      if (caption.textContent !== captionText) caption.textContent = captionText;
+      caption.hidden = !(view.stale || outdated) || !result;
 
       const items = metricItems(result, view.state.units);
       let fitShown = false;

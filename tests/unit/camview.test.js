@@ -204,5 +204,6 @@ describe('staleCaption', () => {
     expect(staleCaption('busy')).toBe('Last cam that met every check; solving the current inputs');
     expect(staleCaption('error')).toMatch(/solver stopped with an error/);
     expect(staleCaption('idle')).toMatch(/the current inputs fail the checks/);
+    expect(staleCaption('pending')).toBe('Cam of the previous inputs; solving the current inputs');
   });
 });

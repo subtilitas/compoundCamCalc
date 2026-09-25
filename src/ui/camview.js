@@ -78,6 +78,8 @@ export const ERROR_TEXT = 'No cam: the solver stopped with an error';
 export const STALE_CAPTION = 'Last cam that met every check; the current inputs fail the checks, see Results';
 /** Caption shown over a stale drawing while the current inputs are being solved. */
 export const BUSY_STALE_CAPTION = 'Last cam that met every check; solving the current inputs';
+/** Caption shown over the current cam while newer inputs are being solved. */
+export const PENDING_CAPTION = 'Cam of the previous inputs; solving the current inputs';
 /** Caption shown over a stale drawing when the solver stopped with an error. */
 export const ERROR_STALE_CAPTION = 'Last cam that met every check; the solver stopped with an error on the current inputs';
 /** Keyboard help appended to the accessible label of the svg. */
@@ -251,6 +253,7 @@ export function zoomView(view, base, factor, fx, fy) {
 export function staleCaption(status) {
   if (status === 'error') return ERROR_STALE_CAPTION;
   if (status === 'busy') return BUSY_STALE_CAPTION;
+  if (status === 'pending') return PENDING_CAPTION;
   return STALE_CAPTION;
 }
 
@@ -272,11 +275,13 @@ export function camSummary(result, dims) {
  * @param {SolveResult | null} result
  * @param {'mm' | 'in'} dims
  * @param {boolean} stale
- * @param {string} [status] 'error' when the solver stopped with an error
+ * @param {string} [status] 'error' when the solver stopped with an error, 'busy'
+ *   while solving, 'pending' when the drawn cam belongs to older inputs
  */
 export function camLabel(result, dims, stale, status) {
   const summary = !result && status === 'error' ? 'Cam view: no cam, the solver stopped with an error' : camSummary(result, dims);
-  return `${summary}; ${KEYS_HELP}${result && stale ? ', last cam that met every check' : ''}`;
+  const note = !result || !stale ? '' : status === 'pending' ? ', cam of the previous inputs' : ', last cam that met every check';
+  return `${summary}; ${KEYS_HELP}${note}`;
 }
 
 /**
@@ -565,7 +570,8 @@ export function createCamView(container) {
    * @param {SolveResult | null} result
    * @param {ProjectState} state
    * @param {boolean} stale
-   * @param {string} [status] 'error' when the solver stopped with an error
+   * @param {string} [status] 'error', 'busy' or 'pending' (see camLabel), 'busy'
+ *   while solving, 'pending' when the drawn cam belongs to older inputs
    */
   function render(result, state, stale, status) {
     dims = state.units.dims;

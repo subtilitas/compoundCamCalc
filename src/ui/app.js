@@ -50,18 +50,23 @@ export function chipText(status, problems) {
  * @typedef {{ result: SolveResult, state: T }} Solved
  */
 
+/** A solve running longer than this marks the shown result as outdated (ms). */
+export const PENDING_DELAY = 250;
+
 /**
  * What the solve views show: the result the values come from (null after a
  * solver error, whose latest result belongs to an older input), whether the
- * cam shown is the last valid one in place of the current result, the
- * status, the result drawn in the cam view and the result whose achieved
- * curve the chart shows.
+ * cam shown is the last valid one in place of the current result, whether
+ * the current result belongs to older inputs while a newer solve runs
+ * (outdated), the status, the result drawn in the cam view and the result
+ * whose achieved curve the chart shows.
  * @template T
  * @param {Solved<T> | null} latest last delivered result
  * @param {Solved<T> | null} lastGood last delivered result with status ok
  * @param {'idle' | 'busy' | 'error'} solverStatus
+ * @param {boolean} [pending] a solve has been running for PENDING_DELAY or longer
  */
-export function solveView(latest, lastGood, solverStatus) {
+export function solveView(latest, lastGood, solverStatus, pending = false) {
   // After a solver error only the last valid cam stays in view, dimmed.
   const failed = solverStatus === 'error';
   const current = failed ? null : latest;
@@ -70,9 +75,10 @@ export function solveView(latest, lastGood, solverStatus) {
   const status = solverStatus === 'busy' ? 'busy'
     : failed ? 'error'
       : current ? current.result.status : 'idle';
+  const outdated = pending && solverStatus === 'busy' && current !== null;
   const shown = stale ? lastGood : current;
   const withCurve = current?.result.achieved ? current : stale ? lastGood : null;
-  return { current, stale, status, shown, withCurve };
+  return { current, stale, outdated, status, shown, withCurve };
 }
 
 /**
@@ -205,14 +211,22 @@ export function startApp() {
   let latest = null;
   /** @type {'idle' | 'busy' | 'error'} */
   let solverStatus = 'idle';
+  /** Start of the running solve (ms). */
+  let busySince = 0;
   root.dataset.solveState = 'idle';
 
   function showSolve() {
-    const { current, stale, status, shown, withCurve } = solveView(latest, lastGood, solverStatus);
+    const pending = solverStatus === 'busy' && performance.now() - busySince >= PENDING_DELAY;
+    const { current, stale, outdated, status, shown, withCurve } = solveView(latest, lastGood, solverStatus, pending);
     const now = store.getState();
-    results.render({ status, result: current?.result ?? null, state: current?.state ?? now, stale });
+    results.render({ status, result: current?.result ?? null, state: current?.state ?? now, stale, outdated });
     // The drawn cam keeps its geometry; labels follow the current units.
-    camView.render(shown?.result ?? null, shown ? { ...shown.state, units: now.units } : now, stale, solverStatus);
+    camView.render(
+      shown?.result ?? null,
+      shown ? { ...shown.state, units: now.units } : now,
+      stale || outdated,
+      stale ? solverStatus : outdated ? 'pending' : solverStatus,
+    );
     solveChip.textContent = status === 'idle' ? '' : chipText(status, current?.result.diagnostics.length ?? 0);
     solveChip.dataset.status = status;
     chart.setAchieved(withCurve?.result.achieved
@@ -224,8 +238,9 @@ export function startApp() {
             .map((d) => ({ from: /** @type {[number, number]} */ (d.xRange)[0], to: /** @type {[number, number]} */ (d.xRange)[1], code: d.code })),
           // Dimmed while a newer solve runs, and when it is the last valid
           // curve shown in place of a failing result.
-          stale: withCurve !== current || solverStatus === 'busy',
-          label: withCurve.result.status === 'ok' ? 'Achieved' : 'Achieved, latest attempt',
+          stale: withCurve !== current || outdated,
+          label: withCurve !== current ? 'Achieved, last valid cam'
+            : withCurve.result.status === 'ok' ? 'Achieved' : 'Achieved, latest attempt',
         }
       : null);
     root.dataset.solveState = solverStatus === 'busy' ? 'busy' : solverStatus === 'error' ? 'error' : current ? 'ok' : 'idle';
@@ -240,6 +255,13 @@ export function startApp() {
       showSolve();
     },
     onStatus(status) {
+      if (status === 'busy' && solverStatus !== 'busy') {
+        busySince = performance.now();
+        // Mark the shown result outdated when the solve takes longer.
+        setTimeout(() => {
+          if (solverStatus === 'busy') showSolve();
+        }, PENDING_DELAY + 10);
+      }
       solverStatus = status;
       showSolve();
     },
