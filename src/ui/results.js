@@ -16,7 +16,7 @@ import { infoButton } from './glossary.js';
 /** @typedef {import('../state/schema.js').Units} Units */
 /** @typedef {keyof typeof import('./glossary.js').GLOSSARY} GlossaryKey */
 
-/** @typedef {'idle' | 'busy' | 'ok' | 'infeasible' | 'no-convergence' | 'error'} ResultsStatus */
+/** @typedef {'idle' | 'busy' | 'preview' | 'ok' | 'infeasible' | 'no-convergence' | 'error'} ResultsStatus */
 
 /**
  * @typedef {object} ResultsView
@@ -68,6 +68,7 @@ export function statusText(status, count, stale) {
   let text;
   switch (status) {
     case 'busy': text = 'Solving…'; break;
+    case 'preview': text = 'Preview from 100 samples without problems; the full check of 1500 samples runs when the drag ends'; break;
     case 'ok': text = 'The cam meets the target and every check'; break;
     case 'infeasible': text = `The cam does not meet every check: ${count} ${count === 1 ? 'problem' : 'problems'}`; break;
     case 'no-convergence': text = 'The solver did not converge'; break;

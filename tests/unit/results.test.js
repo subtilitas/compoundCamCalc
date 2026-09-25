@@ -62,6 +62,7 @@ describe('statusText', () => {
     expect(statusText('infeasible', 3, false)).toBe('The cam does not meet every check: 3 problems');
     expect(statusText('no-convergence', 1, false)).toBe('The solver did not converge');
     expect(statusText('error', 0, false)).toBe('The solver stopped with an error; change an input to try again');
+    expect(statusText('preview', 0, false)).toMatch(/^Preview from 100 samples without problems/);
   });
 
   it('adds the stale sentence', () => {

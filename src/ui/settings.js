@@ -259,6 +259,12 @@ export const LIMB_TABLE = Object.freeze({
  */
 
 /**
+ * Decimals of limb-table travel per dimension unit: fine enough to show the
+ * smallest gap between rows, LIMB_TABLE.travelGapMin (0.01 mm, 0.0004 in).
+ */
+export const LIMB_TRAVEL_DECIMALS = Object.freeze({ mm: 2, in: 4 });
+
+/**
  * Limb table rows as display text.
  * @param {LimbRow[]} rows SI values
  * @param {Units} units
@@ -266,7 +272,7 @@ export const LIMB_TABLE = Object.freeze({
  */
 export function formatLimbRows(rows, units) {
   return rows.map((r) => ({
-    travel: fixed(fromSI(r.travel, 'length', units.dims), DIMS_DECIMALS[units.dims]),
+    travel: fixed(fromSI(r.travel, 'length', units.dims), LIMB_TRAVEL_DECIMALS[units.dims]),
     force: fixed(fromSI(r.force, 'force', units.force), FORCE_DECIMALS[units.force]),
   }));
 }

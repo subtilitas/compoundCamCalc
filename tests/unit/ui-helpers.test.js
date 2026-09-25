@@ -79,6 +79,7 @@ describe('range bounds and messages', () => {
 describe('solve status link', () => {
   it('names the state and the number of problems', () => {
     expect(chipText('busy', 0)).toBe('Cam: solving…');
+    expect(chipText('preview', 0)).toBe('Cam: preview, full check follows');
     expect(chipText('ok', 0)).toBe('Cam: meets every check');
     expect(chipText('infeasible', 1)).toBe('Cam: 1 problem, see Results');
     expect(chipText('infeasible', 3)).toBe('Cam: 3 problems, see Results');
@@ -121,6 +122,15 @@ describe('solve view selection', () => {
     expect(solveView(good, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good });
     expect(solveView(bad, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good });
     expect(solveView(bad, null, 'error')).toEqual({ current: null, stale: false, outdated: false, status: 'error', shown: null, withCurve: null });
+  });
+});
+
+describe('coarse results', () => {
+  it('shows a coarse result without problems as a preview', () => {
+    const coarse = { result: /** @type {any} */ ({ status: 'ok', resolution: 'coarse', achieved: null }), state: 1 };
+    expect(solveView(coarse, null, 'idle').status).toBe('preview');
+    const bad = { result: /** @type {any} */ ({ status: 'infeasible', resolution: 'coarse', achieved: null }), state: 1 };
+    expect(solveView(bad, null, 'idle').status).toBe('infeasible');
   });
 });
 

@@ -166,12 +166,14 @@ body {
 
   .panel-settings {
     grid-column: 2;
-    grid-row: 2 / span 3;
+    grid-row: 1 / span 4;
   }
 }
 
+/* Notices stay in the first column, so on wide screens the settings start
+   in the first row whether a notice is shown or not. */
 .notices {
-  grid-column: 1 / -1;
+  grid-column: 1;
   display: grid;
   gap: 8px;
 }
@@ -698,7 +700,8 @@ input[aria-invalid='true'] {
   border-left-color: var(--error);
 }
 
-.results-status-busy {
+.results-status-busy,
+.results-status-preview {
   color: var(--muted);
 }
 
@@ -855,6 +858,13 @@ input[aria-invalid='true'] {
 
 .camview-caption:empty {
   display: none;
+}
+
+/* Values of an older attempt: muted and italic, still at text contrast. */
+.results-stale .results-metrics dd,
+.results-stale .results-diagnostics {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .results-caption {

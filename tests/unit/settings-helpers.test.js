@@ -146,11 +146,17 @@ describe('limb table rows', () => {
 
   it('formats rows in the display units', () => {
     expect(formatLimbRows(rows, metric)).toEqual([
-      { travel: '0.0', force: '500.0' },
-      { travel: '40.0', force: '600.0' },
-      { travel: '80.0', force: '700.0' },
+      { travel: '0.00', force: '500.0' },
+      { travel: '40.00', force: '600.0' },
+      { travel: '80.00', force: '700.0' },
     ]);
-    expect(formatLimbRows([{ travel: INCH, force: LBF }], imperial)).toEqual([{ travel: '1.000', force: '1.0' }]);
+    expect(formatLimbRows([{ travel: INCH, force: LBF }], imperial)).toEqual([{ travel: '1.0000', force: '1.0' }]);
+    // Rows at the smallest allowed gap read differently in both units.
+    const gap = [{ travel: 0, force: 1 }, { travel: LIMB_TABLE.travelGapMin, force: 2 }];
+    for (const u of [metric, imperial]) {
+      const [a, b] = formatLimbRows(gap, u);
+      expect(a.travel).not.toBe(b.travel);
+    }
   });
 
   it('accepts valid rows', () => {
@@ -232,7 +238,7 @@ describe('limb table rows', () => {
     expect(parsed[2]).toEqual(previous[2]);
     const wrong = parseLimbRows([{ travel: 'x', force: '1' }, ...texts.slice(1)], metric, previous);
     expect(wrong.errors).toEqual([{ row: 0, column: 'travel', message: 'Row 1: travel must be a number' }]);
-    expect(parseLimbRows(texts, metric).rows[0].travel).toBeCloseTo(0.0123, 12);
+    expect(parseLimbRows(texts, metric).rows[0].travel).toBeCloseTo(0.01235, 12);
   });
 
   it('seeds a valid table from the linear limb', () => {

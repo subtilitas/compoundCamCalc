@@ -81,6 +81,15 @@ test.describe('solver in the page', () => {
     expect(fits).toBe(true);
   });
 
+  test('on a wide screen the settings start beside the force curve', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('./');
+    await solved(page);
+    const curve = await page.locator('.panel-curve').boundingBox();
+    const settings = await page.locator('.panel-settings').boundingBox();
+    expect(Math.abs((settings?.y ?? 0) - (curve?.y ?? 1e9))).toBeLessThan(2);
+  });
+
   test('switching the dimension unit re-labels the results', async ({ page }) => {
     await page.goto('./');
     await solved(page);
@@ -134,6 +143,8 @@ test.describe('solver in the page', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-solve-status', 'infeasible', { timeout: 20_000 });
     await expect(page.getByTestId('solve-chip')).toHaveText('Cam: 1 problem, see Results');
     await expect(page.getByTestId('results-caption')).toBeVisible();
+    // The values of the failing attempt are set apart.
+    expect(await page.getByTestId('metric-peak').evaluate((el) => getComputedStyle(el).fontStyle)).toBe('italic');
     await expect(page.getByTestId('camview-caption')).toContainText('Last cam that met every check');
     await expect(page.getByTestId('cam-view')).toHaveAttribute('aria-label', /last cam that met every check/);
     await expect(page.getByTestId('camview-legend')).toContainText('Cable track');

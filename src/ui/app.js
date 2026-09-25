@@ -39,6 +39,7 @@ function showNotice(area, text) {
  */
 export function chipText(status, problems) {
   if (status === 'busy') return 'Cam: solving…';
+  if (status === 'preview') return 'Cam: preview, full check follows';
   if (status === 'ok') return 'Cam: meets every check';
   if (status === 'infeasible') return `Cam: ${problems} ${problems === 1 ? 'problem' : 'problems'}, see Results`;
   if (status === 'no-convergence') return 'Cam: the solver did not converge, see Results';
@@ -71,10 +72,14 @@ export function solveView(latest, lastGood, solverStatus, pending = false) {
   const failed = solverStatus === 'error';
   const current = failed ? null : latest;
   const stale = lastGood !== null && (failed || (current !== null && current.result.status !== 'ok'));
-  /** @type {'idle' | 'busy' | 'error' | SolveResult['status']} */
+  // A coarse solve checks 100 samples only: without problems it is a
+  // preview until the full solve of the same input confirms it.
+  /** @type {'idle' | 'busy' | 'error' | 'preview' | SolveResult['status']} */
   const status = solverStatus === 'busy' ? 'busy'
     : failed ? 'error'
-      : current ? current.result.status : 'idle';
+      : !current ? 'idle'
+        : current.result.status === 'ok' && current.result.resolution === 'coarse' ? 'preview'
+          : current.result.status;
   const outdated = pending && solverStatus === 'busy' && current !== null;
   const shown = stale ? lastGood : current;
   const withCurve = current?.result.achieved ? current : stale ? lastGood : null;
