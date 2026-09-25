@@ -95,7 +95,7 @@ All notable changes are listed here. Versions follow semantic versioning.
   after each step while the largest active residual falls or stays above
   rounding (at most 8 passes), reports `infeasible` when rounding leaves
   an active constraint or a skipped equality outside the tolerance, and
-  returns `invalid` for mismatched sizes or non-finite data; the fit
+  returns `invalid` for mismatched sizes, non-finite data or a missing programme or options container; the fit
   programmes of 600 random near-default states end with the constraints
   met to 1e-10 of the row scale. With two rows 1e-8 to 1e-6 apart, 4 % to
   13 % of feasible random problems come back `infeasible`, and 44 of
@@ -135,7 +135,8 @@ All notable changes are listed here. Versions follow semantic versioning.
   (coarse) and 30 ms to 35 ms (full) for the default preset, within the
   budgets of 30 ms and 200 ms, with 19 diagnostic codes whose messages
   carry numbers and units and whose suggestions name the input to change;
-  never throws.
+  never throws, also for a missing or non-object options container, which
+  means the defaults.
   The result type names each outline, and a result without a cable track
   has the string outlines only; the metrics give the smallest radius of
   curvature and its limit for the string and the cable track separately;

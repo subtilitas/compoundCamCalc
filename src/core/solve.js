@@ -267,7 +267,10 @@ function emptyResult(resolution) {
  * @returns {SolveResult}
  */
 export function solve(state, options = {}) {
-  return guardedSolve(state, options.resolution === 'coarse' ? 'coarse' : 'full', options.maxIterations, true);
+  // Options from untyped or deserialized data: a missing or non-object
+  // container means the defaults.
+  const o = options !== null && typeof options === 'object' ? options : {};
+  return guardedSolve(state, o.resolution === 'coarse' ? 'coarse' : 'full', o.maxIterations, true);
 }
 
 /**

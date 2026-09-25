@@ -102,7 +102,8 @@ export function stiffnessForTravel({ drawEnergy, travel, preloadTravel }) {
  * @param {{ rotation: ArrayLike<number>, moment: ArrayLike<number>, alpha0: number }} params
  * @returns {{ limb: TableLimbData | null, error: string | null }}
  */
-export function tableLimb({ rotation, moment, alpha0 }) {
+export function tableLimb(params) {
+  const { rotation, moment, alpha0 } = params !== null && typeof params === 'object' ? params : /** @type {any} */ ({});
   const n = rotation?.length ?? 0;
   if (!(n >= 2 && n <= TABLE_ROWS_MAX) || moment?.length !== n) {
     return { limb: null, error: `The limb table needs at least 2 rows and at most ${TABLE_ROWS_MAX} rows` };

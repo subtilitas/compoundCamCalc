@@ -129,12 +129,18 @@ function finiteArray(v, length) {
  * @returns {QPResult}
  */
 export function solveQP(qp, options = {}) {
-  const { n, G, a, C, b } = qp;
-  const meq = qp.meq ?? 0;
+  // A missing or non-object programme or options container is invalid
+  // input, not an exception.
+  const program = qp !== null && typeof qp === 'object' ? qp : /** @type {Partial<QuadraticProgram>} */ ({});
+  const opts = options !== null && typeof options === 'object' ? options : {};
+  const { n, G, a, C, b } = /** @type {QuadraticProgram} */ (program);
+  const meq = program.meq ?? 0;
   const m = b?.length;
-  const tolerance = options.tolerance ?? 1e-10;
-  const maxIterations = options.maxIterations ?? 10 * (n + m) + 20;
+  const tolerance = opts.tolerance ?? 1e-10;
+  const maxIterations = opts.maxIterations ?? 10 * (n + m) + 20;
   const valid =
+    qp === program &&
+    (options === undefined || options === opts) &&
     Number.isInteger(n) &&
     n >= 1 &&
     Number.isInteger(m) &&

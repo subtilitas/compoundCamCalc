@@ -551,6 +551,9 @@ describe('solveQP', () => {
       expect(solveQP(one, options).status).toBe('invalid');
     }
     expect(solveQP(one, { maxIterations: 0, tolerance: 0 }).status).toBe('optimal');
+    // A missing or non-object programme or options container.
+    for (const qp of [null, undefined, 5]) expect(solveQP(/** @type {any} */ (qp)).status).toBe('invalid');
+    for (const options of [null, 5]) expect(solveQP(one, /** @type {any} */ (options)).status).toBe('invalid');
   });
 
   it('meets the KKT conditions on random convex problems to 1e-10', () => {

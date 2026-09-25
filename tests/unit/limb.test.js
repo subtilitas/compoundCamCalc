@@ -80,6 +80,11 @@ describe('linear limb', () => {
     expect(tableLimb({ rotation: [0, 7], moment: [0, 10], alpha0: 1 }).error).toMatch(/one turn/);
     expect(tableLimb({ rotation: [0, 1], moment: [0, 2e7], alpha0: 0.5 }).error).toMatch(/N·m/);
     expect(tableLimb({ rotation: [0, 1], moment: [0, 10], alpha0: 7 }).error).toMatch(/one turn/);
+    for (const params of [null, undefined, 5]) {
+      const r = tableLimb(/** @type {any} */ (params));
+      expect(r.limb).toBeNull();
+      expect(r.error).toMatch(/at least 2 rows/);
+    }
     // At most 1000 rows; the length is checked before any row is read.
     const many = { length: 6283186 };
     expect(tableLimb({ rotation: /** @type {any} */ (many), moment: /** @type {any} */ (many), alpha0: 0 }).error).toMatch(/at most 1000 rows/);

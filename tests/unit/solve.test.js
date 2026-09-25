@@ -1155,6 +1155,16 @@ describe('solve: lead-in and closing blend', () => {
 describe('solve: robustness', () => {
   // 0.9 s alone, 3 s to 5 s in the coverage run and 7 s to 10 s when other
   // processes load every core: the time limit is 30 s.
+  it('takes a missing or non-object options container as the defaults', () => {
+    const coarse = solve(defaultState(), { resolution: 'coarse' });
+    for (const options of [null, 5, 'coarse']) {
+      const r = solve(defaultState(), /** @type {any} */ (options));
+      expect(r.status).toBe('ok');
+      expect(r.resolution).toBe('full');
+    }
+    expect(coarse.resolution).toBe('coarse');
+  });
+
   it('never throws on valid states and returns plain data', () => {
     const ranges = (/** @type {string} */ path) => FIELDS[path];
     const num = (/** @type {string} */ path, /** @type {number} */ lo = 0, /** @type {number} */ hi = 1) => {
