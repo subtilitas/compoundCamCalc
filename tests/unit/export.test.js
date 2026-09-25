@@ -110,23 +110,47 @@ describe('export model', () => {
       const c = /** @type {number[]} */ (plate.contour);
       const n = c.length / 2;
       expect(n).toBeGreaterThan(90);
+      // Signed distance to the hull: max over ψ of X·n − h(ψ). h is
+      // tabulated once on a π/800 grid; each point takes its best grid
+      // angle and refines it by golden section on the exact supports.
+      const G = 1600;
+      const cs = new Float64Array(G);
+      const sn = new Float64Array(G);
+      const hs = new Float64Array(G);
+      for (let m = 0; m < G; m++) {
+        const psi = (m * 2 * Math.PI) / G;
+        cs[m] = Math.cos(psi);
+        sn[m] = Math.sin(psi);
+        hs[m] = Math.max(...supports.map((s) => s.p(psi)));
+      }
+      const f = (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ psi) =>
+        x * Math.cos(psi) + y * Math.sin(psi) - Math.max(...supports.map((s) => s.p(psi)));
       let lo = Infinity;
       let hi = -Infinity;
       for (let i = 0; i < n; i++) {
         const j = (i + 1) % n;
         for (let k = 0; k <= 8; k++) {
-          const f = k / 8;
-          const x = c[2 * i] + f * (c[2 * j] - c[2 * i]);
-          const y = c[2 * i + 1] + f * (c[2 * j + 1] - c[2 * i + 1]);
-          // Signed distance to the hull: max over ψ of X·n − h(ψ), found
-          // on a fine grid around the direction of the point.
-          const psi0 = Math.atan2(y, x);
-          let d = -Infinity;
-          for (let m = -400; m <= 400; m++) {
-            const psi = psi0 + (m * Math.PI) / 800;
-            const h = Math.max(...supports.map((s) => s.p(psi)));
-            d = Math.max(d, x * Math.cos(psi) + y * Math.sin(psi) - h);
+          const w = k / 8;
+          const x = c[2 * i] + w * (c[2 * j] - c[2 * i]);
+          const y = c[2 * i + 1] + w * (c[2 * j + 1] - c[2 * i + 1]);
+          let best = 0;
+          let bv = -Infinity;
+          for (let m = 0; m < G; m++) {
+            const v = x * cs[m] + y * sn[m] - hs[m];
+            if (v > bv) {
+              bv = v;
+              best = m;
+            }
           }
+          let a = ((best - 1) * 2 * Math.PI) / G;
+          let b = ((best + 1) * 2 * Math.PI) / G;
+          for (let it = 0; it < 50; it++) {
+            const m1 = a + (b - a) * 0.381966;
+            const m2 = a + (b - a) * 0.618034;
+            if (f(x, y, m1) > f(x, y, m2)) b = m2;
+            else a = m1;
+          }
+          const d = Math.max(bv, f(x, y, (a + b) / 2));
           lo = Math.min(lo, d);
           hi = Math.max(hi, d);
         }
@@ -134,7 +158,8 @@ describe('export model', () => {
       expect(hi).toBeLessThanOrEqual(tol * (1 + 1e-6));
       expect(lo).toBeGreaterThanOrEqual(-tol * (1 + 1e-3));
     }
-  });
+    // A geometric sweep: slow under coverage on a CI runner.
+  }, 30_000);
 
   it('refuses results it cannot export', () => {
     expect(buildExportModel({ ...result, resolution: 'coarse' }, state).error).toMatch(/full solve/);
