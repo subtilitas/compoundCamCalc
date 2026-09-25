@@ -30,14 +30,14 @@
 import { MIN_FORCE, curveMetrics, drawRange } from './curve.js';
 import { CODES, diagnostic, formatter, runs } from './diagnostics.js';
 import { fitCableTrack } from './fit.js';
-import { COARSE_SAMPLES, FULL_SAMPLES, drawGrid, solveForward } from './forward.js';
+import { COARSE_SAMPLES, FULL_SAMPLES, MAX_ITERATION_LIMIT, drawGrid, solveForward } from './forward.js';
 import { createCurve } from './interp.js';
 import {
   braceBlend, braceConditions, cableSpline, createInverse, resampleCable, sampleInverse,
 } from './inverse.js';
 import { limbFromState } from './limb.js';
 import {
-  cableStopPost, closeCableTrack, createPiecewise, maxDimension, minimumOn, sampleOutline, terminationPost,
+  CLOSED_TOLERANCE, cableStopPost, closeCableTrack, createPiecewise, maxDimension, minimumOn, sampleOutline, terminationPost,
   trackMark, trackOffsets,
 } from './outline.js';
 import { createSupport, stringTrackSupport, toSupportData } from './support.js';
@@ -263,7 +263,8 @@ function emptyResult(resolution) {
  * @param {ProjectState} state
  * @param {{ resolution?: 'coarse' | 'full', maxIterations?: number }} [options] resolution
  *   (default 'full') and the Newton iteration limit of the string closure
- *   and of the forward model (default 30)
+ *   and of the forward model (default 30; an integer from 1 to 200, anything
+ *   else but undefined gives invalid-input)
  * @returns {SolveResult}
  */
 export function solve(state, options = {}) {
@@ -340,6 +341,16 @@ function solveState(state, resolution, maxIterations, trials) {
         'invalid-input',
         `The project data is not valid: ${errors.map((e) => e.message).join('; ')}`,
         'Correct the marked input fields',
+      ),
+    );
+    return res;
+  }
+  if (maxIterations !== undefined && !(Number.isInteger(maxIterations) && maxIterations >= 1 && maxIterations <= MAX_ITERATION_LIMIT)) {
+    diags.push(
+      diagnostic(
+        'invalid-input',
+        `The iteration limit ${String(maxIterations)} is not an integer from 1 to ${MAX_ITERATION_LIMIT}`,
+        `Leave the iteration limit out, or give an integer from 1 to ${MAX_ITERATION_LIMIT}`,
       ),
     );
     return res;
@@ -1498,14 +1509,18 @@ export function largerStringTrack(state, dr) {
  */
 function closingDiagnostic(closed, active, state, rhoLimit, pMin, step, fmt, tryLeadIn) {
   const blendLength = active.start - state.body.leadInWrap + 2 * Math.PI - active.end;
-  const tooSharp = closed !== null && closed.blendMinRho < rhoLimit - 1e-5;
+  // The returned closed track decides, which re-interpolates the blend:
+  // its exact minima of ρ and p, not those of the blend piece alone.
+  const tooSharp = closed !== null && !(closed.minRho >= rhoLimit - CLOSED_TOLERANCE);
   const message = !closed
     ? `The lead-in wrap of ${fmt.angle(state.body.leadInWrap)} and the active cable track leave ${fmt.angle(blendLength)} of the turn to close the cable track; ` +
       'no closing curve fits into so short an arc'
     : tooSharp
       ? `The cable track cannot be closed over the remaining ${fmt.angle(blendLength)} with a radius of curvature of at least ${fmt.size(rhoLimit)}: ` +
-        `the closing curve reaches ${fmt.size(closed.blendMinRho)}`
-      : `The curve that closes the cable track over the remaining ${fmt.angle(blendLength)} comes to a lever arm of ${fmt.size(closed.blendMinP)}; ` +
+        (closed.minRho > 0
+          ? `the closed track reaches ${fmt.size(closed.minRho)}`
+          : `the closed track bends the wrong way, to a radius of curvature of ${fmt.size(closed.minRho)}`)
+      : `The closed cable track, closed over the remaining ${fmt.angle(blendLength)}, comes to a lever arm of ${fmt.size(closed.minP)}; ` +
         `the axle bore, the wall and the cable radius need at least ${fmt.size(pMin)}`;
   /** @param {string} suggestion @param {boolean} closedByLeadIn */
   const result = (suggestion, closedByLeadIn) => ({

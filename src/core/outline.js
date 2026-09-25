@@ -42,7 +42,7 @@ const MIN_KNOT_GAP = 1e-3;
  * meeting them (m): the re-interpolation of the pieces as one periodic
  * spline, measured below 1e-8 m on the tested states.
  */
-const CLOSED_TOLERANCE = 1e-7;
+export const CLOSED_TOLERANCE = 1e-7;
 
 /** @typedef {import('./support.js').Support} Support */
 /** @typedef {import('./support.js').SupportData} SupportData */
@@ -306,6 +306,10 @@ export function closeCableTrack(active, { leadIn, rhoMin, pMin = 0, step }) {
       psi, p, start: psiFull, end: psiEnd, rhoMin, pMin,
       intervals: Math.max(8, Math.ceil(blendLength / (4 * DEGREE))),
       ends: { start: endState, end: leadStart },
+      // No margin: the lead-in end can sit exactly at ρ_min, and a margin
+      // there contradicts the prescribed end values. The exchange rounds
+      // hold the limits between the grid points.
+      margin: 0,
     });
     if (fit.spline) {
       blend = { kind: 'spline', start: psiFull, end: psiEnd, data: fit.spline };

@@ -1155,6 +1155,24 @@ describe('solve: lead-in and closing blend', () => {
 describe('solve: robustness', () => {
   // 0.9 s alone, 3 s to 5 s in the coverage run and 7 s to 10 s when other
   // processes load every core: the time limit is 30 s.
+  it('reports an iteration limit outside 1 to 200 as invalid input before solving', () => {
+    for (const maxIterations of [0, 201, 1.5, null, '30']) {
+      const r = solve(defaultState(), /** @type {any} */ ({ resolution: 'coarse', maxIterations }));
+      expect(codes(r)).toEqual(['invalid-input']);
+      expect(r.diagnostics[0].message).toMatch(/iteration limit .* is not an integer from 1 to 200$/);
+      expect(r.target).toBeNull();
+    }
+    expect(solve(defaultState(), { resolution: 'coarse', maxIterations: 200 }).status).toBe('ok');
+  });
+
+  it('describes a closing failure by the closed track, which decides it', () => {
+    // A 125° lead-in on the default: the re-interpolated closed track bends
+    // the wrong way; the message names that radius, not the blend piece's.
+    const r = solve(modified((s) => (s.body.leadInWrap = 125 * DEG)), { resolution: 'coarse' });
+    const d = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'closing-blend'));
+    expect(d.message).toMatch(/with a radius of curvature of at least \d+\.\d mm: the closed track bends the wrong way, to a radius of curvature of -\d+\.\d mm$/);
+  });
+
   it('takes a missing or non-object options container as the defaults', () => {
     const coarse = solve(defaultState(), { resolution: 'coarse' });
     for (const options of [null, 5, 'coarse']) {

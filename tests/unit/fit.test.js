@@ -104,6 +104,11 @@ describe('constrained cable track fit', () => {
     const data = samples(() => 0.02, start, end, 100);
     // p(ψ_0) = 5 mm contradicts p ≥ 8 mm.
     expect(fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, startValue: 0.005 }).status).toBe('infeasible');
+    // An end prescribed exactly at ρ_min (as a settled lead-in is): a margin
+    // contradicts it, no margin fits (closeCableTrack passes margin 0).
+    const atLimit = { start: [0.02, 0, 0], end: [0.02, 0, -0.015] };
+    expect(fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, ends: atLimit }).status).toBe('infeasible');
+    expect(fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, ends: atLimit, margin: 0 }).status).toBe('optimal');
     // Two different prescribed values of p(ψ_0): infeasible; equal values fit.
     const ends = { start: [0.02, 0, 0], end: [0.02, 0, 0] };
     const conflict = fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, startValue: 0.03, ends });

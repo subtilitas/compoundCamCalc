@@ -136,7 +136,10 @@ All notable changes are listed here. Versions follow semantic versioning.
   budgets of 30 ms and 200 ms, with 19 diagnostic codes whose messages
   carry numbers and units and whose suggestions name the input to change;
   never throws, also for a missing or non-object options container, which
-  means the defaults.
+  means the defaults; an iteration limit outside the integers 1 to 200
+  gives `invalid-input` before any solving. A `closing-blend` message names
+  the smallest radius of curvature or lever arm of the returned closed
+  track, which decides whether the track closes.
   The result type names each outline, and a result without a cable track
   has the string outlines only; the metrics give the smallest radius of
   curvature and its limit for the string and the cable track separately;
