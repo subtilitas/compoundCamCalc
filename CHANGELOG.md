@@ -140,8 +140,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   as the angle over which the track bends the wrong way, and names the
   draw position and curve points of the largest force difference of the
   fitted cam; a difference before point 2 names point 2, one between
-  points 2 and 3 a later point 3, for a parametric curve a larger rise to
-  peak. `cable-clearance` gives the largest bore radius plus wall that
+  points 2 and 3 on the rise to the peak a later point 3 (for a
+  parametric curve a larger rise to peak), and one after the peak the
+  drop. `cable-clearance` gives the largest bore radius plus wall that
   clears the lever arm. The first and last curve point are placed exactly
   at brace and full draw, so points within the 1e-9 m validation
   tolerance give the result of the exact state. The cable-brace mark and
