@@ -8,6 +8,7 @@
 import { createStore } from '../state/store.js';
 import { startAutosave, loadSaved } from './autosave.js';
 import { createCamView } from './camview.js';
+import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
 import { createChart } from './chart.js';
 import { byId, h } from './dom.js';
 import { createEditor } from './editor.js';
@@ -16,6 +17,9 @@ import { createStats } from './stats.js';
 import { createResults } from './results.js';
 import { createSolver } from './solver.js';
 import { createPointTable } from './table.js';
+import { createLoadChart } from './loadchart.js';
+import { createScrubber } from './scrubber.js';
+import { createStringPlan } from './stringplan.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
@@ -210,6 +214,18 @@ export function startApp() {
   const results = createResults(byId('results-body', HTMLDivElement));
   const solveChip = byId('solve-chip', HTMLAnchorElement);
   const camView = createCamView(byId('cam-body', HTMLDivElement));
+  const plan = createStringPlan(byId('plan-body', HTMLDivElement));
+  const loads = createLoadChart(byId('loads-body', HTMLDivElement));
+  const scrubber = createScrubber(byId('scrub-body', HTMLDivElement), {
+    panel: byId('scrub-panel', HTMLElement),
+    onChange: () => showPose(),
+  });
+  /** Layout of the result drawn in the cam view, built once per result. */
+  /** @type {{ result: SolveResult | null, layout: import('../core/layout.js').LayoutContext | null }} */
+  let layoutOf = { result: null, layout: null };
+  /** The achieved curve on the chart belongs to the result of the pose. */
+  let markerOnCurve = false;
+  const pose = createBowPose();
   /** @type {{ result: SolveResult, state: ProjectState } | null} */
   let lastGood = null;
   /** @type {{ result: SolveResult, state: ProjectState } | null} */
@@ -220,10 +236,34 @@ export function startApp() {
   let busySince = 0;
   root.dataset.solveState = 'idle';
 
+  /** Move every view to the draw position of the control. */
+  function showPose() {
+    const units = store.getState().units;
+    const ctx = layoutOf.layout;
+    const ok = ctx !== null && bowPoseAt(ctx, scrubber.x(), pose);
+    const p = ok ? pose : null;
+    camView.setPose(p, units);
+    plan.setPose(p, units);
+    loads.setPose(p, units);
+    chart.setMarker(p ? p.x : null, markerOnCurve);
+    scrubber.show(p, units);
+    root.dataset.drawPosition = p ? String(p.x) : '';
+  }
+
   function showSolve() {
     const pending = solverStatus === 'busy' && performance.now() - busySince >= PENDING_DELAY;
     const { current, stale, outdated, status, shown, withCurve } = solveView(latest, lastGood, solverStatus, pending);
     const now = store.getState();
+    const shownResult = shown?.result ?? null;
+    markerOnCurve = withCurve !== null && withCurve === shown;
+    if (layoutOf.result !== shownResult) {
+      const built = shown && shownResult?.achieved ? createLayout(shownResult, shown.state.geometry).layout : null;
+      layoutOf = { result: shownResult, layout: built };
+    }
+    const ctx = layoutOf.layout;
+    scrubber.setDomain(ctx, now.units);
+    plan.render(shownResult, ctx, now.units, stale);
+    loads.render(ctx, now.units, stale);
     // Cached values show in the units selected now.
     results.render({
       status, result: current?.result ?? null, state: current ? { ...current.state, units: now.units } : now, stale, outdated,
@@ -254,6 +294,7 @@ export function startApp() {
     root.dataset.solveState = solverStatus === 'busy' ? 'busy' : solverStatus === 'error' ? 'error' : current ? 'ok' : 'idle';
     root.dataset.solveStatus = current?.result.status ?? '';
     root.dataset.solveResolution = current?.result.resolution ?? '';
+    showPose();
   }
 
   const solver = createSolver({
@@ -287,6 +328,13 @@ export function startApp() {
     solver.request(s, resolution);
   };
   store.subscribe((s) => requestSolve(s));
+  // Unit changes relabel the solve views at once.
+  let shownUnits = store.getState().units;
+  store.subscribe((s) => {
+    if (s.units === shownUnits) return;
+    shownUnits = s.units;
+    showSolve();
+  });
   showSolve();
   requestSolve(store.getState());
 

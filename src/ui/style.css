@@ -25,6 +25,10 @@
   --chart-readout-text: #ffffff;
   --chart-achieved: #b04a00;
   --chart-range: #b3261e;
+  --marker: #1f5fbf;
+  --load-axle: #b04a00;
+  --plan-limb: #5a6361;
+  --plan-ghost: #7d8784;
   --cam-string: #206a5d;
   --cam-cable: #7a4f9e;
   --cam-string-fill: rgba(32, 106, 93, 0.12);
@@ -66,6 +70,10 @@
     --chart-readout-text: #121514;
     --chart-achieved: #f0b35a;
     --chart-range: #ff8a80;
+    --marker: #8ab4f8;
+    --load-axle: #f0b35a;
+    --plan-limb: #a3aca9;
+    --plan-ghost: #8a9592;
     --cam-string: #5fc2ae;
     --cam-cable: #c9a3f0;
     --cam-string-fill: rgba(95, 194, 174, 0.16);
@@ -105,6 +113,10 @@
   --chart-readout-text: #121514;
   --chart-achieved: #f0b35a;
   --chart-range: #ff8a80;
+  --marker: #8ab4f8;
+  --load-axle: #f0b35a;
+  --plan-limb: #a3aca9;
+  --plan-ghost: #8a9592;
   --cam-string: #5fc2ae;
   --cam-cable: #c9a3f0;
   --cam-string-fill: rgba(95, 194, 174, 0.16);
@@ -160,7 +172,7 @@ body {
 
   .panel-curve,
   .panel-results,
-  .panel-cam {
+  .views {
     grid-column: 1;
   }
 
@@ -939,4 +951,291 @@ input[aria-invalid='true'] {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+/* Draw position, string plan and loads */
+
+.views {
+  display: grid;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.panel-scrub {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+html {
+  scroll-padding-top: calc(var(--scrub-h, 0px) + 8px);
+}
+
+@media (max-height: 500px) {
+  .panel-scrub {
+    position: static;
+  }
+
+  html {
+    scroll-padding-top: 0;
+  }
+}
+
+.scrub-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.scrub-label {
+  font-weight: 600;
+}
+
+.scrub-controls .scrub-slider {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--target);
+  accent-color: var(--marker);
+}
+
+.scrub-btn,
+.scrub-jump {
+  min-width: var(--target);
+  min-height: var(--target);
+}
+
+.scrub-jumps {
+  flex-wrap: nowrap;
+  margin-top: 4px;
+}
+
+.scrub-jumps .scrub-jump {
+  flex: 1 1 auto;
+  padding-left: 6px;
+  padding-right: 6px;
+  white-space: nowrap;
+}
+
+.scrub-readout {
+  display: block;
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-marker-line {
+  stroke: var(--marker);
+  stroke-width: 1.5;
+}
+
+.chart-marker-dot {
+  fill: var(--marker);
+  stroke: var(--chart-bg);
+  stroke-width: 1.5;
+}
+
+.cam-contact {
+  stroke: var(--chart-bg);
+  stroke-width: 1.5px;
+}
+
+.cam-contact.cam-string,
+.load-dot.load-string {
+  fill: var(--cam-string);
+}
+
+.cam-contact.cam-cable,
+.load-dot.load-cable {
+  fill: var(--cam-cable);
+}
+
+.camview-swatch .cam-contact {
+  fill: var(--text);
+}
+
+.cam-lever {
+  stroke: var(--text);
+  stroke-width: 1.5px;
+}
+
+.cam-cord {
+  stroke-width: 2.5px;
+}
+
+.cam-cord.cam-string,
+.camview-swatch .cam-cord {
+  stroke: var(--cam-string);
+}
+
+.cam-cord.cam-cable {
+  stroke: var(--cam-cable);
+}
+
+.camview-pose {
+  margin: 8px 0 0;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-riser {
+  stroke: var(--plan-limb);
+  stroke-width: 4px;
+}
+
+.plan-axis {
+  stroke: var(--chart-axis);
+  stroke-width: 1px;
+}
+
+.plan-grip {
+  fill: var(--chart-axis);
+}
+
+.plan-limb,
+.plan-swatch.plan-limb {
+  stroke: var(--plan-limb);
+  stroke-width: 3px;
+}
+
+.plan-cord,
+.plan-track {
+  stroke-width: 1.5px;
+}
+
+.plan-string,
+.plan-swatch.plan-string {
+  stroke: var(--cam-string);
+  stroke-width: 1.5px;
+}
+
+.plan-cable,
+.plan-swatch.plan-cable {
+  stroke: var(--cam-cable);
+  stroke-width: 1.5px;
+}
+
+.plan-axle,
+.plan-nock {
+  fill: var(--text);
+}
+
+.plan-brace *,
+.plan-full * {
+  stroke: var(--plan-ghost);
+}
+
+.plan-brace .plan-axle,
+.plan-brace .plan-nock,
+.plan-full .plan-axle,
+.plan-full .plan-nock {
+  fill: var(--plan-ghost);
+  stroke: none;
+}
+
+.plan-brace line,
+.plan-brace path,
+.plan-swatch.plan-brace {
+  stroke-dasharray: 6 4;
+}
+
+.plan-full line,
+.plan-full path,
+.plan-swatch.plan-full {
+  stroke-dasharray: 2 3;
+}
+
+.plan-swatch.plan-brace,
+.plan-swatch.plan-full {
+  stroke: var(--plan-ghost);
+  stroke-width: 2px;
+}
+
+.plan-swatch.plan-current {
+  stroke: var(--text);
+  stroke-width: 2px;
+}
+
+.plan-load,
+.plan-swatch.plan-load {
+  stroke: var(--load-axle);
+  stroke-width: 2.5px;
+}
+
+.plan-load-text {
+  margin: 8px 0 0;
+  text-align: center;
+}
+
+.plan-dims {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 12px 0 0;
+}
+
+.plan-dims dt {
+  color: var(--muted);
+}
+
+.plan-dims dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 480px) {
+  .plan-dims {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .plan-dims dd {
+    margin-bottom: 4px;
+  }
+}
+
+.load-chart {
+  touch-action: auto;
+}
+
+.load-line {
+  fill: none;
+  stroke-width: 2px;
+}
+
+.load-string {
+  stroke: var(--cam-string);
+}
+
+.load-cable {
+  stroke: var(--cam-cable);
+}
+
+.load-axle {
+  stroke: var(--load-axle);
+}
+
+.load-dot.load-axle {
+  fill: var(--load-axle);
+}
+
+.load-dot {
+  stroke: var(--chart-bg);
+  stroke-width: 1.5;
+}
+
+.load-chart.cam-stale .load-lines {
+  opacity: 0.65;
+}
+
+.load-heading {
+  margin: 12px 0 4px;
+  font-size: 1rem;
+}
+
+.load-table td,
+.load-table th {
+  text-align: right;
+  white-space: nowrap;
 }

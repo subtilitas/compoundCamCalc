@@ -68,12 +68,45 @@ All notable changes are listed here. Versions follow semantic versioning.
     zoom by buttons, Ctrl and wheel, or keys; pan by drag or arrow keys.
   - An input that fails a check keeps the last cam that met every check in
     the cam view, dimmed and labelled; the values and the dashed curve are
-    labelled as the latest attempt.
+    labelled as the latest attempt. Only a full solve (1500 samples) can
+    become that cam; a coarse result without problems shows as a preview.
+    After a solver error the values are empty. A solve running for 250 ms or
+    longer shows the values in grey italics with a caption, and a unit
+    change relabels them at once.
   - Settings for limb lever length and angle, limbs (stiffness, axle
     travel or a measured table of 3 to 50 rows), string track (eccentric
     circle or ellipse), cords and cam body; dimension and stiffness units;
     a solve status link at the top of the settings; angles shown in
     degrees with the ° symbol; range hints with the unit of the step.
+- Draw position, string plan and loads (slice 4):
+  - Bow layout and loads (`src/core/layout.js`): the pose of limbs, axles,
+    cams, string and cables at any draw position, linear between the
+    forward-model samples; string tension, cable tension and the load on
+    each limb tip (string, own cable and the anchored cable of the other
+    cam) with their largest values; build lengths. Never throws.
+  - Draw-position control (`src/ui/scrubber.js`): a slider in draw steps
+    (0.1 in, 2.5 mm or 0.25 cm) from brace to full draw, − and + buttons,
+    jumps to brace, peak draw force and full draw, and a readout. It stays
+    in view above the cam, the string plan and the loads. The position is
+    not saved, not part of undo, and starts no solve; brace and full draw
+    stay put when a new result arrives, other positions keep their draw
+    length.
+  - The cam view turns the cam to the draw position and shows the contact
+    points, the lever arms and the cord directions, with a line giving the
+    rotation, both lever arms and their ratio. The fitted view covers every
+    orientation of the cam.
+  - String plan (`src/ui/stringplan.js`): side view of the whole bow at
+    brace (dashed), full draw (dotted) and the draw position (solid), with
+    the limb tip load as an arrow, zoom and pan, a Top cam button, and the
+    string and cable lengths in both dimension units, the axle-to-axle
+    length at brace and full draw, brace height and draw length.
+  - Loads chart (`src/ui/loadchart.js`): string tension, cable tension and
+    limb tip load against the draw, the values at the draw position, the
+    largest values with their draw position, and a table at 10 % steps.
+  - The force chart marks the draw position with a vertical line and a dot
+    on the achieved curve.
+  - Zoom and pan shared by the cam view and the string plan
+    (`src/ui/viewport.js`).
 - User guide (`docs/user-guide.md`).
 - Cam track support functions (`src/core/support.js`): eccentric circle,
   ellipse with offset centre, parallel offset (groove bottom to pitch line)

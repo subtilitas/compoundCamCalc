@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { toCam } from '../../src/core/geometry.js';
+import { createBowPose } from '../../src/core/layout.js';
 import { INCH } from '../../src/core/units.js';
 import {
   FIT_PADDING,
@@ -11,6 +13,9 @@ import {
   outlineBounds,
   panView,
   pathOf,
+  poseText,
+  radialBounds,
+  rotorTransform,
   staleCaption,
   viewBoxFor,
   zoomView,
@@ -171,12 +176,12 @@ describe('camLabel', () => {
   const r = result({ metrics: /** @type {any} */ ({ camMaxDimension: 0.0842 }) });
 
   it('adds the keys to the summary', () => {
-    expect(camLabel(r, 'mm', false)).toBe(`Cam view, largest dimension 84.2 mm; ${KEYS_HELP}`);
+    expect(camLabel(r, 'mm', false)).toBe(`Cam view, largest dimension 84.2 mm, turns with the draw position; ${KEYS_HELP}`);
     expect(KEYS_HELP).toBe('arrow keys pan, plus and minus zoom, 0 fits');
   });
 
   it('marks a stale drawing', () => {
-    expect(camLabel(r, 'mm', true)).toBe(`Cam view, largest dimension 84.2 mm; ${KEYS_HELP}, last cam that met every check`);
+    expect(camLabel(r, 'mm', true)).toBe(`Cam view, largest dimension 84.2 mm, turns with the draw position; ${KEYS_HELP}, last cam that met every check`);
   });
 
   it('names a solver error when no result exists', () => {
@@ -205,5 +210,42 @@ describe('staleCaption', () => {
     expect(staleCaption('error')).toMatch(/solver stopped with an error/);
     expect(staleCaption('idle')).toMatch(/the current inputs fail the checks/);
     expect(staleCaption('pending')).toBe('Cam of the previous inputs; solving the current inputs');
+  });
+});
+
+describe('turned cam', () => {
+  it('rotates cam-frame points to the world frame, y flipped', () => {
+    for (const theta of [0.3, 1, 2.5, -0.7]) {
+      const a = (Number(/rotate\((.+)\)/.exec(rotorTransform(theta))?.[1]) * Math.PI) / 180;
+      // A world point w has the cam-frame point v = R(θ)·w (core/geometry toCam).
+      const w = { x: 0.03, y: -0.012 };
+      const v = toCam(theta, w.x, w.y);
+      // SVG: the point is drawn at (v_x, −v_y), then rotated by a.
+      const sx = v.x * Math.cos(a) - -v.y * Math.sin(a);
+      const sy = v.x * Math.sin(a) + -v.y * Math.cos(a);
+      expect(sx).toBeCloseTo(w.x, 6);
+      expect(sy).toBeCloseTo(-w.y, 6);
+    }
+    expect(rotorTransform(0)).toBe('');
+    expect(rotorTransform(NaN)).toBe('');
+  });
+
+  it('fits every orientation of the cam', () => {
+    const r = result({
+      outlines: { stringFlange: outline([[-0.02, -0.01], [0.03, -0.01], [0.03, 0.025], [-0.02, 0.025]]) },
+      posts: [{ id: 'string-post', x: 0.04, y: 0, radius: 0.003, psi: 0 }],
+    });
+    const b = radialBounds(r, 0.005);
+    expect(b.maxX).toBeCloseTo(0.043, 12);
+    expect(b.minX).toBe(-b.maxX);
+    expect(b.minY).toBe(-b.maxY);
+    expect(radialBounds(result({}), 0.004).maxX).toBe(0.004);
+  });
+
+  it('describes the pose', () => {
+    const pose = { ...createBowPose(), x: 0.6096 - 0.04445, theta: Math.PI, pS: 0.0636, pC: 0.0091 };
+    expect(poseText(pose, { draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' }))
+      .toBe('At 24.0 in: cam turned 180.0°; lever arms: string 63.6 mm, cable 9.1 mm, ratio 7.0 : 1');
+    expect(poseText({ ...pose, pC: 0 }, { draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' })).not.toMatch(/ratio/);
   });
 });

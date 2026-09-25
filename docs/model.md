@@ -832,6 +832,52 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `slack-string` | the string of the final cam goes slack (forward model) | the force in the range or the let-off |
 | `wrap-exhausted` | a contact of the final cam passes its termination (forward model) | the residual and lead-in wrap |
 
+## Layout and loads
+
+`createLayout(result, geometry)` in `src/core/layout.js` builds, once per
+result, the bow pose at any nock position x from the forward-model samples.
+`bowPoseAt(ctx, x, pose)` fills the pose. Neither function throws.
+
+Between two samples, θ, α, φ, ψ_s, ψ_c, p_s, p_c, T_s, T_c, F and the free
+spans are linear in x. Every point follows from these values:
+
+    β = β_b − α,   O = Q + R_L·(cos β, sin β),   A = (O_x, −O_y),   N = (x, 0)
+    u_s = (sin φ, −cos φ)                  string contact → nock
+    γ = ψ_c − θ,   u_c = (−sin γ, cos γ)   cable contact → anchor
+
+The pivot Q is that of `bowGeometry`, so the limb stays rigid. The contact
+points are the pitch-line points X(ψ) of the tracks, turned into the world
+frame by R(−θ) about O. At a sample they equal N − span_s·u_s and
+A − span_c·u_c to 1e-9 m. Between samples they stay on the pitch line. A
+result without track data falls back to the span form.
+
+x outside the solved samples is clamped to the nearest one. When the
+solve stopped before full draw, a position past the last solved sample is
+flagged `beyondSolution`.
+
+Loads on the top limb tip (the axle O). The string pulls with T_s·u_s and
+the own cable with T_c·u_c. The cable of the bottom cam is anchored at O
+and pulls with T_c·(−u_c,x, u_c,y), the mirror of u_c reversed. The x parts
+of the two cables cancel:
+
+    tip = (T_s·sin φ, −T_s·cos φ + 2·T_c·u_c,y),   axle load = |tip|
+
+The virtual work of the tip load equals the limb moment,
+tip·O_α = E1'(α) with O_α = R_L·(sin β, −cos β). The unit tests check this
+to 1e-9 relative. The cam bearing carries |T_s·u_s + T_c·u_c|. The bottom
+limb tip carries the mirrored load.
+
+Build lengths are those of the braced bow:
+
+- string: the pitch-line length from the termination point on the top cam
+  to the one on the bottom cam, 2·g_s;
+- power cable, one of 2: the pitch-line length from its termination point
+  ψ_e,c to the centre of the opposite axle.
+
+Neither length includes the wrap around a post, loops, serving or
+stretch. The axle-to-axle length at full draw is 2·O_y at the last sample.
+It is not given when the solve stopped before full draw.
+
 ## Validity and diagnostics of the forward model
 
 The solver never throws on user input. It returns `status`: `ok`,

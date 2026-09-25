@@ -3,7 +3,7 @@
 The Compound Cam Calculator designs the cams of a twin-cam compound bow from
 the draw force curve the bow should have. This guide covers the force curve
 editor, which defines that curve, the settings of the bow and the cam, the
-results and the cam view.
+results, the draw position, the cam view, the string plan and the loads.
 
 ## Screen layout
 
@@ -11,7 +11,12 @@ results and the cam view.
   the point table.
 - **Results** panel: the solve status, the values of the cam and the
   problems with their suggestions.
-- **Cam** panel: a drawing of one cam at brace.
+- **Draw position** bar: the position along the draw that the cam, the
+  string plan, the loads and the force chart show.
+- **Cam** panel: a drawing of the top cam at the draw position.
+- **String plan** panel: the whole bow from the side, with the cord lengths.
+- **Loads** panel: string tension, cable tension and limb tip load against
+  the draw.
 - **Settings** panel: bow geometry, draw force, limbs, string track, cords,
   cam body and display units.
 
@@ -182,21 +187,111 @@ curve dim, and a caption says that they belong to the previous inputs. When the
 solver stops with an error, the values are empty and the cam view and the
 chart keep the last cam that met every check, dimmed and labelled.
 
+## Draw position
+
+The draw position bar appears once a cam is built. While the cam, the
+string plan or the loads are in view, the bar stays at the top of the
+window, and a focused control scrolls clear of it. In a window less than
+500 px high the bar scrolls with the page.
+
+- The slider runs from brace to full draw in steps of 0.1 in (2.5 mm or
+  0.25 cm in metric units). The last step ends at full draw.
+- **−** and **+** move one step. **Brace**, **Peak force** and **Full draw**
+  jump to those positions.
+- With the keyboard, select the slider (Tab). The arrow keys move one step,
+  Home jumps to brace and End to full draw.
+- The readout gives the draw length, the draw force and the cam rotation
+  from brace, for example "Draw 24.00 in, draw force 251 N, cam turned
+  180.0° from brace".
+
+The draw position is not part of the project. It is not saved, Undo does
+not change it, and moving it does not solve the cam again. A new result
+keeps the position: at brace or full draw it stays there, and elsewhere it
+keeps its draw length within the new draw range. When the solve stopped
+before full draw, a position past the last solved point shows that point
+and the readout says so.
+
+The force chart marks the draw position with a vertical line and a dot on
+the achieved curve.
+
 ## Cam view
 
-The drawing shows one cam at brace in the cam frame: the string track and
-the cable track as flange outlines, their groove bottoms (dashed) and pitch
-lines (thin), the axle bore, the posts and the timing marks. A legend under
-the drawing names each line. A scale bar gives the length in the dimension
-unit.
+The drawing shows the top cam in side view, turned to the draw position.
+The axle stays fixed and x points towards the archer. It shows the string
+track and the cable track as flange outlines, their groove bottoms
+(dashed) and pitch lines (thin), the axle bore, the posts and the timing
+marks. At the draw position it also shows:
+
+- the contact points of the string and the cable;
+- the lever arms, from the axle to each cord at a right angle (dashed);
+- the direction of each cord from its contact point.
+
+The line under the drawing gives the rotation and both lever arms with
+their ratio, for example "At 24.0 in: cam turned 180.0°; lever arms:
+string 63.6 mm, cable 9.1 mm, ratio 7.0 : 1". A legend names each line. A
+scale bar gives the length in the dimension unit. The fitted view covers
+the cam in every orientation, so the drawing keeps its scale while the cam
+turns.
 
 - **+**, **−** and **Fit** zoom in, zoom out (1 to 8 times) and fit the cam
   in view.
-- Hold Ctrl (Cmd on a Mac) and turn the wheel to zoom at the pointer; the
+- Hold Ctrl (Cmd on a Mac) and turn the wheel to zoom at the pointer. The
   wheel alone scrolls the page.
 - Once zoomed in, drag to pan. With the keyboard, select the drawing (Tab)
   and use the arrow keys to pan (Shift for larger steps), plus and minus to
   zoom and 0 to fit.
+
+## String plan
+
+The string plan shows the whole bow from the side. The grip pivot point is
+at the origin and the archer is to the right. The top and bottom halves
+are mirror images. It shows the riser line through both limb pivots, the
+limb levers from pivot to axle, both cams on their pitch lines, the string
+and both power cables. Three poses are drawn:
+
+- brace, outlined and dashed;
+- full draw, outlined and dotted;
+- the draw position, solid.
+
+An arrow at each axle shows the load on the limb tip at the draw position.
+Its length is relative to the largest limb tip load over the draw. The line
+under the drawing gives its size and its direction: the angle off the
+vertical line from the axle towards the grip, and the side it leans to,
+archer or target.
+
+Zoom and pan work as in the cam view. **Top cam** zooms to the top cam.
+
+The list under the drawing gives:
+
+- **String, pitch line**: the length of the cord centre line from the
+  termination point on the top cam to the one on the bottom cam, at brace;
+- **Power cable, pitch line, each of 2**: the length of the cord centre line
+  from its termination point on one cam to the centre of the opposite axle;
+- the axle-to-axle length at brace and at full draw, the brace height and
+  the draw length.
+
+The cord lengths show in both dimension units. They do not include the
+wrap around a post, loops, serving or stretch. Add these for the build.
+
+## Loads
+
+The chart shows three forces against the draw length:
+
+- string tension (solid);
+- the tension of each power cable (dashed);
+- the load on each limb tip (dash-dot). This is the sum of the string, the
+  cam's own cable and the cable of the other cam, which is anchored at this
+  axle.
+
+A vertical line marks the draw position. Under the chart are the three
+values at the draw position with the direction of the limb tip load, the
+largest value of each with its draw position, and the limb tip load at
+brace. **Load table** lists draw force, the three loads and the cam
+rotation at 0 %, 10 % … 100 % of the draw. On a narrow screen the table
+scrolls sideways.
+
+When the latest input fails a check, the string plan and the loads show
+the last cam that met every check and say so.
 
 ## Parametric and custom curves
 

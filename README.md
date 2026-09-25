@@ -9,11 +9,11 @@ browser without a server and is hosted on GitHub Pages:
 
 Status: in development. The live page contains the force curve editor, the
 settings of the bow and the cam, the solver running in a Web Worker, the
-results with the problems and their suggestions, the achieved force curve
-and a cam view ([user guide](docs/user-guide.md)). The model is in
-`src/core` and described in [docs/model.md](docs/model.md); the string plan,
-the loads and the exports follow in the stages listed in
-[docs/PLAN.md](docs/PLAN.md). Changes are recorded in
+results with the problems and their suggestions, the achieved force curve,
+a cam view that turns with the draw position, the string plan with the
+build lengths and a loads chart ([user guide](docs/user-guide.md)). The
+model is in `src/core` and described in [docs/model.md](docs/model.md); the
+exports follow in the stages listed in [docs/PLAN.md](docs/PLAN.md). Changes are recorded in
 [CHANGELOG.md](CHANGELOG.md).
 
 ## Coverage
@@ -46,7 +46,8 @@ Chromium executable.
 ```
 src/core/     model code in SI units, no DOM access: units, force curve,
               support functions, contact, geometry, limb, forward and
-              inverse model, constrained fit, outline, solve
+              inverse model, constrained fit, outline, solve, bow layout
+              and loads
 src/state/    project state: schema, presets, validation, store, no DOM access
 src/worker/   solver worker
 src/ui/       user interface

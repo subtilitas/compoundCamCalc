@@ -126,10 +126,16 @@ test.describe('solver in the page', () => {
     await solved(page);
     const view = page.getByTestId('cam-view');
     const fitted = await view.getAttribute('viewBox');
-    const scale = await page.getByTestId('camview-scale').textContent();
+    // Scale bar length as a share of the visible width: a zoom always changes it.
+    const share = () => page.evaluate(() => {
+      const bar = Number(document.querySelector('[data-testid="camview-scale"]')?.getAttribute('data-length'));
+      const size = Number(document.querySelector('[data-testid="cam-view"]')?.getAttribute('viewBox')?.split(' ')[2]);
+      return bar / size;
+    });
+    const before = await share();
     await page.getByTestId('camview-zoom-in').click();
     await expect(view).not.toHaveAttribute('viewBox', /** @type {string} */ (fitted));
-    await expect(page.getByTestId('camview-scale')).not.toHaveText(/** @type {string} */ (scale));
+    expect(Math.abs((await share()) - before)).toBeGreaterThan(0.01);
     await page.getByTestId('camview-fit').click();
     await expect(view).toHaveAttribute('viewBox', /** @type {string} */ (fitted));
   });
