@@ -696,19 +696,28 @@ describe('forward model: diagnostics', () => {
     }
   });
 
-  it('non-finite: values beyond the floating-point range are reported; representable ones stay finite', () => {
-    // M(0) = 1e307·10 = 1e308: 2·M overflows, but F = 2·(M·dα/dx) and the
-    // tensions do not. The limb energy ½·k_t·(α + α_0)² ≈ 5e308 does.
-    const large = solveForward(input({ limb: { kind: 'linear', torsionalStiffness: 1e307, alpha0: 10 }, samples: 20 }));
-    expect(large.F.every(Number.isFinite)).toBe(true);
-    expect(large.Ts.every(Number.isFinite)).toBe(true);
-    expect(large.status).toBe('infeasible');
-    expect(codes(large)).toEqual(['non-finite']);
-    expect(large.diagnostics[0].message).toMatch(/limb energy overflows/);
-    // M(0) = 1.7e308: T_c = M·p_s/det overflows.
-    const huge = solveForward(input({ limb: { kind: 'linear', torsionalStiffness: 1e307, alpha0: 17 }, samples: 20 }));
-    expect(huge.status).toBe('infeasible');
-    expect(codes(huge)).toContain('non-finite');
+  it('invalid-input: limbs and tracks outside the input domain', () => {
+    // Values that would overflow the energy or underflow the ellipse
+    // evaluation lie outside the domain of core/domain.js.
+    const cases = [
+      { limb: { kind: 'linear', torsionalStiffness: 1e307, alpha0: 10 } },
+      { limb: { kind: 'linear', torsionalStiffness: 1e-308, alpha0: 1e308 } },
+      { limb: { kind: 'linear', torsionalStiffness: 1e10, alpha0: 0.5 } },
+      { limb: { kind: 'linear', torsionalStiffness: 1000, alpha0: 7 } },
+      { cableTrack: { kind: 'ellipse', a: 1e-200, b: 1e-200, axisAngle: 0, offset: 0.03, offsetAngle: 0 } },
+      { cableTrack: eccentricCircle({ radius: 11 }) },
+      { stringTrack: offset(eccentricCircle({ radius: 0.03 }), 11) },
+    ];
+    for (const c of cases) {
+      const r = solveForward(input(/** @type {any} */ ({ ...c, samples: 20 })));
+      expect(codes(r)).toEqual(['invalid-input']);
+    }
+    // The largest torsional stiffness and preload rotation of the domain
+    // keep every value finite.
+    const edge = solveForward(input({ limb: { kind: 'linear', torsionalStiffness: 1e9, alpha0: 2 * Math.PI }, samples: 20 }));
+    expect(edge.F.every(Number.isFinite)).toBe(true);
+    expect(Number.isFinite(edge.drawEnergy)).toBe(true);
+    expect(codes(edge)).not.toContain('non-finite');
   });
 
   it('never throws on malformed input (property test)', () => {

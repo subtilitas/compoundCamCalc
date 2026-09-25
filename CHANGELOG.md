@@ -64,5 +64,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   1500 samples; diagnostics for slack cords, exhausted wrap, a cord wrapped
   a full turn or more, cable lever, cam reversal, brace state and
   convergence.
+- Input domain of the core model (`src/core/domain.js`): lengths up to
+  10 m, limb rotations up to one turn, torsional stiffness 1e-6 to
+  1e9 N·m/rad, table moments up to 1e7 N·m; values outside it are invalid
+  input, so no intermediate quantity reaches the floating-point limits.
 - Model description with derivations and verification tolerances
   (`docs/model.md`).

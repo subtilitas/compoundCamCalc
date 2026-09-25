@@ -336,13 +336,14 @@ describe('serialized spline data', () => {
   });
 
   it('checks each derivative order on its own scale', () => {
-    // Knots 0.1 mm apart give a cubic coefficient of about 5e8; a jump of
-    // 100 mm in the value must still be found.
-    const fine = /** @type {any} */ (splineSupport([0, 1e-4, 2e-4], [0.03, 0.031, 0.03]));
-    expect(Math.max(...Array.from(fine.coeffs, Math.abs))).toBeGreaterThan(1e8);
-    expect(() => createSupport(fine)).not.toThrow();
-    for (const [index, delta] of [[4, 0.1], [4, 1e-6], [5, 1e-3], [6, 1e3]]) {
-      const bad = /** @type {any} */ (splineSupport([0, 1e-4, 2e-4], [0.03, 0.031, 0.03]));
+    // Knots 1e-3 rad apart with a 5 µm bump: the cubic
+    // coefficient is about 1e4, so one tolerance scaled by the largest
+    // coefficient (1e-5 m) would hide a 1 µm jump in the value.
+    const make = () => /** @type {any} */ (splineSupport([0, 1e-3, 2e-3], [0.03, 0.030005, 0.03]));
+    expect(Math.max(...Array.from(make().coeffs, Math.abs))).toBeGreaterThan(1e3);
+    expect(() => createSupport(make())).not.toThrow();
+    for (const [index, delta] of [[4, 1e-6], [5, 1e-6], [6, 1e-3]]) {
+      const bad = make();
       bad.coeffs = Float64Array.from(bad.coeffs);
       bad.coeffs[index] += delta;
       expect(() => createSupport(bad)).toThrow(/continuous/);
@@ -353,6 +354,18 @@ describe('serialized spline data', () => {
     const values = knots.map((t) => 0.03 + 0.004 * Math.cos(t) + 0.001 * Math.sin(3 * t));
     values[n] = values[0];
     expect(() => createSupport(splineSupport(knots, values, { periodic: true }))).not.toThrow();
+  });
+
+  it('rejects tracks outside the input domain', () => {
+    // p' of about 15 m (a 1 mm bump over 1e-4 rad) and p'' of 5e23 m.
+    expect(() => createSupport(splineSupport([0, 1e-4, 2e-4], [0.03, 0.031, 0.03]))).toThrow(/at most 10 m/);
+    const steep = /** @type {any} */ ({ kind: 'spline', knots: Float64Array.from([0, 1]), coeffs: Float64Array.from([0.03, 1e12, 5e23, 0]), cumulative: new Float64Array(2), periodic: false });
+    expect(() => createSupport(steep)).toThrow(/at most/);
+    expect(() => createSupport(ellipse({ a: 1e-200, b: 1e-200, offset: 0.03 }))).toThrow(/semi-axes/);
+    expect(() => createSupport(ellipse({ a: 11, b: 0.03 }))).toThrow(/semi-axes/);
+    expect(() => createSupport(eccentricCircle({ radius: 0.03, offset: 11 }))).toThrow(/offset/);
+    expect(() => createSupport(offset(eccentricCircle({ radius: 0.03 }), -11))).toThrow(/offset/);
+    expect(() => createSupport(eccentricCircle({ radius: 0 }))).not.toThrow();
   });
 
   it('recomputes the cumulative integrals from the coefficients', () => {

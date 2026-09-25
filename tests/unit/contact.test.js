@@ -203,6 +203,24 @@ describe('solveContact', () => {
     expect(contact.status).toBe('inside');
   });
 
+  it('accepts a Newton result only when its tangency residual is small', () => {
+    // p' changes by 1e24 m per rad: one step of 1e-12 rad ends Newton while
+    // the residual is still about 0.5 m.
+    const steep = /** @type {any} */ ({
+      evaluate(/** @type {number} */ psi, /** @type {Float64Array} */ out) {
+        out[0] = 0.03 + psi * (1e12 + psi * 5e23);
+        out[1] = 1e12 + 1e24 * psi;
+        out[2] = 1e24;
+        return out;
+      },
+      P: (/** @type {number} */ psi) => psi * (0.03 + psi * (5e11 + (psi * 5e23) / 3)),
+      min: 0,
+      max: 1,
+    });
+    const c = solveContact(steep, 1.03, 0, STRING_SIDE, 0);
+    expect(c.status !== 'ok' || Math.abs(c.residual) < 1e-9).toBe(true);
+  });
+
   it('flags contacts outside the defined range of an open track', () => {
     const s = createSupport(splineSupport([0, 1, 2], [0.03, 0.031, 0.03]));
     const inside = solveContact(s, 0.7 * Math.cos(2.5), 0.7 * Math.sin(2.5), CABLE_SIDE, 1);

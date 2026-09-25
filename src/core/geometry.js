@@ -21,6 +21,7 @@
 
 import { CABLE_SIDE, STRING_SIDE, createContact, solveContact, terminationConstant } from './contact.js';
 import { drawRange } from './curve.js';
+import { LENGTH_MAX, LENGTH_MIN, inRange } from './domain.js';
 
 /** @typedef {import('./support.js').Support} Support */
 /** @typedef {import('./contact.js').Contact} Contact */
@@ -49,8 +50,14 @@ export function bowGeometry(geometry, stringSupport) {
   const g = geometry ?? /** @type {Geometry} */ ({});
   const values = [g.ata, g.braceHeight, g.drawLength, g.limbLength, g.limbAngleBrace];
   if (!values.every(Number.isFinite)) return { bow: null, error: 'Every geometry value must be a finite number' };
-  if (!(g.ata > 0 && g.limbLength > 0 && g.braceHeight > 0 && g.drawLength > 0)) {
-    return { bow: null, error: 'Axle-to-axle length, brace height, draw length and limb lever length must be positive' };
+  if (![g.ata, g.limbLength, g.braceHeight, g.drawLength].every((v) => inRange(v, LENGTH_MIN, LENGTH_MAX))) {
+    return {
+      bow: null,
+      error: `Axle-to-axle length, brace height, draw length and limb lever length must be from ${LENGTH_MIN} m to ${LENGTH_MAX} m`,
+    };
+  }
+  if (!inRange(g.limbAngleBrace, -2 * Math.PI, 2 * Math.PI)) {
+    return { bow: null, error: 'The limb angle at brace must be within one turn' };
   }
   const { xBrace, xFull } = drawRange(g.braceHeight, g.drawLength);
   if (!(xFull > xBrace)) return { bow: null, error: 'Full draw must lie behind brace height' };

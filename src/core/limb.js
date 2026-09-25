@@ -17,6 +17,16 @@
  * @module core/limb
  */
 
+import {
+  ENERGY_MAX,
+  LENGTH_MAX,
+  LENGTH_MIN,
+  MOMENT_MAX,
+  ROTATION_MAX,
+  TORSIONAL_STIFFNESS_MAX,
+  TORSIONAL_STIFFNESS_MIN,
+  inRange,
+} from './domain.js';
 import { buildCurveData, fromCurveData } from './interp.js';
 
 /** Residual of the inverse E1⁻¹ (J). */
@@ -67,26 +77,25 @@ export function linearLimb({ stiffness, preloadTravel, limbLength }) {
 /**
  * Stiffness k at the axle (N/m) that stores the draw energy W over the axle
  * travel s_f from brace to full draw, with preload travel s_0:
- * W = k·((s_f + s_0)² − s_0²) = k·s_f·(s_f + 2·s_0). NaN unless W > 0,
- * s_f > 0 and s_0 ≥ 0 are finite and k is in the floating-point range.
+ * W = k·((s_f + s_0)² − s_0²) = k·s_f·(s_f + 2·s_0). NaN unless
+ * 0 < W ≤ ENERGY_MAX, LENGTH_MIN ≤ s_f ≤ LENGTH_MAX and 0 ≤ s_0 ≤ LENGTH_MAX
+ * (see core/domain.js).
  * @param {{ drawEnergy: number, travel: number, preloadTravel: number }} params (J, m, m)
  * @returns {number}
  */
 export function stiffnessForTravel({ drawEnergy, travel, preloadTravel }) {
-  const valid = drawEnergy > 0 && Number.isFinite(drawEnergy) && travel > 0 && Number.isFinite(travel) && preloadTravel >= 0 && Number.isFinite(preloadTravel);
+  const valid = drawEnergy > 0 && inRange(drawEnergy, 0, ENERGY_MAX) && inRange(travel, LENGTH_MIN, LENGTH_MAX) && inRange(preloadTravel, 0, LENGTH_MAX);
   if (!valid) return NaN;
-  // (s_f + s_0)² − s_0² = 2·s_f·h with h = s_0 + s_f/2, without subtracting
-  // two squares; the second order of division covers the other overflow.
-  const half = preloadTravel + travel / 2;
-  let k = drawEnergy / 2 / travel / half;
-  if (!(Number.isFinite(k) && k > 0)) k = drawEnergy / 2 / half / travel;
-  return Number.isFinite(k) && k > 0 ? k : NaN;
+  // s_f·(s_f + 2·s_0) instead of the difference of two squares, which
+  // cancels when the preload is much larger than the travel.
+  return drawEnergy / (travel * (travel + 2 * preloadTravel));
 }
 
 /**
  * Tabulated limb. Rows give the rotation q from unstrung (rad, strictly
- * increasing, ≥ 0) and the limb moment M (N·m, ≥ 0). A table that starts
- * after q = 0 gets the unloaded point (0, 0) added. Never throws.
+ * increasing, 0 to ROTATION_MAX) and the limb moment M (N·m, 0 to
+ * MOMENT_MAX); the preload rotation α_0 is 0 to ROTATION_MAX. A table that
+ * starts after q = 0 gets the unloaded point (0, 0) added. Never throws.
  * @param {{ rotation: ArrayLike<number>, moment: ArrayLike<number>, alpha0: number }} params
  * @returns {{ limb: TableLimbData | null, error: string | null }}
  */
@@ -98,8 +107,11 @@ export function tableLimb({ rotation, moment, alpha0 }) {
   for (let i = 0; i < n; i++) {
     const q = rotation[i];
     const m = moment[i];
-    if (!Number.isFinite(q) || !Number.isFinite(m) || q < 0 || m < 0) {
-      return { limb: null, error: `Limb table row ${i + 1} must have a rotation and a moment of at least 0` };
+    if (!inRange(q, 0, ROTATION_MAX) || !inRange(m, 0, MOMENT_MAX)) {
+      return {
+        limb: null,
+        error: `Limb table row ${i + 1} must have a rotation from 0 to one turn and a moment from 0 to ${MOMENT_MAX} N·m`,
+      };
     }
     if (i > 0 && !(q > rotation[i - 1])) {
       return { limb: null, error: `Limb table row ${i + 1} must have a larger rotation than row ${i}` };
@@ -111,7 +123,7 @@ export function tableLimb({ rotation, moment, alpha0 }) {
     return { limb: null, error: 'The limb moment at zero rotation (unstrung) must be 0' };
   }
   if (points[0].x > 0) points.unshift({ x: 0, F: 0 });
-  if (!(Number.isFinite(alpha0) && alpha0 >= 0)) return { limb: null, error: 'The limb preload must be a finite number of at least 0' };
+  if (!inRange(alpha0, 0, ROTATION_MAX)) return { limb: null, error: 'The limb preload rotation must be from 0 to one turn' };
   return { limb: { kind: 'table', curve: buildCurveData(points), alpha0 }, error: null };
 }
 
@@ -128,8 +140,14 @@ export function tableLimb({ rotation, moment, alpha0 }) {
 export function limbFromState(limb, limbLength, options = {}) {
   const result = limbDataFromState(limb, limbLength, options);
   if (!result.limb) return result;
+  /** @type {Limb} */
+  let made;
+  try {
+    made = createLimb(result.limb);
+  } catch (err) {
+    return { limb: null, error: err instanceof Error ? err.message : String(err) };
+  }
   // The brace moment and energy must stay inside the floating-point range.
-  const made = createLimb(result.limb);
   const moment = made.moment(0);
   const energy = made.energy(0);
   if (!(Number.isFinite(moment) && moment >= 0 && Number.isFinite(energy) && energy >= 0)) {
@@ -146,20 +164,20 @@ export function limbFromState(limb, limbLength, options = {}) {
  * @returns {{ limb: LimbData | null, error: string | null }}
  */
 function limbDataFromState(limb, limbLength, options) {
-  if (!(limbLength > 0 && Number.isFinite(limbLength))) {
-    return { limb: null, error: 'The limb lever length must be a finite positive number' };
+  if (!inRange(limbLength, LENGTH_MIN, LENGTH_MAX)) {
+    return { limb: null, error: `The limb lever length must be from ${LENGTH_MIN} m to ${LENGTH_MAX} m` };
   }
   const preloadTravel = limb.preloadTravel;
-  if (!(preloadTravel >= 0 && Number.isFinite(preloadTravel))) {
-    return { limb: null, error: 'The limb preload travel must be at least 0' };
+  if (!inRange(preloadTravel, 0, LENGTH_MAX)) {
+    return { limb: null, error: `The limb preload travel must be from 0 to ${LENGTH_MAX} m` };
   }
   if (limb.mode === 'table') {
     const rows = Array.isArray(limb.table) ? limb.table : [];
     // Rows give travel from brace and force at the axle; both are at least 0.
     for (let i = 0; i < rows.length; i++) {
       const { travel, force } = rows[i] ?? {};
-      if (!(Number.isFinite(travel) && travel >= 0 && Number.isFinite(force) && force >= 0)) {
-        return { limb: null, error: `Limb table row ${i + 1} must have a travel from brace and a force of at least 0` };
+      if (!(inRange(travel, 0, LENGTH_MAX) && Number.isFinite(force) && force >= 0)) {
+        return { limb: null, error: `Limb table row ${i + 1} must have a travel from brace of 0 to ${LENGTH_MAX} m and a force of at least 0` };
       }
     }
     return tableLimb({
@@ -179,9 +197,14 @@ function limbDataFromState(limb, limbLength, options) {
     return { limb: null, error: 'Limb stiffness must be a finite positive number' };
   }
   const data = linearLimb({ stiffness, preloadTravel, limbLength });
-  // k·R_L² or s_0/R_L can leave the floating-point range for extreme values.
-  if (!(data.torsionalStiffness > 0 && Number.isFinite(data.torsionalStiffness) && Number.isFinite(data.alpha0))) {
-    return { limb: null, error: 'The limb values give a brace moment or energy outside the numeric range' };
+  if (!inRange(data.torsionalStiffness, TORSIONAL_STIFFNESS_MIN, TORSIONAL_STIFFNESS_MAX)) {
+    return {
+      limb: null,
+      error: `The limb stiffness and lever length give a torsional stiffness outside ${TORSIONAL_STIFFNESS_MIN} to ${TORSIONAL_STIFFNESS_MAX} N·m/rad`,
+    };
+  }
+  if (!inRange(data.alpha0, 0, ROTATION_MAX)) {
+    return { limb: null, error: 'The limb preload travel and lever length give a preload rotation of more than one turn' };
   }
   return { limb: data, error: null };
 }
@@ -344,8 +367,8 @@ export function createLimb(data) {
   const kind = /** @type {{ kind?: unknown } | null | undefined} */ (data)?.kind;
   if (kind !== 'table' && kind !== 'linear') throw new RangeError(`Unknown limb kind "${String(kind)}"`);
   const { alpha0 } = data;
-  if (!(Number.isFinite(alpha0) && alpha0 >= 0)) {
-    throw new RangeError('The limb preload rotation alpha0 must be a finite number of at least 0');
+  if (!inRange(alpha0, 0, ROTATION_MAX)) {
+    throw new RangeError('The limb preload rotation alpha0 must be from 0 to one turn (2π rad)');
   }
   if (kind === 'table') {
     // Serialized table data: rebuild the curve from its knots and values so
@@ -360,7 +383,9 @@ export function createLimb(data) {
     return { ...rebuilt.limb, ...tableMethods(rebuilt.limb) };
   }
   const k = /** @type {LinearLimbData} */ (data).torsionalStiffness;
-  if (!(Number.isFinite(k) && k > 0)) throw new RangeError('The limb torsional stiffness must be a finite positive number');
+  if (!inRange(k, TORSIONAL_STIFFNESS_MIN, TORSIONAL_STIFFNESS_MAX)) {
+    throw new RangeError(`The limb torsional stiffness must be from ${TORSIONAL_STIFFNESS_MIN} to ${TORSIONAL_STIFFNESS_MAX} N·m/rad`);
+  }
   return { ...data, ...linearMethods(/** @type {LinearLimbData} */ (data)) };
 }
 

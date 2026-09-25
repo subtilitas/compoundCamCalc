@@ -314,6 +314,28 @@ limb.
   negative or non-finite energy. Every limb method returns NaN for a NaN
   argument instead of throwing.
 
+## Input domain
+
+The core accepts values inside the ranges below (`src/core/domain.js`)
+and returns `invalid-input` for anything else. The ranges cover every bow
+by several orders of magnitude. Inside them no intermediate quantity comes
+near the floating-point limits of about 1e±308.
+
+| Quantity | Range |
+| --- | --- |
+| ATA, brace height, draw length, limb lever length | 1e-6 m to 10 m |
+| Limb angle at brace | −2π to 2π rad |
+| Eccentric circle radius | 0 to 10 m (0 is a point) |
+| Ellipse semi-axes | 1e-6 m to 10 m |
+| Track offsets (eccentric, ellipse centre, groove offset) | −10 m to 10 m |
+| Spline track \|p\| and \|p′\| at the knots | at most 10 m |
+| Spline track \|p″\| at the knots | at most 1e6 m |
+| Limb preload rotation α_0 and limb table rotations | 0 to 2π rad |
+| Torsional limb stiffness k_t | 1e-6 to 1e9 N·m/rad |
+| Limb table moments | 0 to 1e7 N·m |
+| Limb preload travel, table travel, limb travel | 0 to 10 m (travel mode: at least 1e-6 m) |
+| Draw energy for the travel mode | above 0, at most 1e7 J |
+
 ## Validity and diagnostics
 
 The solver never throws on user input. It returns `status`: `ok`,
@@ -323,7 +345,7 @@ each run of affected samples.
 
 | Code | Condition |
 |---|---|
-| `invalid-input` | non-finite or out-of-domain geometry (ATA, brace height, draw length and limb lever length must be positive), unknown track kind, unknown limb kind, limb data with a non-positive stiffness or a negative preload rotation, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not a non-empty array, not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace, or any exception while reading the input |
+| `invalid-input` | a value outside the input domain above, non-finite geometry, unknown track kind, unknown limb kind, spline with non-finite knots, x grid that is not a non-empty array, not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace, or any exception while reading the input |
 | `brace` | the string cannot leave its track at ψ = 0 towards the nock, the anchor lies inside the cable track, or det = 0 at brace |
 | `no-convergence` | a sample does not close within 30 iterations, or a contact is lost; later samples are NaN |
 | `slack-string` | T_s ≤ 0 |
@@ -332,7 +354,7 @@ each run of affected samples.
 | `wrap-overlap` | a cord wraps a full turn or more, σ·(ψ_c − ψ_e) ≥ 2π, and would overlap itself in its groove; the string wrap is largest at brace, the cable wrap at full draw |
 | `cable-lever` | c_a ≤ 0: limb rotation no longer takes up cable |
 | `cam-reversal` | dθ/dx ≤ 0 after brace |
-| `non-finite` | the force, a tension, θ or α at a sample, or the limb energy, is not finite (input magnitudes beyond the floating-point range) |
+| `non-finite` | the force, a tension, θ or α at a sample, or the limb energy, is not finite. A guard: no input inside the domain is known to reach it |
 | `concave-track` | the radius of curvature p + p″ is negative somewhere on the wrapped range of a track (exact minimum: constant r for a circle, b²/a or an end value for an ellipse, the cubic p + p″ minimised on every spline interval): string from its smallest contact angle to its termination, cable from its termination to its largest contact angle |
 
 ## Verification

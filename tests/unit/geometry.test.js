@@ -31,7 +31,11 @@ describe('bowGeometry', () => {
 
   it('rejects invalid geometry without throwing', () => {
     expect(bowGeometry({ ...geometry, ata: NaN }, stringSupport).error).toMatch(/finite/);
-    expect(bowGeometry({ ...geometry, limbLength: 0 }, stringSupport).error).toMatch(/positive/);
+    expect(bowGeometry({ ...geometry, limbLength: 0 }, stringSupport).error).toMatch(/from 0\.000001 m to 10 m/);
+    // The input domain: lengths up to 10 m, a limb angle within one turn.
+    expect(bowGeometry({ ...geometry, ata: 10.5 }, stringSupport).error).toMatch(/to 10 m/);
+    expect(bowGeometry({ ...geometry, braceHeight: 5e-7 }, stringSupport).error).toMatch(/to 10 m/);
+    expect(bowGeometry({ ...geometry, limbAngleBrace: 7 }, stringSupport).error).toMatch(/one turn/);
     expect(bowGeometry({ ...geometry, drawLength: geometry.braceHeight }, stringSupport).error).toMatch(/Full draw/);
     expect(() => createSupport(eccentricCircle({ radius: NaN }))).toThrow(/finite radius/);
     // A support object whose lever arm at brace is not finite.

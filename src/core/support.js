@@ -12,6 +12,7 @@
  * @module core/support
  */
 
+import { LENGTH_MAX, LENGTH_MIN, SECOND_DERIVATIVE_MAX, inRange } from './domain.js';
 import { ellipticE } from './elliptic.js';
 
 /**
@@ -276,7 +277,10 @@ function locate(x, v) {
  */
 function eccentricMethods(d) {
   const { radius: r, offset: e, phase } = d;
-  if (![r, e, phase].every(Number.isFinite)) throw new RangeError('An eccentric circle track needs a finite radius, offset and phase');
+  // Radius 0 is a point: p = e·cos(ψ − phase), ρ = 0.
+  if (!inRange(r, 0, LENGTH_MAX) || !inRange(e, -LENGTH_MAX, LENGTH_MAX) || !Number.isFinite(phase)) {
+    throw new RangeError(`An eccentric circle track needs a finite radius from 0 to ${LENGTH_MAX} m, an offset of at most ${LENGTH_MAX} m and a finite phase`);
+  }
   const sinPhase = Math.sin(phase);
   return {
     // The offset term e·cos(ψ − phase) adds nothing to p + p''.
@@ -303,11 +307,11 @@ function eccentricMethods(d) {
 function ellipseMethods(d) {
   const { a, b, axisAngle, offset: e, offsetAngle } = d;
   // A zero semi-axis makes the track a segment: p' jumps and ρ = 0 at its ends.
-  if (!(a > 0 && b > 0 && a < Infinity && b < Infinity)) {
-    throw new RangeError('An ellipse track needs finite, positive semi-axes');
+  if (!(inRange(a, LENGTH_MIN, LENGTH_MAX) && inRange(b, LENGTH_MIN, LENGTH_MAX))) {
+    throw new RangeError(`An ellipse track needs semi-axes from ${LENGTH_MIN} m to ${LENGTH_MAX} m`);
   }
-  if (![axisAngle, e, offsetAngle].every(Number.isFinite)) {
-    throw new RangeError('An ellipse track needs a finite axis angle, offset and offset angle');
+  if (!inRange(e, -LENGTH_MAX, LENGTH_MAX) || ![axisAngle, offsetAngle].every(Number.isFinite)) {
+    throw new RangeError(`An ellipse track needs finite angles and an offset of at most ${LENGTH_MAX} m`);
   }
   // ρ(u) = a²b²/(a²cos²u + b²sin²u)^(3/2) with u = ψ − axisAngle; the offset
   // adds nothing. Its minimum b²/a lies at u = k·π.
@@ -397,6 +401,11 @@ function checkSplineData(d) {
     const { value } = end(i);
     const s = start(i);
     for (let k = 0; k < 3; k++) scale[k] = Math.max(scale[k], Math.abs(value[k]), Math.abs(s[k]));
+  }
+  // The input domain: |p| and |p'| (a coordinate of the contact point) up
+  // to LENGTH_MAX, |p''| up to SECOND_DERIVATIVE_MAX.
+  if (!(scale[0] <= LENGTH_MAX && scale[1] <= LENGTH_MAX && scale[2] <= SECOND_DERIVATIVE_MAX)) {
+    throw new RangeError(`A spline track needs |p| and |p'| of at most ${LENGTH_MAX} m and |p''| of at most ${SECOND_DERIVATIVE_MAX} m`);
   }
   const joins = periodic ? n : n - 1;
   for (let i = 0; i < joins; i++) {
@@ -539,7 +548,7 @@ function coreMethods(data) {
     case 'offset': {
       const base = coreMethods(data.base);
       const delta = data.delta;
-      if (!Number.isFinite(delta)) throw new RangeError('An offset track needs a finite offset');
+      if (!inRange(delta, -LENGTH_MAX, LENGTH_MAX)) throw new RangeError(`An offset track needs an offset of at most ${LENGTH_MAX} m`);
       const ref = base.reference;
       return {
         evaluate(psi, out) {

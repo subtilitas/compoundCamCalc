@@ -38,26 +38,28 @@ describe('linear limb', () => {
   });
 
   it('keeps the draw energy when the preload energy is many orders larger', () => {
-    const huge = createLimb({ kind: 'linear', torsionalStiffness: 1, alpha0: 1e16 });
-    const alphaFull = 0.2;
-    // E1(α) − E1(0) = ½·k_t·α·(α + 2·α_0), about 2e15 J; subtracting the
-    // totals (5e31 J) would lose it entirely.
-    expect(limbEnergies(huge, alphaFull).drawEnergy).toBeCloseTo(alphaFull * (alphaFull + 2e16), -1);
+    // Largest stiffness and preload of the domain, α_f = 1e-12 rad:
+    // E1(α) − E1(0) = ½·k_t·α·(α + 2·α_0), about 6.3e-3 J; the totals are
+    // about 2e10 J, whose spacing (3.8e-6 J) would cost 6e-4 of it.
+    const stiff = createLimb({ kind: 'linear', torsionalStiffness: 1e9, alpha0: 2 * Math.PI });
+    const alphaFull = 1e-12;
+    const exact = 1e9 * alphaFull * (alphaFull / 2 + 2 * Math.PI);
+    expect(limbEnergies(stiff, alphaFull).drawEnergy / (2 * exact)).toBeCloseTo(1, 14);
     const table = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.2, 0.5], moment: [0, 100, 300], alpha0: 0.1 }).limb));
     expect(table.energyChange(0.2)).toBeCloseTo(table.energy(0.2) - table.energy(0), 12);
     // Brace beyond the table: the end line from α_0 over the length α.
-    const beyond = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 1], moment: [0, 1], alpha0: 1e16 }).limb));
+    const beyond = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 1], moment: [0, 1e7], alpha0: 6 }).limb));
     const m0 = beyond.moment(0);
-    expect(beyond.energyChange(0.1)).toBeCloseTo(0.1 * (m0 + 0.5 * 0.1 * beyond.stiffness(0)), -1);
-    expect(limbEnergies(beyond, 0.1).drawEnergy).toBeGreaterThan(1e15);
+    const line = 1e-12 * (m0 + 0.5 * 1e-12 * beyond.stiffness(0));
+    expect(beyond.energyChange(1e-12) / line).toBeCloseTo(1, 14);
   });
 
   it('keeps a draw rotation below the floating-point spacing at brace', () => {
-    // Brace inside a table with large rotations: α + α_0 rounds to α_0.
-    const big = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 1e16, 2e16], moment: [0, 1e16, 2e16], alpha0: 1e16 }).limb));
-    expect(1e16 + 0.194).toBe(1e16);
-    expect(big.energyChange(0.194) / (0.194 * big.moment(0))).toBeCloseTo(1, 12);
-    expect(limbEnergies(big, 0.194).drawEnergy / (2 * 0.194 * 1e16)).toBeCloseTo(1, 12);
+    // Brace inside the table at α_0 = 6 rad: α + α_0 rounds to α_0.
+    const big = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 3, 6.2], moment: [0, 5e6, 1e7], alpha0: 6 }).limb));
+    expect(6 + 1e-16).toBe(6);
+    expect(big.energyChange(1e-16) / (1e-16 * big.moment(0))).toBeCloseTo(1, 12);
+    expect(limbEnergies(big, 1e-16).drawEnergy / (2e-16 * big.moment(0))).toBeCloseTo(1, 12);
     // A small table: α = 1e-18 rad at α_0 = 0.3 rad.
     const small = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.2, 0.5], moment: [0, 100, 300], alpha0: 0.3 }).limb));
     expect(small.energyChange(1e-18) / (1e-18 * small.moment(0))).toBeCloseTo(1, 12);
@@ -67,6 +69,22 @@ describe('linear limb', () => {
   it('inverts an energy whose double overflows', () => {
     const limb = createLimb({ kind: 'linear', torsionalStiffness: 2, alpha0: 0 });
     expect(limb.inverse(1e308) / 1e154).toBeCloseTo(1, 14);
+  });
+
+  it('rejects limb data outside the input domain', () => {
+    const state = defaultState();
+    expect(() => createLimb({ kind: 'linear', torsionalStiffness: 1e-308, alpha0: 1e308 })).toThrow(/one turn/);
+    expect(() => createLimb({ kind: 'linear', torsionalStiffness: 1e-7, alpha0: 0.5 })).toThrow(/N·m\/rad/);
+    expect(() => createLimb({ kind: 'linear', torsionalStiffness: 2e9, alpha0: 0.5 })).toThrow(/N·m\/rad/);
+    expect(() => createLimb({ kind: 'linear', torsionalStiffness: 1e9, alpha0: 2 * Math.PI })).not.toThrow();
+    expect(tableLimb({ rotation: [0, 7], moment: [0, 10], alpha0: 1 }).error).toMatch(/one turn/);
+    expect(tableLimb({ rotation: [0, 1], moment: [0, 2e7], alpha0: 0.5 }).error).toMatch(/N·m/);
+    expect(tableLimb({ rotation: [0, 1], moment: [0, 10], alpha0: 7 }).error).toMatch(/one turn/);
+    // 0.28 m lever, 2 m preload: 7.1 rad from unstrung.
+    expect(limbFromState({ ...state.limb, mode: 'stiffness', preloadTravel: 2 }, 0.28).error).toMatch(/one turn/);
+    expect(limbFromState({ ...state.limb, mode: 'stiffness', stiffness: 1e17 }, 0.28).error).toMatch(/N·m\/rad/);
+    expect(limbFromState({ ...state.limb, preloadTravel: 11 }, 0.28).error).toMatch(/0 to 10 m/);
+    expect(limbFromState(state.limb, 11).error).toMatch(/lever length/);
   });
 
   it('integrates the table energy from brace on every side of the table', () => {
@@ -105,9 +123,17 @@ describe('stiffnessForTravel', () => {
   });
 
   it('does not subtract the squared preloads', () => {
-    // (1 + 1e16)² − (1e16)² rounds to 0; s_f·(s_f + 2·s_0) = 2e16 + 1.
-    expect(stiffnessForTravel({ drawEnergy: 1, travel: 1, preloadTravel: 1e16 })).toBeCloseTo(1 / (1 + 2e16), 30);
-    expect(stiffnessForTravel({ drawEnergy: 1, travel: 1, preloadTravel: 1e16 }) / (1 / (1 + 2e16))).toBeCloseTo(1, 14);
+    // (1e-6 + 10)² − 10² loses 9 digits to cancellation; s_f·(s_f + 2·s_0) keeps them.
+    const k = stiffnessForTravel({ drawEnergy: 1, travel: 1e-6, preloadTravel: 10 });
+    expect(k / (1 / (1e-6 * (1e-6 + 20)))).toBeCloseTo(1, 14);
+  });
+
+  it('returns NaN outside the input domain', () => {
+    expect(stiffnessForTravel({ drawEnergy: 1e308, travel: 1e308, preloadTravel: 1.5e308 })).toBeNaN();
+    expect(stiffnessForTravel({ drawEnergy: 2e7, travel: 0.05, preloadTravel: 0.1 })).toBeNaN();
+    expect(stiffnessForTravel({ drawEnergy: 90, travel: 11, preloadTravel: 0.1 })).toBeNaN();
+    expect(stiffnessForTravel({ drawEnergy: 90, travel: 5e-7, preloadTravel: 0.1 })).toBeNaN();
+    expect(stiffnessForTravel({ drawEnergy: 90, travel: 0.05, preloadTravel: 11 })).toBeNaN();
   });
 });
 

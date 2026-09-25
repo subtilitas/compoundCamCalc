@@ -26,6 +26,8 @@ const NEWTON_STEPS = 12;
 const MAX_STEP = 0.5;
 /** A Newton step below this ends the iteration; the next error is O(step²). */
 const STEP_TOLERANCE = 1e-11;
+/** Largest tangency residual |B·n − p| of an accepted contact (m). */
+const RESIDUAL_TOLERANCE = 1e-9;
 /** Grid points of the bracketing scan over one period. */
 const SCAN_POINTS = 96;
 /** Iteration cap of the safeguarded Newton–bisection in a bracket. */
@@ -175,7 +177,8 @@ export function solveContact(support, bx, by, sigma, psi0, out = createContact()
   if (converged && Math.abs(psi - psi0) <= Math.PI) {
     finish(support, bx, by, sigma, psi, buf, out);
     out.iterations = evaluations + 1;
-    if (out.status === 'ok') return out;
+    // A small step alone does not prove tangency where p' changes fast.
+    if (out.status === 'ok' && Math.abs(out.residual) < RESIDUAL_TOLERANCE) return out;
   }
   return bracketed(support, bx, by, sigma, psi0, out, evaluations);
 }
@@ -268,7 +271,7 @@ function bracketed(support, bx, by, sigma, psi0, out, evaluations) {
   finish(support, bx, by, sigma, psi, buf, out);
   out.iterations = evaluations + 1;
   if (out.status !== 'ok') return fail('inside');
-  if (!(Math.abs(out.residual) < 1e-9)) return fail('no-convergence');
+  if (!(Math.abs(out.residual) < RESIDUAL_TOLERANCE)) return fail('no-convergence');
   return out;
 }
 
