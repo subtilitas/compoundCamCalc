@@ -6,7 +6,7 @@ import { defaultState } from '../../src/state/presets.js';
 import { forceAt } from '../../src/ui/chart.js';
 import { SERIES, loadRange, seriesRuns, tableRows } from '../../src/ui/loadchart.js';
 import { peakX, placeIn, positionText, sliderModel, stepOfX, xOfStep } from '../../src/ui/scrubber.js';
-import { ageCaption, camRadius, fullDrawPose, loadDirection, planBounds, planDims } from '../../src/ui/stringplan.js';
+import { ageCaption, camRadius, fullDrawPose, planPoses, loadDirection, planBounds, planDims } from '../../src/ui/stringplan.js';
 
 /** @typedef {import('../../src/core/layout.js').LayoutContext} LayoutContext */
 /** @typedef {import('../../src/state/schema.js').Units} Units */
@@ -158,5 +158,19 @@ describe('full-draw pose of the plan', () => {
     expect(pose.x).toBe(ctx.xFull);
     const partial = { ...ctx, valid: 500, xLast: ctx.a.x[499] };
     expect(fullDrawPose(partial, pose)).toBe(false);
+  });
+});
+
+describe('poses fitted by the plan', () => {
+  it('covers the last solved pose of a partial solve', () => {
+    const full = planPoses(ctx);
+    expect(full.hasFull).toBe(true);
+    expect(full.end.x).toBe(ctx.xFull);
+    const partial = { ...ctx, valid: 1400, xLast: ctx.a.x[1399] };
+    const p = planPoses(partial);
+    expect(p.hasFull).toBe(false);
+    expect(p.end.x).toBe(partial.xLast);
+    const bounds = planBounds([p.brace, p.end], camRadius(result));
+    expect(bounds.maxX).toBeGreaterThanOrEqual(partial.xLast);
   });
 });

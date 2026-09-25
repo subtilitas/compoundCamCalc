@@ -121,6 +121,21 @@ export function fullDrawPose(ctx, pose) {
 }
 
 /**
+ * Poses the plan fits and outlines: brace, and full draw when solved, else
+ * the last solved pose, which the draw position can still show.
+ * @param {LayoutContext} ctx
+ * @returns {{ brace: BowPose, end: BowPose, hasFull: boolean }}
+ */
+export function planPoses(ctx) {
+  const brace = createBowPose();
+  const end = createBowPose();
+  bowPoseAt(ctx, ctx.xBrace, brace);
+  const hasFull = fullDrawPose(ctx, end);
+  if (!hasFull) bowPoseAt(ctx, ctx.xLast, end);
+  return { brace, end, hasFull };
+}
+
+/**
  * Lengths listed under the plan: label, test id and text.
  * @param {LayoutContext} ctx
  * @param {Units} units
@@ -309,13 +324,10 @@ export function createStringPlan(container) {
       }
       drawing.style.display = '';
       radius = camRadius(result);
-      const b = createBowPose();
-      const f = createBowPose();
-      bowPoseAt(next, next.xBrace, b);
-      const hasFull = fullDrawPose(next, f);
+      const { brace: b, end: f, hasFull } = planPoses(next);
       full.group.style.display = hasFull ? '' : 'none';
       full.mirror.style.display = hasFull ? '' : 'none';
-      const base = viewBoxFor(planBounds(hasFull ? [b, f] : [b], radius), FIT_PADDING);
+      const base = viewBoxFor(planBounds([b, f], radius), FIT_PADDING);
       size = base.size;
       viewport.setBase(base);
       const stringD = result.outlines.stringPitch ? pathOf(result.outlines.stringPitch) : '';
