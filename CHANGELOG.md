@@ -44,3 +44,29 @@ All notable changes are listed here. Versions follow semantic versioning.
   writes at once when the page is hidden and keeps a copy of unreadable
   saved data.
 - User guide (`docs/user-guide.md`).
+- Cam track support functions (`src/core/support.js`): eccentric circle,
+  ellipse with offset centre, parallel offset (groove bottom to pitch line)
+  and C2 cubic spline (periodic or open) with exact integrals; ellipse
+  integrals by Carlson's symmetric elliptic integrals (`src/core/elliptic.js`).
+- Cord contact solver (`src/core/contact.js`): tangent from a point to a
+  track by Newton with a bracketing fallback, cord length from the
+  termination by the envelope identity, free span and direction; never
+  throws and reports a point inside the track.
+- Bow geometry (`src/core/geometry.js`): limb pivot from brace, top and
+  bottom axle positions and their derivatives, string half-length and cable
+  length, projection partials.
+- Limb model (`src/core/limb.js`): linear limb with preload, tabulated limb
+  fitted by the C2 monotone quintic, stiffness from a target axle travel,
+  energy inverse, draw, total and preload energy.
+- Forward model (`src/core/forward.js`): draw force, cam and limb rotation,
+  string and cable tension along the draw from given string and cable
+  tracks, within the time budgets of 8 ms for 100 samples and 100 ms for
+  1500 samples; diagnostics for slack cords, exhausted wrap, a cord wrapped
+  a full turn or more, cable lever, cam reversal, brace state and
+  convergence.
+- Input domain of the core model (`src/core/domain.js`): lengths up to
+  10 m, limb rotations up to one turn, torsional stiffness 1e-6 to
+  1e9 N·m/rad, table moments up to 1e7 N·m; values outside it are invalid
+  input, so no intermediate quantity reaches the floating-point limits.
+- Model description with derivations and verification tolerances
+  (`docs/model.md`).

@@ -326,8 +326,13 @@ export function buildCurveData(points, options = {}) {
   checkPoints(points);
   checkOptions(options);
   const n = points.length;
-  const x = Float64Array.from(points, (p) => p.x);
-  const y = Float64Array.from(points, (p) => p.F);
+  // By index: an iterator on the array is never called.
+  const x = new Float64Array(n);
+  const y = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    x[i] = points[i].x;
+    y[i] = points[i].F;
+  }
   const d = pchipSlopes(x, y);
   const fixedStart = { slope: options.startSlope !== undefined, second: options.startSecondDerivative !== undefined };
   if (options.startSlope !== undefined) d[0] = options.startSlope;

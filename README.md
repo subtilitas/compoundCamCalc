@@ -8,9 +8,11 @@ browser without a server and is hosted on GitHub Pages:
 <https://subtilitas.github.io/compoundCamCalc/>.
 
 Status: in development. The live page contains the force curve editor
-([user guide](docs/user-guide.md)); the cam solver and the exports follow in
-the stages listed in [docs/PLAN.md](docs/PLAN.md). Changes are recorded in
-[CHANGELOG.md](CHANGELOG.md).
+([user guide](docs/user-guide.md)). The forward model, which computes the
+draw force curve of given cam tracks, is in `src/core` and described in
+[docs/model.md](docs/model.md); the inverse solver, the cam views and the
+exports follow in the stages listed in [docs/PLAN.md](docs/PLAN.md). Changes
+are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## Coverage
 
@@ -40,13 +42,14 @@ Chromium executable.
 ## Repository layout
 
 ```
-src/core/     model code in SI units, no DOM access
+src/core/     model code in SI units, no DOM access: units, force curve,
+              support functions, contact, geometry, limb, forward model
 src/state/    project state: schema, presets, validation, store, no DOM access
 src/ui/       user interface
 scripts/      tooling
 tests/unit/   Vitest
 tests/e2e/    Playwright
-docs/         documentation, synced to the GitHub wiki
+docs/         user guide, model description and plan, synced to the GitHub wiki
 ```
 
 ## Workflows
