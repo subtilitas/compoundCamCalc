@@ -22,17 +22,25 @@
  *   programme is infeasible. At most n constraints are active.
  * - A dependent equality c_p = Σ r_k·c_k that holds within the tolerance
  *   times s_p + Σ|r_k|·s_k, with the row scales s = max(|b_i|, |c_ij|), is
- *   redundant: it stays inactive with multiplier 0.
+ *   redundant: it stays inactive with multiplier 0. A nearly dependent
+ *   equality drifts when a later inequality moves x, so it is checked
+ *   again at the end (see below).
  * - After each added constraint, two passes of iterative refinement move x
  *   back onto the active constraints: x by W·M⁻¹·e and the multipliers by
  *   M⁻¹·e for the residuals e, so G·x + a = N·u still holds. A pass that
  *   would turn an inequality multiplier negative is skipped.
  * - The result is optimal only when every active constraint holds within
- *   the tolerance times max(row scale, Σ|c_ij·x_j| + |b_i|). Otherwise
- *   rounding has moved x off the active constraints and the status is
- *   'infeasible': the programme cannot be solved in double precision, for
- *   example with normals that differ by 1e-7 of their size and a solution
- *   1e7 times the row scale away.
+ *   the tolerance times its size t_i = max(s_i, Σ|c_ij·x_j| + |b_i|), and
+ *   every redundant equality within the tolerance times t_p + Σ|r_k|·t_k
+ *   over the rows of its combination. Otherwise the status is
+ *   'infeasible'. An active constraint outside the bound means that
+ *   rounding has moved x off it: the programme cannot be solved in double
+ *   precision, for example with normals that differ by 1e-7 of their size
+ *   and a solution 1e7 times the row scale away. A redundant equality
+ *   outside the bound was only nearly dependent. Example: x = 0 and
+ *   x + 1e-9·y = 0 with y ≥ 100. At the unconstrained minimum y = 0.1 the
+ *   second equality misses by 1e-10 and counts as redundant; y ≥ 100 then
+ *   moves its miss to 1e-7, and the programme is infeasible.
  *
  * Sizes: tens of unknowns, hundreds of constraints.
  * @module core/qp
@@ -61,9 +69,9 @@ const DEPENDENCE = 1e-8;
  * @typedef {object} QPResult
  * @property {'optimal' | 'infeasible' | 'max-iterations' | 'not-convex' | 'invalid'} status
  *   'infeasible': no point meets the constraints, or rounding leaves an
- *   active constraint outside the tolerance; 'invalid': sizes that do not
- *   match, meq outside 0 to m, a non-finite entry of G, a, C or b, or
- *   options out of range
+ *   active constraint or a redundant equality outside the tolerance;
+ *   'invalid': sizes that do not match, meq outside 0 to m, a non-finite
+ *   entry of G, a, C or b, or options out of range
  * @property {Float64Array} x solution (the last iterate unless optimal;
  *   empty when invalid)
  * @property {Float64Array} lambda Lagrange multipliers, one per constraint
@@ -179,6 +187,12 @@ export function solveQP(qp, options = {}) {
   const isActive = new Uint8Array(m);
   /** 1 for a redundant equality. */
   const redundant = new Uint8Array(m);
+  /**
+   * Each redundant equality p with the active rows and the coefficients r
+   * of its combination when it was found.
+   * @type {{ p: number, rows: number[], r: Float64Array }[]}
+   */
+  const combinations = [];
   const refactor = () => {
     const q = active.length;
     if (q === 0) {
@@ -220,13 +234,25 @@ export function solveQP(qp, options = {}) {
     }
   };
 
-  // The active constraints hold within the tolerance times
-  // max(scale, size of their terms).
-  const activeHold = () =>
-    active.every((i) => {
-      let terms = Math.abs(b[i]);
-      for (let j = 0; j < n; j++) terms += Math.abs(C[i * n + j] * x[j]);
-      return Math.abs(slack(i)) <= tolerance * Math.max(scale[i], terms);
+  /**
+   * Size of row i at x: max(scale, |b_i| + Σ|c_ij·x_j|).
+   * @param {number} i
+   */
+  const size = (i) => {
+    let terms = Math.abs(b[i]);
+    for (let j = 0; j < n; j++) terms += Math.abs(C[i * n + j] * x[j]);
+    return Math.max(scale[i], terms);
+  };
+  // The active constraints hold within the tolerance times their size, and
+  // each redundant equality within the tolerance times its size plus the
+  // sizes of the rows it combines. Equalities are never dropped, so those
+  // rows are still active.
+  const constraintsHold = () =>
+    active.every((i) => Math.abs(slack(i)) <= tolerance * size(i)) &&
+    combinations.every(({ p, rows, r }) => {
+      let bound = size(p);
+      for (let k = 0; k < rows.length; k++) bound += Math.abs(r[k]) * size(rows[k]);
+      return Math.abs(slack(p)) <= tolerance * bound;
     });
 
   let iterations = 0;
@@ -259,7 +285,7 @@ export function solveQP(qp, options = {}) {
           p = i;
         }
       }
-      if (p < 0 || worst >= -tolerance) return done(activeHold() ? 'optimal' : 'infeasible');
+      if (p < 0 || worst >= -tolerance) return done(constraintsHold() ? 'optimal' : 'infeasible');
       sp = slack(p);
     } else if (Math.abs(sp) <= tolerance * scale[p]) {
       // A satisfied equality still enters the active set, with a zero step.
@@ -311,15 +337,17 @@ export function solveQP(qp, options = {}) {
         dependent = !(zGz > (DEPENDENCE * terms) ** 2);
       }
       if (dependent && equality) {
-        // Only equalities are active here, and they stay active, so a
-        // dependent equality that holds at this iterate holds at the
-        // solution. Its slack is c_pᵀ·x − b_p = Σ r_k·(slack_k + b_k) − b_p
-        // (signs in r), so the tolerance covers the scales of the combined
-        // rows.
+        // Only equalities are active here, and they stay active. For an
+        // exact combination the slack is c_pᵀ·x − b_p =
+        // Σ r_k·(slack_k + b_k) − b_p (signs in r), so the tolerance covers
+        // the scales of the combined rows. A near combination changes its
+        // slack when x moves along the active rows; constraintsHold checks
+        // it again at the end.
         let bound = scale[p];
         for (let k = 0; k < q; k++) bound += Math.abs(r[k]) * scale[active[k]];
         if (Math.abs(sp) <= tolerance * bound) {
           redundant[p] = 1;
+          combinations.push({ p, rows: active.slice(), r: Float64Array.from(r) });
           break;
         }
       }

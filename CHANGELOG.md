@@ -88,13 +88,15 @@ All notable changes are listed here. Versions follow semantic versioning.
   with the target force and energy at the curve points, solved by a dense
   dual active-set quadratic programming solver (`src/core/qp.js`). The
   solver treats a constraint as dependent when n constraints are active or
-  its step is at rounding level, skips dependent equalities that hold,
-  refines x onto the active constraints after each step, reports
-  `infeasible` when rounding leaves an active constraint outside the
-  tolerance, and returns `invalid` for mismatched sizes or non-finite
-  data; the fit programmes of 600 random near-default states end with the
-  constraints met to 1e-10 of the row scale. The fit returns `invalid` for
-  non-finite or out-of-range input instead of throwing. A fitted cam whose
+  its step is at rounding level, skips dependent equalities that hold and
+  checks them again at the end, refines x onto the active constraints
+  after each step, reports `infeasible` when rounding leaves an active
+  constraint or a skipped equality outside the tolerance, and returns
+  `invalid` for mismatched sizes or non-finite data; the fit programmes of
+  600 random near-default states end with the constraints met to 1e-10 of
+  the row scale. The fit returns `invalid` for non-finite or out-of-range
+  input, including points to pass through outside the fitted range or
+  with non-finite values, instead of throwing. A fitted cam whose
   force stays within 3 % of the peak (at least 2 N) and whose draw energy
   stays within 0.5 % of the target meets it; 41 of 45 edits of the default
   preset (peak 250 N to 290 N, rise 43 % to 50 %, valley 1.0 in to 1.5 in)
@@ -104,12 +106,15 @@ All notable changes are listed here. Versions follow semantic versioning.
   cable stop posts, timing marks, sampled outlines and the cam maximum
   dimension. The lead-in keeps p, p' and p'' continuous at brace and
   settles within about 10° to ρ_0 = clamp(ρ(ψ_c0), ρ_lim, p(ψ_c0)), so a
-  fitted track with ρ of 260 mm to 830 mm at brace gives a cam of 114 mm
+  fitted track with ρ of 260 mm to 830 mm at brace gives a cam of 113 mm
   to 144 mm that closes. A lead-in wrap of 0 is valid: knots less than
   1e-3 of the spacing apart are left out. The `closing-blend` suggestion
-  names the largest lead-in wrap k·5° down to 0° that closes the track,
-  otherwise the string track radius and, when it sets the limit, the
-  minimum bend radius.
+  names the largest lead-in wrap k·5° down to 0° that closes the track.
+  Otherwise it names a string track 5 mm to 20 mm larger, or half the
+  minimum bend radius when it sets the limit, only when a coarse trial
+  solve with that value reports no diagnostic; on 77 edits of point 2 of
+  the default it names a radius in 30, each of which solves without
+  diagnostics, and lists the changes tried in the other 47.
 - Solver entry point (`src/core/solve.js`): project state to cable track,
   outlines, achieved force curve, tensions and metrics in 18 ms (coarse)
   and 26 ms to 29 ms (full) for the default preset, within the budgets of

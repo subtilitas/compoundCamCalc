@@ -337,6 +337,49 @@ describe('solveQP', () => {
     expect(equalities([1, 0, 0, 1, 1, 1], [2, 2, 4.5]).status).toBe('infeasible');
   });
 
+  it('checks a redundant equality again after an inequality moves x', () => {
+    // x = 0 and x + ε·y = 0 force y = 0, which contradicts y ≥ 100. At the
+    // unconstrained minimum (0, 0.1) the second equality misses by 0.1·ε,
+    // within the tolerance of its combination with the first, and counts
+    // as redundant; y ≥ 100 moves the miss to 100·ε.
+    for (const eps of [1e-9, 1e-10]) {
+      const qp = {
+        n: 2,
+        G: Float64Array.from([1, 0, 0, 1]),
+        a: Float64Array.from([0, -0.1]),
+        C: Float64Array.from([1, 0, 1, eps, 0, 1]),
+        b: Float64Array.from([0, 0, 100]),
+        meq: 2,
+      };
+      const r = solveQP(qp);
+      expect(r.status).toBe('infeasible');
+      expect(r.x[1]).toBeCloseTo(100, 12);
+      expect(r.active).toEqual([0, 2]);
+    }
+    // An exact combination keeps holding: row 2 = row 0 + row 1 with rows
+    // of size 3e7. Rounding in the large rows leaves y off by 3.4e-7, so
+    // row 2 misses by 1.4e-6: outside 1e-10 of its own size (8), within
+    // 1e-10 of the sizes of the rows it combines (6e7 each).
+    const K = 3e7;
+    const qp = {
+      n: 2,
+      G: Float64Array.from([1, 0, 0, 1]),
+      a: Float64Array.from([0, 0]),
+      C: Float64Array.from([K, 1, -K, 3, 0, 4]),
+      b: Float64Array.from([K + 1, -K + 3, 4]),
+      meq: 3,
+    };
+    const r = solveQP(qp);
+    expect(r.status).toBe('optimal');
+    expect(r.active).toEqual([0, 1]);
+    expect(r.lambda[2]).toBe(0);
+    expect(Math.abs(r.x[0] - 1)).toBeLessThan(1e-12);
+    expect(Math.abs(r.x[1] - 1)).toBeLessThan(1e-6);
+    const miss = Math.abs(4 * r.x[1] - 4);
+    expect(miss).toBeGreaterThan(1e-10 * 8);
+    expect(miss).toBeLessThan(1e-10 * 2 * 2 * K);
+  });
+
   it('treats a constraint as dependent once n constraints are active', () => {
     // Equality 0 with inequality 1 needs x ≥ −0.166, with inequality 2
     // x ≤ −0.954: infeasible. The third normal is a combination of the two

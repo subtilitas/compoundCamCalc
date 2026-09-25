@@ -20,6 +20,9 @@
  * 6. Closed outline from the brace contact of the track, offsets, posts and
  *    marks (core/outline).
  * 7. Forward model of the final cam: achieved curve, loads and metrics.
+ * 8. For a closing blend that no lead-in wrap closes: coarse trial solves
+ *    with a larger string track or half the minimum bend radius choose the
+ *    suggestion (at most five, 90 ms median on 77 edits of point 2).
  * @module core/solve
  */
 
@@ -192,7 +195,8 @@ export const RESOLUTIONS = Object.freeze({
  * @property {{ minRho: number, minP: number, maxP: number, rhoShortfall: number, start: number, end: number } | null} idealTrack
  *   ideal cable track on its angle range: smallest ρ and p, largest p (m),
  *   ∫ max(0, ρ_lim − ρ) dψ (m·rad), start and end angle (rad)
- * @property {{ total: number, inverse: number, fit: number, outline: number, forward: number }} timings (ms)
+ * @property {{ total: number, inverse: number, fit: number, outline: number, forward: number, trials: number }} timings
+ *   (ms); trials: the trial solves of a closing-blend suggestion
  */
 
 const now = () => globalThis.performance?.now?.() ?? Date.now();
@@ -227,7 +231,7 @@ function emptyResult(resolution) {
     },
     metrics: null,
     idealTrack: null,
-    timings: { total: 0, inverse: 0, fit: 0, outline: 0, forward: 0 },
+    timings: { total: 0, inverse: 0, fit: 0, outline: 0, forward: 0, trials: 0 },
   };
 }
 
@@ -241,11 +245,24 @@ function emptyResult(resolution) {
  * @returns {SolveResult}
  */
 export function solve(state, options = {}) {
-  const resolution = options.resolution === 'coarse' ? 'coarse' : 'full';
+  return guardedSolve(state, options.resolution === 'coarse' ? 'coarse' : 'full', options.maxIterations, true);
+}
+
+/**
+ * solveState with internal errors as a no-convergence diagnostic, and the
+ * status and total time set.
+ * @param {ProjectState} state
+ * @param {'coarse' | 'full'} resolution
+ * @param {number | undefined} maxIterations
+ * @param {boolean} trials run the trial solves of the closing-blend
+ *   suggestion (false inside a trial solve)
+ * @returns {SolveResult}
+ */
+function guardedSolve(state, resolution, maxIterations, trials) {
   const t0 = now();
   let result;
   try {
-    result = solveState(state, resolution, options.maxIterations);
+    result = solveState(state, resolution, maxIterations, trials);
   } catch (err) {
     result = emptyResult(resolution);
     result.diagnostics.push(
@@ -266,12 +283,18 @@ export function solve(state, options = {}) {
  * @param {ProjectState} state
  * @param {'coarse' | 'full'} resolution
  * @param {number | undefined} maxIterations
+ * @param {boolean} trials run the trial solves of the closing-blend
+ *   suggestion (false inside a trial solve)
  * @returns {SolveResult}
  */
-function solveState(state, resolution, maxIterations) {
+function solveState(state, resolution, maxIterations, trials) {
   const res = emptyResult(resolution);
   const settings = RESOLUTIONS[resolution];
   const diags = res.diagnostics;
+  // A trial solve only asks whether any diagnostic is reported. Entries of
+  // diags are never withdrawn, so it stops after the first stage that adds
+  // one.
+  const trialFails = () => !trials && diags.length > 0;
   const errors = validate(state);
   if (errors.length > 0) {
     diags.push(
@@ -444,6 +467,7 @@ function solveState(state, resolution, maxIterations) {
     }
   }
   res.timings.inverse = now() - tInverse;
+  if (trialFails()) return res;
 
   // Radius of curvature and clearance of the ideal cable track; the
   // constrained fit replaces a track that violates them.
@@ -464,8 +488,10 @@ function solveState(state, resolution, maxIterations) {
     const through = startValue === undefined ? [] : points.slice(1).flatMap((q) => {
       const i = grid.indexOf(q.x);
       const p = samples.pC[i];
-      const ok = p >= pMin && samples.Tc[i] > 0 && samples.psiC[i] > psiC0 && samples.psiC[i] <= end;
-      return ok ? [{ psi: samples.psiC[i], p, integral: samples.anchorReach[0] - samples.anchorReach[i] }] : [];
+      const integral = samples.anchorReach[0] - samples.anchorReach[i];
+      const ok = p >= pMin && Number.isFinite(p) && Number.isFinite(integral) && samples.Tc[i] > 0 &&
+        samples.psiC[i] > psiC0 && samples.psiC[i] <= end;
+      return ok ? [{ psi: samples.psiC[i], p, integral }] : [];
     });
     const base = { psi: data.psi, p: data.p, start: psiC0, end, rhoMin: rhoLimitCable, pMin };
     /** @param {import('./fit.js').FitResult} f @param {number} matched */
@@ -507,6 +533,7 @@ function solveState(state, resolution, maxIterations) {
   const stringEnd = psiSFull + body.residualWrap;
   res.tracks.string = { psiFull: psiSFull, psiEnd: stringEnd };
   const minRhoString = checkStringTrack(stringSupport, state, psiSFull, fmt, diags);
+  if (trialFails()) return res;
 
   // Closed outline and forward model of each candidate; the candidate whose
   // achieved curve is closest to the target (largest force difference) wins,
@@ -579,7 +606,9 @@ function solveState(state, resolution, maxIterations) {
     return res;
   }
   const { closed, forward } = best;
-  if (!closed.ok) diags.push(closingDiagnostic(closed, best.active, state, rhoLimitCable, pMin, settings.step, fmt));
+  const closing = closed.ok ? null : closingDiagnostic(closed, best.active, state, rhoLimitCable, pMin, settings.step, fmt, trials);
+  if (closing) diags.push(closing.diagnostic);
+  if (trialFails()) return res;
   if (res.fit.used) {
     res.fit.pointsMatched = best.candidate.pointsMatched;
     res.fit.rms = best.candidate.rms;
@@ -688,6 +717,16 @@ function solveState(state, resolution, maxIterations) {
     }
   }
   diags.push(...violations);
+  // A closing blend that no lead-in wrap closes: trial solves (coarse,
+  // without trials of their own) look for a change that passes every
+  // check.
+  if (trials && closing && !closing.closedByLeadIn) {
+    const tTrials = now();
+    closing.diagnostic.suggestion = changeSuggestion(
+      state, closing.tooSharp, fmt, (s) => guardedSolve(s, 'coarse', maxIterations, false).status === 'ok',
+    );
+    res.timings.trials = now() - tTrials;
+  }
   return res;
 }
 
@@ -1241,12 +1280,37 @@ export function leadInTrials(wrap) {
 }
 
 /**
+ * Increases of the string track radius, or of both semi-axes of an
+ * elliptical string track, that the closing-blend diagnostic tries, smallest
+ * first (m).
+ */
+export const STRING_TRACK_TRIALS = Object.freeze([5e-3, 10e-3, 15e-3, 20e-3]);
+
+/**
+ * The project state with the string track radius, or both semi-axes of an
+ * elliptical string track, larger by dr (a new state that shares the
+ * unchanged sections); null when that exceeds the field range.
+ * @param {ProjectState} state
+ * @param {number} dr (m)
+ * @returns {ProjectState | null}
+ */
+export function largerStringTrack(state, dr) {
+  const t = state.stringTrack;
+  const track = t.shape === 'ellipse'
+    ? { ...t, semiMajor: t.semiMajor + dr, semiMinor: t.semiMinor + dr }
+    : { ...t, radius: t.radius + dr };
+  const fits = t.shape === 'ellipse'
+    ? track.semiMajor <= FIELDS['stringTrack.semiMajor'].max
+    : track.radius <= FIELDS['stringTrack.radius'].max;
+  return fits ? { ...state, stringTrack: track } : null;
+}
+
+/**
  * Diagnostic of a closing blend that bends too sharply or comes too close
- * to the axle, with the largest lead-in wrap (in 5° steps, down to 0°) that
- * closes the track. When no lead-in wrap closes it, a larger string track
- * turns the cam less over the draw and leaves a longer arc for the blend.
- * A smaller minimum bend radius is named too when it sets the limit of a
- * blend that bends too sharply.
+ * to the axle. The suggestion names the largest lead-in wrap (in 5° steps,
+ * down to 0°) that closes the track: the lead-in does not change the active
+ * track, so closing it is the whole check. Otherwise solveState replaces
+ * the suggestion by changeSuggestion once the other checks have run.
  * @param {import('./outline.js').ClosedCable} closed
  * @param {import('./outline.js').Piecewise} active
  * @param {ProjectState} state
@@ -1254,25 +1318,75 @@ export function leadInTrials(wrap) {
  * @param {number} pMin smallest lever arm (m)
  * @param {number} step (rad)
  * @param {ReturnType<typeof formatter>} fmt
+ * @param {boolean} tryLeadIn false inside a trial solve, which needs the
+ *   code only
+ * @returns {{ diagnostic: SolveDiagnostic, tooSharp: boolean, closedByLeadIn: boolean }}
  */
-function closingDiagnostic(closed, active, state, rhoLimit, pMin, step, fmt) {
+function closingDiagnostic(closed, active, state, rhoLimit, pMin, step, fmt, tryLeadIn) {
   const tooSharp = closed.blendMinRho < rhoLimit - 1e-5;
-  const bendLimit = tooSharp && state.body.minBendRadius > state.cords.cableDiameter / 2 + GROOVE_MARGIN;
-  let suggestion = 'Increase the string track radius, so the cam turns less over the draw and leaves a longer arc to close the track' +
-    (bendLimit ? ', or reduce the minimum bend radius' : '');
-  for (const lead of leadInTrials(state.body.leadInWrap)) {
-    const trial = closeCableTrack(active, { leadIn: lead, rhoMin: rhoLimit, pMin, step });
-    if (trial?.ok) {
-      suggestion = `Reduce the lead-in wrap to ${lead > 0 ? 'at most ' : ''}${fmt.angle(lead)}`;
-      break;
-    }
-  }
   const message = tooSharp
     ? `The cable track cannot be closed over the remaining ${fmt.angle(closed.blendLength)} with a radius of curvature of at least ${fmt.size(rhoLimit)}: ` +
       `the closing curve reaches ${fmt.size(closed.blendMinRho)}`
     : `The curve that closes the cable track over the remaining ${fmt.angle(closed.blendLength)} comes to a lever arm of ${fmt.size(closed.blendMinP)}; ` +
       `the axle bore, the wall and the cable radius need at least ${fmt.size(pMin)}`;
-  return diagnostic('closing-blend', message, suggestion, { psiRange: [closed.psiFull, closed.psiFull + closed.blendLength] });
+  /** @param {string} suggestion @param {boolean} closedByLeadIn */
+  const result = (suggestion, closedByLeadIn) => ({
+    diagnostic: diagnostic('closing-blend', message, suggestion, { psiRange: [closed.psiFull, closed.psiFull + closed.blendLength] }),
+    tooSharp,
+    closedByLeadIn,
+  });
+  for (const lead of tryLeadIn ? leadInTrials(state.body.leadInWrap) : []) {
+    const trial = closeCableTrack(active, { leadIn: lead, rhoMin: rhoLimit, pMin, step });
+    if (trial?.ok) return result(`Reduce the lead-in wrap to ${lead > 0 ? 'at most ' : ''}${fmt.angle(lead)}`, true);
+  }
+  return result('Change the force curve', false);
+}
+
+/**
+ * Suggestion for a closing blend that no lead-in wrap closes: the first
+ * change for which a trial solve returns no diagnostic at all. It tries the
+ * string track increases STRING_TRACK_TRIALS, smallest first, then half the
+ * minimum bend radius when that radius sets the limit of a blend that bends
+ * too sharply. A larger string track turns the cam less over the draw and
+ * leaves a longer arc for the blend, but it also changes the ideal cable
+ * track and with it the force curve of the fitted cam, so only a trial
+ * shows whether it helps. When no change passes, the suggestion lists what
+ * was tried and names the force curve.
+ * @param {ProjectState} state
+ * @param {boolean} tooSharp the blend bends below the radius limit
+ * @param {ReturnType<typeof formatter>} fmt
+ * @param {(s: ProjectState) => boolean} passes true when a trial solve of
+ *   the state returns no diagnostic
+ * @returns {string}
+ */
+export function changeSuggestion(state, tooSharp, fmt, passes) {
+  const { body, cords } = state;
+  const ellipse = state.stringTrack.shape === 'ellipse';
+  const tried = body.leadInWrap > 0 ? ['a lead-in wrap down to 0°'] : [];
+  let largest = 0;
+  for (const dr of STRING_TRACK_TRIALS) {
+    const larger = largerStringTrack(state, dr);
+    if (!larger) break;
+    largest = dr;
+    if (passes(larger)) {
+      const t = larger.stringTrack;
+      return (ellipse
+        ? `Increase both semi-axes of the string track by ${fmt.size(dr)}, to ${fmt.size(t.semiMajor)} and ${fmt.size(t.semiMinor)}`
+        : `Increase the string track radius to ${fmt.size(t.radius)}`) + '; the cam then closes the track and passes every check';
+    }
+  }
+  if (largest > 0) tried.push(`${ellipse ? 'string track semi-axes' : 'a string track radius'} up to ${fmt.size(largest)} larger`);
+  const groove = cords.cableDiameter / 2 + GROOVE_MARGIN;
+  if (tooSharp && body.minBendRadius > groove) {
+    const bend = Math.max(body.minBendRadius / 2, groove, FIELDS['body.minBendRadius'].min);
+    if (passes({ ...state, body: { ...body, minBendRadius: bend } })) {
+      return `Reduce the minimum bend radius to ${fmt.size(bend)}; the cam then closes the track and passes every check`;
+    }
+    tried.push(`a minimum bend radius of ${fmt.size(bend)}`);
+  }
+  if (tried.length === 0) return 'Change the force curve';
+  const list = tried.length > 1 ? `${tried.slice(0, -1).join(', ')} and ${tried[tried.length - 1]}` : tried[0];
+  return `Change the force curve: ${list} ${tried.length > 1 ? 'do' : 'does'} not give a closed track that passes every check`;
 }
 
 /**

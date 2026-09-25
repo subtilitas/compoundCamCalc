@@ -5,7 +5,10 @@ import { CODES, formatter } from '../../src/core/diagnostics.js';
 import { axle, bowGeometry } from '../../src/core/geometry.js';
 import { COARSE_SAMPLES, FULL_SAMPLES, solveForward } from '../../src/core/forward.js';
 import { limbFromState } from '../../src/core/limb.js';
-import { FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE, GROOVE_MARGIN, forwardDiagnostics, leadInTrials, solve } from '../../src/core/solve.js';
+import {
+  FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE, GROOVE_MARGIN, STRING_TRACK_TRIALS, changeSuggestion, forwardDiagnostics, largerStringTrack,
+  leadInTrials, solve,
+} from '../../src/core/solve.js';
 import { createSupport, eccentricCircle, stringTrackSupport } from '../../src/core/support.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
@@ -797,16 +800,133 @@ describe('solve: lead-in and closing blend', () => {
     expect(r.posts.find((p) => p.id === 'cable-post')?.psi).toBe(cable.psiBrace);
   });
 
+  // The tests of the closing-blend trials run up to five trial solves per
+  // solve, and solve the trial states again; the coverage run slows them
+  // about 4 times.
+  const TRIALS_TIMEOUT = 30_000;
+
   it('closing-blend: a 20 mm bend radius with a lead-in of 5° or 10° is reported with the other diagnostics', () => {
     for (const lead of [5, 10]) {
-      const r = solve(modified((s) => {
-        s.body.minBendRadius = 0.02;
-        s.body.leadInWrap = lead * DEG;
-      }), { resolution: 'coarse' });
+      const s = modified((st) => {
+        st.body.minBendRadius = 0.02;
+        st.body.leadInWrap = lead * DEG;
+      });
+      const r = solve(s, { resolution: 'coarse' });
       expect(codes(r)).toEqual(['closing-blend', 'cable-radius', 'cable-clearance']);
       const d = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'closing-blend'));
-      expect(d.suggestion).toMatch(/^Increase the string track radius, so the cam turns less over the draw.*, or reduce the minimum bend radius$/);
+      // No larger string track passes; half the bend radius does.
+      expect(d.suggestion).toBe('Reduce the minimum bend radius to 10.0 mm; the cam then closes the track and passes every check');
+      if (lead === 10) continue;
+      for (const dr of STRING_TRACK_TRIALS) {
+        expect(solve(/** @type {ProjectState} */ (largerStringTrack(s, dr)), { resolution: 'coarse' }).status).toBe('infeasible');
+      }
+      const fixed = structuredClone(s);
+      fixed.body.minBendRadius = 0.01;
+      expect(solve(fixed).status).toBe('ok');
     }
+  }, TRIALS_TIMEOUT);
+
+  /**
+   * Default state with point 2 at a draw length (in) and force (N).
+   * @param {number} inches
+   * @param {number} F
+   * @param {(s: ProjectState) => void} [change]
+   */
+  const pointTwo = (inches, F, change = () => {}) => modified((s) => {
+    s.curve.mode = 'custom';
+    s.curve.points[1] = { x: inches * INCH - AMO_OFFSET, F };
+    change(s);
+  });
+
+  it('closing-blend: names the smallest larger string track with which a trial solve passes every check', () => {
+    // Point 2 at 12 in with 120 N: 50 mm fails, 55 mm passes.
+    const s = pointTwo(12, 120);
+    for (const resolution of /** @type {const} */ (['coarse', 'full'])) {
+      const r = solve(s, { resolution });
+      expect(codes(r)).toEqual(['closing-blend']);
+      expect(r.diagnostics[0].suggestion).toBe('Increase the string track radius to 55.0 mm; the cam then closes the track and passes every check');
+      expect(r.timings.trials).toBeGreaterThan(0);
+    }
+    for (const [radius, status] of /** @type {const} */ ([[0.05, 'infeasible'], [0.055, 'ok']])) {
+      const t = structuredClone(s);
+      t.stringTrack.radius = radius;
+      expect(solve(t).status).toBe(status);
+    }
+    // An elliptical string track grows on both semi-axes: 45 mm × 35 mm with
+    // point 2 at 11 in and 100 N.
+    const e = pointTwo(11, 100, (st) => {
+      st.stringTrack = { ...st.stringTrack, shape: 'ellipse', semiMajor: 0.045, semiMinor: 0.035, offset: 0.015, phase: -1.8 };
+    });
+    const re = solve(e, { resolution: 'coarse' });
+    expect(codes(re)).toContain('closing-blend');
+    expect(re.diagnostics[0].suggestion).toBe(
+      'Increase both semi-axes of the string track by 15.0 mm, to 60.0 mm and 50.0 mm; the cam then closes the track and passes every check',
+    );
+    const grown = /** @type {ProjectState} */ (largerStringTrack(e, 0.015));
+    expect(grown.stringTrack).toMatchObject({ semiMajor: 0.06, semiMinor: 0.05, offset: 0.015 });
+    expect(e.stringTrack.semiMajor).toBe(0.045);
+    expect(solve(grown).status).toBe('ok');
+    expect(solve(/** @type {ProjectState} */ (largerStringTrack(e, 0.01)), { resolution: 'coarse' }).status).toBe('infeasible');
+  }, TRIALS_TIMEOUT);
+
+  it('closing-blend: lists the changes tried when none passes every check', () => {
+    // Point 2 at 10 in with 50 N: every larger string track adds cable-radius.
+    const s = pointTwo(10, 50);
+    const r = solve(s, { resolution: 'coarse' });
+    expect(codes(r)).toEqual(['closing-blend']);
+    expect(r.diagnostics[0].suggestion).toBe(
+      'Change the force curve: a lead-in wrap down to 0°, a string track radius up to 20.0 mm larger and a minimum bend radius of 2.5 mm ' +
+        'do not give a closed track that passes every check',
+    );
+    for (const dr of STRING_TRACK_TRIALS) {
+      const t = solve(/** @type {ProjectState} */ (largerStringTrack(s, dr)), { resolution: 'coarse' });
+      expect(t.status).toBe('infeasible');
+      expect(t.fit.maxForceDifference).toBeGreaterThan(r.fit.maxForceDifference);
+    }
+  }, TRIALS_TIMEOUT);
+
+  it('closing-blend: tries only string tracks within the field range, and the bend radius only when it sets a limit that the blend misses', () => {
+    const fmt = formatter(defaultState().units);
+    expect(largerStringTrack(modified((st) => (st.stringTrack.radius = 0.096)), 0.005)).toBeNull();
+    expect(largerStringTrack(modified((st) => {
+      st.stringTrack = { ...st.stringTrack, shape: 'ellipse', semiMajor: 0.099, semiMinor: 0.05 };
+    }), 0.005)).toBeNull();
+    /** @type {ProjectState[]} */
+    const tried = [];
+    const fails = (/** @type {ProjectState} */ st) => {
+      tried.push(st);
+      return false;
+    };
+    // Radius 90 mm: 95 mm and 100 mm are tried, then a bend radius of 2.5 mm.
+    const s = modified((st) => (st.stringTrack.radius = 0.09));
+    expect(changeSuggestion(s, true, fmt, fails)).toBe(
+      'Change the force curve: a lead-in wrap down to 0°, a string track radius up to 10.0 mm larger and a minimum bend radius of 2.5 mm ' +
+        'do not give a closed track that passes every check',
+    );
+    const want = [[0.095, 0.005], [0.1, 0.005], [0.09, 0.0025]];
+    expect(tried.length).toBe(want.length);
+    tried.forEach((st, k) => {
+      expect(st.stringTrack.radius).toBeCloseTo(want[k][0], 15);
+      expect(st.body.minBendRadius).toBeCloseTo(want[k][1], 15);
+    });
+    // Nothing to try: no lead-in wrap, the radius at its maximum, a blend
+    // that comes too close to the axle instead of bending too sharply.
+    tried.length = 0;
+    const none = modified((st) => {
+      st.stringTrack.radius = 0.1;
+      st.body.leadInWrap = 0;
+    });
+    expect(changeSuggestion(none, false, fmt, fails)).toBe('Change the force curve');
+    expect(tried).toEqual([]);
+    // The bend radius is not tried when the cable radius plus the groove
+    // margin sets the limit; the trial stops at the first change that passes.
+    const groove = modified((st) => (st.body.minBendRadius = st.cords.cableDiameter / 2 + GROOVE_MARGIN));
+    expect(changeSuggestion(groove, true, fmt, (st) => st.stringTrack.radius > 0.055)).toBe(
+      'Increase the string track radius to 60.0 mm; the cam then closes the track and passes every check',
+    );
+    expect(changeSuggestion(s, true, fmt, (st) => st.body.minBendRadius < 0.005)).toBe(
+      'Reduce the minimum bend radius to 2.5 mm; the cam then closes the track and passes every check',
+    );
   });
 
   it('tries the lead-in wraps k·5° below the input, down to exactly 0°', () => {

@@ -108,24 +108,35 @@ describe('closed cable track', () => {
       );
       expect(r.leadInRho).toBeCloseTo(rho0, 15);
       const out = new Float64Array(3);
+      const f = (/** @type {number} */ psi) => r.track.evaluate(psi, new Float64Array(3))[0];
+      // p'' from values of p alone: central differences with steps h and
+      // 2h, combined by Richardson extrapolation (error O(h⁴)). The
+      // stencil stays on the lead-in for u ≥ 2h.
+      const h = 1e-4;
+      const secondDerivative = (/** @type {number} */ psi) => {
+        const D = (/** @type {number} */ step) => (f(psi + step) - 2 * f(psi) + f(psi - step)) / (step * step);
+        return (4 * D(h) - D(2 * h)) / 3;
+      };
       let previous = rhoBrace;
-      for (let u = 0; u <= 30 * DEG + 1e-12; u += 0.1 * DEG) {
+      for (let u = 0.1 * DEG; u <= 30 * DEG + 1e-12; u += 0.1 * DEG) {
+        // ρ = p + p'' of the lead-in equals
         // ρ(u) = ρ_0 + (ρ(ψ_c0) − ρ_0)·(1 + u/λ)·e^(−u/λ), monotone between both values.
-        const rho = r.track.rho(psi0 - u);
-        expect(rho).toBeCloseTo(rho0 + excess * (1 + u / lambda) * Math.exp(-u / lambda), 12);
-        expect((previous - rho) * Math.sign(excess)).toBeGreaterThanOrEqual(-1e-15);
+        const p2 = secondDerivative(psi0 - u);
+        const rho = f(psi0 - u) + p2;
+        expect(Math.abs(rho - (rho0 + excess * (1 + u / lambda) * Math.exp(-u / lambda)))).toBeLessThan(1e-8);
+        expect((previous - rho) * Math.sign(excess)).toBeGreaterThanOrEqual(-1e-8);
         previous = rho;
-        // No outward swing: p stays within 2λ·|ρ(ψ_c0) − ρ_0| of the arc of radius ρ_0.
+        // p'' of the evaluator against the differences.
         r.track.evaluate(psi0 - u, out);
+        expect(Math.abs(out[2] - p2)).toBeLessThan(1e-8);
+        // No outward swing: p stays within 2λ·|ρ(ψ_c0) − ρ_0| of the arc of radius ρ_0.
         expect(Math.abs(out[0] - 0.03)).toBeLessThanOrEqual(2 * lambda * Math.abs(excess) + (0.03 - rho0) * (1 - Math.cos(u)) + 1e-15);
       }
-      // p' and p'' of the lead-in against central differences.
+      // p' of the lead-in against central differences.
       for (const u of [0.3 * DEG, 2 * DEG, 20 * DEG]) {
         const d = 1e-5;
-        const f = (/** @type {number} */ psi) => r.track.evaluate(psi, new Float64Array(3))[0];
         r.track.evaluate(psi0 - u, out);
         expect(Math.abs((f(psi0 - u + d) - f(psi0 - u - d)) / (2 * d) - out[1])).toBeLessThan(1e-9);
-        expect(Math.abs((f(psi0 - u + d) - 2 * f(psi0 - u) + f(psi0 - u - d)) / (d * d) - out[2])).toBeLessThan(1e-4);
       }
       // p, p', p'' continuous at the join with the active track.
       const left = Float64Array.from(r.track.evaluate(psi0 - 1e-9, out));

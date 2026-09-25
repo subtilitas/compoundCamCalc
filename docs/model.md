@@ -538,7 +538,10 @@ Three rules keep rounding from turning into large steps:
 - Redundant equalities. A dependent equality n_p = Σ r_k·n_k that holds
   within the tolerance (1e-10) times s_p + Σ|r_k|·s_k, with the row scales
   s = max(|b|, |c_j|), stays inactive with multiplier 0. One that does not
-  hold makes the programme infeasible.
+  hold makes the programme infeasible. A nearly dependent equality moves
+  off when a later inequality moves x, so it is checked again at the end
+  (below): x = 0 and x + 1e-9·y = 0 hold within 1e-10 at y = 0.1 and
+  contradict y ≥ 100, where the second misses by 1e-7.
 - Iterative refinement. After each added constraint, two passes move x by
   W·M⁻¹·e and the multipliers by M⁻¹·e, with the residuals e of the active
   constraints. G·x + a = N·u still holds, and the active constraints hold
@@ -546,18 +549,26 @@ Three rules keep rounding from turning into large steps:
   skipped.
 
 The result is optimal only when every active constraint holds within the
-tolerance times max(s_i, |b_i| + Σ|c_ij·x_j|). Otherwise rounding has moved
-x off the active constraints, and the status is `infeasible`: the
+tolerance times its size t_i = max(s_i, |b_i| + Σ|c_ij·x_j|), and every
+redundant equality within the tolerance times t_p + Σ|r_k|·t_k over the
+rows it combines. Otherwise the status is `infeasible`. An active
+constraint outside its bound means that rounding has moved x off it: the
 programme cannot be solved in double precision, for example with normals
 that differ by 1e-7 of their size and a solution 1e7 times the row scale
-away.
+away. A redundant equality outside its bound was only nearly dependent.
+The combined bound keeps an exact combination of large rows: with rows of
+size 3e7 that cancel, rounding leaves the combination 1.4e-6 off, within
+1e-10 of the combined rows and outside 1e-10 of its own size 8.
 
 On 600 random near-default states the 2597 fit programmes that `solve`
 builds end with every constraint met to 1.0e-10 of its row scale.
 `solveQP` returns `invalid` for sizes that do not match, meq outside 0 to
 m, a non-finite entry or options out of range, and `fitCableTrack` returns
 `invalid` for non-finite or out-of-range input (limits in the table of
-numerical settings) instead of throwing.
+numerical settings), including a point to pass through with its angle
+outside (ψ_c0, ψ_cf] or a non-finite lever arm or integral, instead of
+throwing. Non-finite samples of the ideal track are left out of the least
+squares.
 
 The solver fits when the ideal track violates ρ_lim or p_min, when its
 contact angle does not increase, or when it cannot be sampled. It then runs
@@ -607,7 +618,7 @@ wrap at brace.
 - The upper bound p(ψ_c0) keeps the lead-in from swinging outwards. A fit
   that flattens the brace region has ρ(ψ_c0) of 260 mm to 830 mm; a lead-in
   of that radius makes the cam 205 mm to 451 mm across, and the closing
-  blend fails. With the bound the same states give 114 mm to 144 mm and
+  blend fails. With the bound the same states give 113 mm to 144 mm and
   close. The cable contact never runs on the lead-in (the smallest contact
   angle of the forward model is the brace contact), so the lead-in changes
   the cable length, not the force curve.
@@ -621,16 +632,31 @@ wrap at brace.
   below p_min, the constrained fit replaces it: a clamped spline close to
   the quintic with p, p', p'' prescribed at both joins and the two limits
   as constraints. When no such spline exists the solver reports
-  `closing-blend` and names the largest lead-in wrap k·5° below the input,
-  down to 0°, that closes the track. When none does, it names the string
-  track radius: a larger string track turns the cam less over the draw and
-  leaves a longer arc for the blend. When ρ_lim is the minimum bend radius
-  and the blend bends too sharply, it also names that radius. On 119
-  states without a closing lead-in wrap (rise 30 % to 50 %, let-off 60 % to
-  80 %, limb 2.0 to 4.0 N/mm with 84 mm to 200 mm preload, lead-in 15°, 30°
-  and 60°), a string track radius 5 mm or 10 mm larger closes 113, half the
-  minimum bend radius closes 68, 5 points less let-off closes 12 and a
-  valley 1 in longer closes 5.
+  `closing-blend`. The suggestion names the largest lead-in wrap k·5°
+  below the input, down to 0°, that closes the track; the lead-in does not
+  change the active track, so closing it is the whole check.
+- When no lead-in wrap closes the track, the solver runs trial solves:
+  coarse, without trials of their own, and stopped at their first
+  diagnostic. It tries the string track radius (both semi-axes of an
+  ellipse) 5, 10, 15 and 20 mm larger, then half the minimum bend radius
+  when that radius sets ρ_lim and the blend bends too sharply. The
+  suggestion names the first change whose trial reports no diagnostic,
+  with its value; otherwise it lists what was tried and names the force
+  curve. A larger string track turns the cam less over the draw and
+  leaves a longer arc for the blend, but it also changes the ideal cable
+  track, so a track that closes is not enough. On the 77 placements of
+  point 2 of the default (9 in to 15 in, 30 N to 200 N) that no lead-in
+  wrap closes, a radius 5 mm or 10 mm larger closes the track in 50 and
+  raises the largest force difference of the fitted cam in 75. The trials
+  name a radius in 30 of them, and a full solve with it reports no
+  diagnostic in all 30. In the other 47 (24 with `cable-fold`, 13 with
+  `cable-radius` and `cable-clearance`, 10 with `closing-blend` alone) no
+  trial passes. With a 20 mm minimum bend radius and a lead-in wrap of 5°
+  or 10°, no larger string track passes and a 10 mm bend radius does. The
+  trials take 90 ms median and at most 420 ms on these states (Node 22,
+  4-core 2.1 GHz Xeon, coarse and full solves alike); a solve without
+  `closing-blend`, or with a lead-in wrap that closes the track, runs
+  none.
 - The closed track is stored as a periodic C2 cubic spline through samples
   of the pieces at a spacing of at most 0.25° (full) or 0.5° (coarse); the
   knots of spline pieces are kept. A knot closer than 1e-3 of the spacing
@@ -726,7 +752,7 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `cable-radius` | ρ of the ideal cable track below ρ_lim and the fitted cam outside the tolerance; the named range leaves out the brace blend unless it is the only one, and a negative ρ is given as the angle over which the track bends the wrong way | chosen at the largest force difference of the fitted cam: point 2 before point 3; after the peak a more gradual drop over the nearest falling interval at or before it, or less let-off; otherwise a more gradual change between the curve points on either side |
 | `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in too close to the bore | the let-off (computed limit) at full draw or the force at the position, and the bore radius plus wall (at most the lowest lever arm / 1.03 minus the cable radius, rounded down, when at least 1.5 mm); a larger string track also raises the lever arm at the peak and is not suggested |
 | `cable-wrap` | active cable range plus lead-in wrap ≥ 360° | the lead-in wrap (computed) or the string track radius |
-| `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the string track radius, and the minimum bend radius when it sets ρ_lim |
+| `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the smallest string track increase (5 mm to 20 mm, both semi-axes of an ellipse), then half the minimum bend radius when it sets ρ_lim, with which a coarse trial solve reports no diagnostic; otherwise the changes tried and the force curve |
 | `no-convergence` | a closure, the resampling, the constrained fit or the forward model of the final cam fails, or an internal error | the input to change |
 | `slack-string` | the string of the final cam goes slack (forward model) | the force in the range or the let-off |
 | `wrap-exhausted` | a contact of the final cam passes its termination (forward model) | the residual and lead-in wrap |
@@ -794,16 +820,17 @@ Measured values are the largest errors over the tested samples.
 | Inverse kinematics: p_c = c_a·dα/dθ, dα/dx and dθ/dx against central differences along the draw | 1e-7 relative | passes |
 | Brace blend: p(ψ_c0), C2 join and the cable closure integral; Lagrange end slopes of a quartic test polynomial on uneven points | 5e-16 m (p), 5e-15 m/rad (p'), 5e-14 m/rad² (p''), 5e-15 m·rad (integral); 5e-13, 5e-12 | passes |
 | Quadratic programme: reference problems, equality multipliers of either sign, dropped constraints; KKT (Karush–Kuhn–Tucker) conditions on 300 random convex problems (fast-check) | 5e-13 (reference problems); 1e-10 (KKT) | passes |
-| Quadratic programme: redundant and contradicting equalities; a dependent constraint with n active; nearly parallel constraints (1e-5 apart) met to the tolerance; a programme with rows 1e-7 apart reported `infeasible`; `invalid` for non-finite data, mismatched sizes and options out of range | 3e-10 | passes |
+| Quadratic programme: redundant and contradicting equalities; a nearly dependent equality (1e-9 and 1e-10 apart) that holds when found and that y ≥ 100 moves off reported `infeasible`; an exact combination of rows of size 3e7, 1.4e-6 off after rounding, kept `optimal`; a dependent constraint with n active; nearly parallel constraints (1e-5 apart) met to the tolerance; a programme with rows 1e-7 apart reported `infeasible`; `invalid` for non-finite data, mismatched sizes and options out of range | 3e-10 | passes |
 | Quadratic programme against a brute-force solution (every set of independent constraints as equalities) on 500 small integer problems with repeated, scaled and negated rows (fast-check), feasible and arbitrary right-hand sides: x, KKT conditions relative to the size of their terms, `infeasible` exactly when the brute force finds nothing | 1e-9, 1e-12 | passes |
-| Constrained fit: a track within the limits is reproduced; ρ ≥ ρ_min and p ≥ p_min where the samples violate them; prescribed points and integrals; `invalid` for out-of-range input | 1e-7 m; 5e-6 m, 1e-7 m; 1e-12 m and m·rad | passes |
+| Constrained fit: a track within the limits is reproduced; ρ ≥ ρ_min and p ≥ p_min where the samples violate them; prescribed points and integrals; `invalid` for out-of-range input, including points to pass through outside (ψ_0, ψ_1] or with a non-finite angle, lever arm or integral | 1e-7 m; 5e-6 m, 1e-7 m; 1e-12 m and m·rad | passes |
 | Solve where the fit through the curve points wins (limb 3.5 N/mm, let-off 65 %, rise 50 %): forward force of the built cam at the 4 matched points against the target, θ and α against the inverse model; more than 1e-3 N at the other points | 1e-9 N, 1e-12 rad | 4e-13 N, 5e-15 rad |
 | Solve without the fit: target of 7 points from the forward model of a known cam (string groove 47.7 mm with 0.25 mm offset, limb 12.45 N/mm with 190 mm preload, cable circle 13.5 mm with 0.9 mm offset), ideal track from brace blend and resampled spline: achieved force against the target from point 2 on; forward force, θ and α of the built cam at the curve points; brace slope | 1e-6 N (full), 5e-6 N (coarse); 1e-12 rad (full), 2e-10 rad (coarse); 1e-9 relative | 1.3e-7 N and 3.8e-7 N; 1.3e-13 rad and 1.8e-11 rad; 2e-16 |
 | Closed cable track: lead-in and active track kept, periodic C2 join, ρ of the closing blend ≥ ρ_lim, closed outlines | 1e-8 m (lead-in), 1e-9 m (active track and joins), 5e-13 m, m/rad and m/rad² (p, p', p'' after one period), 1e-6 m (ρ) | passes |
-| Lead-in with ρ(ψ_c0) = 330 mm and 2 mm at p(ψ_c0) = 30 mm: ρ_0 = 30 mm and 5 mm, ρ(u) against the formula, monotone, p' and p'' against central differences, C2 join, p within 2λ·\|ρ(ψ_c0) − ρ_0\| of the arc of radius ρ_0; closed spline at most 5 % of the change in ρ below the smaller end value | 5e-13 m; 1e-9 m/rad, 1e-4 m/rad² | passes |
+| Lead-in with ρ(ψ_c0) = 330 mm and 2 mm at p(ψ_c0) = 30 mm: ρ_0 = 30 mm and 5 mm; ρ(u) = p + p'' with p'' from central differences of p alone (steps 1e-4 and 2e-4 rad, Richardson extrapolation) against the formula, monotone; p'' of the evaluator against the same differences; p' against central differences; C2 join; p within 2λ·\|ρ(ψ_c0) − ρ_0\| of the arc of radius ρ_0; closed spline at most 5 % of the change in ρ below the smaller end value | 1e-8 m and m/rad²; 1e-9 m/rad | 1.7e-9 m |
 | Lead-in wrap 0, 1.5e-179, 1e-15 and 1e-9 rad: knots at least 1e-3 of the spacing apart, ρ of the closed track ≥ ρ_lim | 1e-6 m | passes |
 | Solve with rise 40 % at let-off 75 % and 65 %: no `closing-blend`, cam below 120 mm, closed track ρ ≥ ρ_lim | 1e-5 m | cam 114.0 mm and 113.4 mm |
-| Solve with a lead-in wrap of 0: no diagnostics, cable post at ψ_c0; minimum bend radius 20 mm with a lead-in wrap of 5° and 10°: `closing-blend`, `cable-radius`, `cable-clearance`; lead-in trials k·5° down to exactly 0 | | passes |
+| Solve with a lead-in wrap of 0: no diagnostics, cable post at ψ_c0; minimum bend radius 20 mm with a lead-in wrap of 5° and 10°: `closing-blend`, `cable-radius`, `cable-clearance`, suggestion a 10 mm bend radius, which solves without diagnostics, while no larger string track does; lead-in trials k·5° down to exactly 0 | | passes |
+| `closing-blend` trials: point 2 at 12 in and 120 N names a 55.0 mm string track radius (coarse and full solve; 50 mm fails, 55 mm solves without diagnostics); a 45 mm × 35 mm ellipse with point 2 at 11 in and 100 N names both semi-axes 15 mm larger; point 2 at 10 in and 50 N names none, and each larger string track raises the largest force difference; trial states within the field range, the bend radius tried only when it sets ρ_lim | | passes |
 | Offsets, maximum dimension, termination and cable stop posts, timing marks | 5e-16 m to 1e-6 m | passes |
 | Default preset: zero diagnostics; force within the fit tolerance; outlines closed and nested (groove bottom inside the pitch line and the flange, outside the bore and its wall); posts and marks at the achieved contacts | 8.0 N | 3.71 N |
 | Edits of the default preset (peak 250, 260, 275, 285 N; rise 44 %, 48 %, 50 %; valley 0.9 in, 1.5 in): zero diagnostics | 3 % of the peak | 6.0 N at peak 250 N (7.5 N) |
@@ -844,9 +871,10 @@ first 123 mm of the power stroke.
 | Inverse string closure | Newton, residual below 1e-10 m, at most 30 iterations |
 | Ideal cable resampling | 0.5° (coarse), 0.25° (full); Illinois search stopped within 0.1 % of the step |
 | Constrained fit | one knot interval per about 10° (17 to 37), 8 constraint points per interval, margin 1e-6 m, penalty 1e-8·trace on second differences |
-| Constrained fit input | \|ψ\| ≤ 1e6 rad, 1 to 200 knot intervals, 1 to 50 constraint points per interval, knot spacing above 1e-9·max(1, \|ψ_0\|, \|ψ_1\|) |
-| Quadratic programme | violation tolerance 1e-10 of the row scale, for active constraints of max(row scale, size of the terms); dependence at \|z\|_G ≤ 1e-8 of the cancelled terms; two refinement passes per added constraint; at most 10·(n + m) + 20 steps |
+| Constrained fit input | \|ψ\| ≤ 1e6 rad, 1 to 200 knot intervals, 1 to 50 constraint points per interval, knot spacing above 1e-9·max(1, \|ψ_0\|, \|ψ_1\|), points to pass through at ψ_0 < ψ ≤ ψ_1 with finite lever arm and integral |
+| Quadratic programme | violation tolerance 1e-10 of the row scale, for active constraints of max(row scale, size of the terms), for redundant equalities of that size plus the sizes of the rows they combine; dependence at \|z\|_G ≤ 1e-8 of the cancelled terms; two refinement passes per added constraint; at most 10·(n + m) + 20 steps |
 | Fit tolerance | force 3 % of the peak, at least 2 N; draw energy 0.5 % |
+| `closing-blend` trials | lead-in wraps k·5° down to 0° (closing only); coarse trial solves with the string track radius, or both semi-axes, 5, 10, 15 and 20 mm larger, then half the minimum bend radius |
 | Groove margin in ρ_lim | 0.2 mm |
 | Outline samples | 360 (coarse), 720 (full) intervals |
 | Forward model of the final cam | 100 (coarse), 1500 (full) samples |

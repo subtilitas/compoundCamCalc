@@ -90,9 +90,11 @@ describe('constrained cable track fit', () => {
       expect(Math.abs(s.p(q.psi) - q.p)).toBeLessThan(1e-12);
       expect(Math.abs(s.P(q.psi) - s.P(start) - q.integral)).toBeLessThan(1e-12);
     }
-    // Points outside (start, end] are ignored.
-    const outside = fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, through: [{ psi: start - 1, p: 1, integral: 1 }] });
-    expect(outside.status).toBe('optimal');
+    // A point outside (start, end] cannot be passed through: invalid.
+    for (const psi of [start - 1, start, end + 1e-9]) {
+      const outside = fitCableTrack({ ...data, start, end, rhoMin: 0.005, pMin: 0.008, through: [{ psi, p: 0.02, integral: 0.01 }] });
+      expect(outside.status).toBe('invalid');
+    }
   });
 
   it('handles sparse samples and reports contradictory limits and invalid input', () => {
@@ -141,6 +143,12 @@ describe('constrained cable track fit', () => {
       { p: Float64Array.from(data.p, () => NaN) },
       { ends: { start: [0.02, NaN, 0], end: [0.02, 0, 0] } },
       { ends: { start: [0.02, 0, 0], end: [0.02, 0] } },
+      { through: [{ psi: NaN, p: 0.02, integral: 0.01 }] },
+      { through: [{ psi: Infinity, p: 0.02, integral: 0.01 }] },
+      { through: [{ psi: end + 1, p: 0.02, integral: 0.01 }] },
+      { through: [{ psi: start + 1, p: NaN, integral: 0.01 }] },
+      { through: [{ psi: start + 1, p: 0.02, integral: Infinity }] },
+      { through: [{ psi: start + 1, p: 0.02, integral: 0.02 }, { psi: start + 2, p: 0.02, integral: NaN }] },
     ];
     for (const change of bad) {
       const r = fitCableTrack({ ...base, ...change });

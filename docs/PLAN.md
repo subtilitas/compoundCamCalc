@@ -274,11 +274,13 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
 - Clamped cubic spline on uniform knots (values and end slopes as unknowns),
   dual active-set QP of Goldfarb and Idnani. The QP treats a constraint as
   dependent when n constraints are active or when its step is at rounding
-  level, skips dependent equalities that hold, refines x onto the active
-  constraints after each added constraint, reports `infeasible` when
-  rounding leaves an active constraint outside the tolerance, and returns
-  `invalid` for mismatched sizes or non-finite data; the fit returns
-  `invalid` for out-of-range input instead of throwing.
+  level, skips dependent equalities that hold and checks them again at the
+  end, refines x onto the active constraints after each added constraint,
+  reports `infeasible` when rounding leaves an active constraint or a
+  skipped equality outside the tolerance, and returns `invalid` for
+  mismatched sizes or non-finite data; the fit returns `invalid` for
+  out-of-range input, including points to pass through outside the fitted
+  range or with non-finite values, instead of throwing.
 - Equalities at every curve point whose ideal lever arm meets p_min:
   p(ψ_k) = p_k and ∫ p dψ from ψ_c0 to ψ_k from the cable closure, plus
   p(ψ_c0) = p_c0. The fitted cam then passes through the target force and
@@ -319,6 +321,11 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
 - The remaining arc is closed by a quintic blend in ψ that matches p, p', p''
   at both joins with ρ ≥ ρ_min. Any periodic p with p + p'' > 0 gives a closed
   convex curve.
+- When no closing blend exists, `closing-blend` names the largest lead-in
+  wrap (5° steps, down to 0°) that closes the track. Otherwise it names a
+  string track 5 mm to 20 mm larger, or half the minimum bend radius, only
+  when a coarse trial solve with that change reports no diagnostic, and
+  otherwise lists what was tried (`docs/model.md`).
 - Posts (string post, cable post), cable stop post and timing marks (string
   exit at brace, cable exit at brace, full-draw index) are placed in the cam
   frame.
@@ -350,7 +357,9 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   34 ms in the coverage run with the rest of the suite in parallel; 42 ms
   to 47 ms and 57 ms to 74 ms with every core also loaded by another
   process. The first call, before the JavaScript engine has optimised the
-  code, takes 165 ms to 300 ms.
+  code, takes 165 ms to 300 ms. A `closing-blend` that no lead-in wrap
+  closes adds up to five coarse trial solves: 90 ms median and at most
+  420 ms on 77 edits of point 2 of the default.
 - Exported curves deviate from the model curve by at most the export
   tolerance (default 0.01 mm) along the normal.
 

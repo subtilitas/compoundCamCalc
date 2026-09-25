@@ -50,8 +50,8 @@ const MAX_GRID = 50;
  * @property {number} [intervals] knot intervals, 1 to 200 (default: about one per 10°, 17 to 37)
  * @property {number} [startValue] prescribed p(ψ_0) (m)
  * @property {{ psi: number, p: number, integral: number }[]} [through] points
- *   the track passes through: angle (rad), lever arm (m) and ∫ p dψ from
- *   ψ_0 (m·rad)
+ *   the track passes through: angle (rad) in (start, end], lever arm (m)
+ *   and ∫ p dψ from ψ_0 (m·rad)
  * @property {{ start: ArrayLike<number>, end: ArrayLike<number> }} [ends] p, p'
  *   and p'' prescribed at both ends (m, m/rad, m/rad²), for a C2 join
  * @property {number} [gridPerInterval] constraint points per knot interval, 1 to 50 (default 8)
@@ -92,7 +92,9 @@ const finiteOrUndefined = (values) => values.every((v) => v === undefined || Num
  * same length of at least 2 with at least one finite pair, rhoMin, pMin and
  * the optional numbers are finite, intervals is an integer from 1 to 200,
  * gridPerInterval an integer from 1 to 50, each end holds three finite
- * numbers, and the knot spacing exceeds 1e-9·max(1, |start|, |end|).
+ * numbers, each through point has its angle in (start, end] and a finite
+ * lever arm and integral, and the knot spacing exceeds
+ * 1e-9·max(1, |start|, |end|). Non-finite samples are left out.
  * @param {FitInput} input
  * @returns {FitResult}
  */
@@ -106,6 +108,7 @@ export function fitCableTrack(input) {
   const intervals = input.intervals ?? Math.min(37, Math.max(17, Math.round(span / (10 * (Math.PI / 180)))));
   const perInterval = input.gridPerInterval ?? 8;
   const ends = input.ends ? [input.ends.start, input.ends.end] : [];
+  const through = input.through ?? [];
   let finitePairs = 0;
   if (p.length === m) for (let i = 0; i < m; i++) if (Number.isFinite(psi[i]) && Number.isFinite(p[i])) finitePairs++;
   const valid =
@@ -125,7 +128,9 @@ export function fitCableTrack(input) {
     perInterval >= 1 &&
     perInterval <= MAX_GRID &&
     span / intervals > MIN_SPACING * Math.max(1, Math.abs(start), Math.abs(end)) &&
-    ends.every((v) => v.length === 3 && Array.from(v).every(Number.isFinite));
+    ends.every((v) => v.length === 3 && Array.from(v).every(Number.isFinite)) &&
+    Array.isArray(through) &&
+    through.every((q) => q.psi > start && q.psi <= end && Number.isFinite(q.p) && Number.isFinite(q.integral));
   if (!valid) return failed('invalid');
   const knots = uniformKnots(start, end, intervals);
   const nv = intervals + 1;
@@ -189,10 +194,9 @@ export function fitCableTrack(input) {
   /** @type {{ row: Float64Array, value: number }[]} */
   const equalities = [];
   if (input.startValue !== undefined) equalities.push({ row: rows(start).rp, value: input.startValue / MM });
-  for (const q of input.through ?? []) {
-    if (!(q.psi > start && q.psi <= end)) continue;
-    if (Number.isFinite(q.p)) equalities.push({ row: rows(q.psi).rp, value: q.p / MM });
-    if (Number.isFinite(q.integral)) equalities.push({ row: Float64Array.from(basis, (s) => s.P(q.psi)), value: q.integral / MM });
+  for (const q of through) {
+    equalities.push({ row: rows(q.psi).rp, value: q.p / MM });
+    equalities.push({ row: Float64Array.from(basis, (s) => s.P(q.psi)), value: q.integral / MM });
   }
   if (input.ends) {
     for (const [at, values] of /** @type {[number, ArrayLike<number>][]} */ ([[start, input.ends.start], [end, input.ends.end]])) {
