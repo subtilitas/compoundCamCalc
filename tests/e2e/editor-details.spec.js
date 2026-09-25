@@ -19,7 +19,7 @@ test.describe('chart', () => {
     // Plot top: 30 px below the top of the chart.
     expect(point.y + point.height / 2).toBeGreaterThanOrEqual(chart.y + 29);
     expect(readout.y).toBeGreaterThanOrEqual(chart.y - 0.5);
-    await expect(page.getByTestId('chart-readout')).toHaveText(/^Point 3: 14\.5 in, 307 N$/);
+    await expect(page.getByTestId('chart-readout')).toHaveText(/^Point 3: 17\.8 in, 307 N$/);
     await page.mouse.up();
   });
 
@@ -37,7 +37,7 @@ test.describe('chart', () => {
     await page.mouse.move(c.x, c.y + 40, { steps: 3 });
     await page.mouse.up();
     await expect(page.locator('#app')).toHaveAttribute('data-curve-mode', 'custom');
-    await expect(page.getByTestId('point-x-4')).toHaveValue('22.99');
+    await expect(page.getByTestId('point-x-4')).toHaveValue('21.13');
   });
 
   test('Ctrl+Z during a drag is ignored, so the drag stays one undo entry', async ({ page }) => {
@@ -94,7 +94,7 @@ test.describe('keyboard', () => {
   test('arrow keys report the new position in the status line', async ({ page }) => {
     await page.getByTestId('chart-point-3').focus();
     await page.keyboard.press('ArrowUp');
-    await expect(page.getByTestId('edit-status')).toHaveText('Point 3: 14.5 in, 268 N');
+    await expect(page.getByTestId('edit-status')).toHaveText('Point 3: 17.8 in, 268 N');
   });
 
   test('a refused move reports the reason and changes nothing', async ({ page }) => {
@@ -130,7 +130,8 @@ test.describe('keyboard', () => {
   test('undo clears the status line', async ({ page }) => {
     const status = page.getByTestId('edit-status');
     await page.getByTestId('btn-add-point').click();
-    await expect(status).toHaveText('Point 4 added');
+    // The largest gap of the default curve lies between points 2 and 3.
+    await expect(status).toHaveText('Point 3 added');
     await page.getByTestId('btn-undo').click();
     await expect(page.locator('#app')).toHaveAttribute('data-point-count', '7');
     await expect(status).toHaveText('');
@@ -241,12 +242,13 @@ test.describe('settings', () => {
   test('peak and let-off fields name a custom curve outside their ranges', async ({ page }) => {
     await openTable(page);
     const f4 = page.getByTestId('point-f-4');
-    await f4.fill('1200');
+    // Peak 1600 N over a holding weight of 66.75 N: let-off 95.8 %.
+    await f4.fill('1600');
     await f4.press('Enter');
-    await expect(page.getByTestId('stat-peak')).toHaveText('1200 N');
+    await expect(page.getByTestId('stat-peak')).toHaveText('1600 N');
     await expect(page.getByTestId('field-peak')).toHaveValue('900.0');
-    await expect(page.getByTestId('field-peak-msg')).toHaveText('The custom curve peaks at 1200 N, outside this range; Reset curve uses 900 N');
-    await expect(page.getByTestId('field-letoff-msg')).toHaveText('The custom curve has a let-off of 95.6 %, outside this range; Reset curve uses 95 %');
+    await expect(page.getByTestId('field-peak-msg')).toHaveText('The custom curve peaks at 1600 N, outside this range; Reset curve uses 900 N');
+    await expect(page.getByTestId('field-letoff-msg')).toHaveText('The custom curve has a let-off of 95.8 %, outside this range; Reset curve uses 95 %');
     await page.getByTestId('btn-reset-curve').click();
     await expect(page.getByTestId('field-peak-msg')).toHaveText('');
     await expect(page.getByTestId('stat-peak')).toHaveText('900 N');
