@@ -23,6 +23,7 @@ import {
   LENGTH_MIN,
   MOMENT_MAX,
   ROTATION_MAX,
+  ROTATION_SPACING_MIN,
   TORSIONAL_STIFFNESS_MAX,
   TORSIONAL_STIFFNESS_MIN,
   inRange,
@@ -113,8 +114,8 @@ export function tableLimb({ rotation, moment, alpha0 }) {
         error: `Limb table row ${i + 1} must have a rotation from 0 to one turn and a moment from 0 to ${MOMENT_MAX} N·m`,
       };
     }
-    if (i > 0 && !(q > rotation[i - 1])) {
-      return { limb: null, error: `Limb table row ${i + 1} must have a larger rotation than row ${i}` };
+    if (i > 0 && !(q - rotation[i - 1] >= ROTATION_SPACING_MIN)) {
+      return { limb: null, error: `Limb table row ${i + 1} must have a rotation at least ${ROTATION_SPACING_MIN} rad larger than row ${i}` };
     }
     points.push({ x: q, F: m });
   }
@@ -122,9 +123,18 @@ export function tableLimb({ rotation, moment, alpha0 }) {
   if (points[0].x === 0 && points[0].F !== 0) {
     return { limb: null, error: 'The limb moment at zero rotation (unstrung) must be 0' };
   }
+  if (points[0].x > 0 && points[0].x < ROTATION_SPACING_MIN) {
+    return { limb: null, error: `The first limb table row must be at rotation 0 or at least ${ROTATION_SPACING_MIN} rad` };
+  }
   if (points[0].x > 0) points.unshift({ x: 0, F: 0 });
   if (!inRange(alpha0, 0, ROTATION_MAX)) return { limb: null, error: 'The limb preload rotation must be from 0 to one turn' };
-  return { limb: { kind: 'table', curve: buildCurveData(points), alpha0 }, error: null };
+  const curve = buildCurveData(points);
+  // Inside the domain the interpolant stays finite; this guards the rest.
+  const finite = (/** @type {ArrayLike<number>} */ a) => Array.prototype.every.call(a, Number.isFinite);
+  if (![curve.slopes, curve.second, curve.coeffs, curve.cumulative].every(finite)) {
+    return { limb: null, error: 'The limb table gives a moment curve outside the numeric range' };
+  }
+  return { limb: { kind: 'table', curve, alpha0 }, error: null };
 }
 
 /**

@@ -366,6 +366,37 @@ describe('serialized spline data', () => {
     expect(() => createSupport(eccentricCircle({ radius: 0.03, offset: 11 }))).toThrow(/offset/);
     expect(() => createSupport(offset(eccentricCircle({ radius: 0.03 }), -11))).toThrow(/offset/);
     expect(() => createSupport(eccentricCircle({ radius: 0 }))).not.toThrow();
+    expect(() => createSupport(eccentricCircle({ radius: 0.03, phase: 2e4 }))).toThrow(/phase/);
+    expect(() => createSupport(ellipse({ a: 0.05, b: 0.02, axisAngle: 1e16 }))).toThrow(/angles/);
+    const farKnot = /** @type {any} */ (splineSupport([1e4, 1e4 + 1, 1e4 + 2], [0.03, 0.03, 0.03]));
+    expect(() => createSupport(farKnot)).toThrow(/at most 10000 rad/);
+  });
+
+  it('bounds spline values between the knots', () => {
+    const open = (/** @type {number[]} */ knots, /** @type {number[]} */ coeffs) =>
+      /** @type {any} */ ({ kind: 'spline', knots: Float64Array.from(knots), coeffs: Float64Array.from(coeffs), cumulative: new Float64Array(knots.length), periodic: false });
+    // p = 10 + 10·t − (10/6)·t² on [0, 6]: 10 m at both ends, 25 m at t = 3.
+    expect(() => createSupport(open([-3, 3], [10, 10, -10 / 6, 0]))).toThrow(/at most 10 m/);
+    // p = −8 + 12·t² − 4·t³ on [0, 2]: |p| ≤ 8 m, p' = 0 at both ends, 12 m at t = 1.
+    expect(() => createSupport(open([0, 2], [-8, 0, 12, -4]))).toThrow(/at most 10 m/);
+    expect(() => createSupport(open([0, 2], [-6, 0, 9, -3]))).not.toThrow();
+  });
+
+  it('reduces the ellipse axis angle modulo π without changing the track', () => {
+    const plain = createSupport(ellipse({ a: 0.05, b: 0.02, axisAngle: 0.3 }));
+    const turned = createSupport(ellipse({ a: 0.05, b: 0.02, axisAngle: 0.3 + 3183 * Math.PI }));
+    const swapped = createSupport(/** @type {any} */ ({ kind: 'ellipse', a: 0.02, b: 0.05, axisAngle: 0.3 - Math.PI / 2 - 1000 * Math.PI, offset: 0, offsetAngle: 0 }));
+    for (const s of [turned, swapped]) {
+      expect(Math.abs(/** @type {any} */ (s).axisAngle - 0.3)).toBeLessThan(1e-9);
+      for (const psi of [-2, 0, 1, 4]) {
+        expect(s.p(psi)).toBeCloseTo(plain.p(psi), 12);
+        expect(s.P(psi)).toBeCloseTo(plain.P(psi), 12);
+      }
+    }
+    // P is the integral of p from 0: about 0.035 m over [0, 1].
+    let integral = 0;
+    for (let k = 0; k < 2000; k++) integral += plain.p((k + 0.5) / 2000) / 2000;
+    expect(turned.P(1)).toBeCloseTo(integral, 8);
   });
 
   it('recomputes the cumulative integrals from the coefficients', () => {

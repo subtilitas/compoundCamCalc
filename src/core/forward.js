@@ -25,6 +25,7 @@
 
 import { CABLE_SIDE, STRING_SIDE, terminationConstant } from './contact.js';
 import { bowGeometry, createPose, evaluatePose } from './geometry.js';
+import { ANGLE_MAX, inRange } from './domain.js';
 import { createLimb, limbEnergies } from './limb.js';
 import { createSupport } from './support.js';
 
@@ -289,8 +290,8 @@ function solveForwardChecked(input) {
   const grid = gridFor(input, bow.xBrace, bow.xFull);
   if (typeof grid === 'string') return failed('invalid-input', grid);
   for (const key of /** @type {const} */ (['stringTermination', 'cableTermination'])) {
-    if (input[key] !== undefined && !Number.isFinite(input[key])) {
-      return failed('invalid-input', `${key} must be a finite angle`);
+    if (input[key] !== undefined && !inRange(input[key], -ANGLE_MAX, ANGLE_MAX)) {
+      return failed('invalid-input', `${key} must be a finite angle of at most ${ANGLE_MAX} rad`);
     }
   }
   const maxIterations = input.maxIterations ?? MAX_ITERATIONS;

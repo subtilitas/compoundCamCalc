@@ -707,6 +707,8 @@ describe('forward model: diagnostics', () => {
       { cableTrack: { kind: 'ellipse', a: 1e-200, b: 1e-200, axisAngle: 0, offset: 0.03, offsetAngle: 0 } },
       { cableTrack: eccentricCircle({ radius: 11 }) },
       { stringTrack: offset(eccentricCircle({ radius: 0.03 }), 11) },
+      { stringTermination: 2e4 },
+      { cableTrack: ellipse({ a: 0.05, b: 0.02, axisAngle: 1e16 }) },
     ];
     for (const c of cases) {
       const r = solveForward(input(/** @type {any} */ ({ ...c, samples: 20 })));

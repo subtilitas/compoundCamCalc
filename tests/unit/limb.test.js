@@ -80,6 +80,12 @@ describe('linear limb', () => {
     expect(tableLimb({ rotation: [0, 7], moment: [0, 10], alpha0: 1 }).error).toMatch(/one turn/);
     expect(tableLimb({ rotation: [0, 1], moment: [0, 2e7], alpha0: 0.5 }).error).toMatch(/N·m/);
     expect(tableLimb({ rotation: [0, 1], moment: [0, 10], alpha0: 7 }).error).toMatch(/one turn/);
+    // Rows closer than 1e-6 rad would overflow the interpolant.
+    expect(tableLimb({ rotation: [0, 1e-300, 1], moment: [0, 1e7, 1e7], alpha0: 0 }).error).toMatch(/at least 0\.000001 rad larger/);
+    expect(tableLimb({ rotation: [1e-300, 1], moment: [1e7, 1e7], alpha0: 0 }).error).toMatch(/rotation 0 or at least/);
+    const spaced = tableLimb({ rotation: [0, 1e-6, 1], moment: [0, 1e7, 1e7], alpha0: 0 });
+    expect(spaced.error).toBeNull();
+    expect(Number.isFinite(createLimb(/** @type {TableLimbData} */ (spaced.limb)).moment(0))).toBe(true);
     // 0.28 m lever, 2 m preload: 7.1 rad from unstrung.
     expect(limbFromState({ ...state.limb, mode: 'stiffness', preloadTravel: 2 }, 0.28).error).toMatch(/one turn/);
     expect(limbFromState({ ...state.limb, mode: 'stiffness', stiffness: 1e17 }, 0.28).error).toMatch(/N·m\/rad/);

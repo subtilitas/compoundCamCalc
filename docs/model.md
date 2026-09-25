@@ -163,7 +163,9 @@ coefficients (value, first and second derivative at each join, each to
 1e-9 of the largest magnitude of that same quantity at any knot), and
 spline integrals recomputed from the coefficients. An
 ellipse stored with a < b is turned into the form a ≥ b (axis angle + 90°),
-which the curvature minimum b²/a assumes. A point on the track has no free span: a largest f below
+which the curvature minimum b²/a assumes, and its axis angle is reduced
+modulo π to [−π/2, π/2], which keeps the arc integral
+P = a·(E(ψ − θ) − E(−θ)) free of cancellation between large integrals. A point on the track has no free span: a largest f below
 256·ε·max(|B|, |p|) or a free span below √(256·ε)·max(|B|, |p|) (ε the
 machine epsilon, 2.2e-16) also gives `inside`, so rounding noise never makes a
 tangent from a point on the track. The golden-section search stops at an interval of 1e-12
@@ -328,9 +330,11 @@ near the floating-point limits of about 1e±308.
 | Eccentric circle radius | 0 to 10 m (0 is a point) |
 | Ellipse semi-axes | 1e-6 m to 10 m |
 | Track offsets (eccentric, ellipse centre, groove offset) | −10 m to 10 m |
-| Spline track \|p\| and \|p′\| at the knots | at most 10 m |
-| Spline track \|p″\| at the knots | at most 1e6 m |
+| Spline track \|p\| and \|p′\| on every interval (ends and interior extrema) | at most 10 m |
+| Spline track \|p″\| on every interval | at most 1e6 m |
+| Track angles (phase, axis and offset angles, spline knots) and cord terminations | −1e4 to 1e4 rad |
 | Limb preload rotation α_0 and limb table rotations | 0 to 2π rad |
+| Spacing of limb table rotations, and a first row after 0 | at least 1e-6 rad |
 | Torsional limb stiffness k_t | 1e-6 to 1e9 N·m/rad |
 | Limb table moments | 0 to 1e7 N·m |
 | Limb preload travel, table travel, limb travel | 0 to 10 m (travel mode: at least 1e-6 m) |

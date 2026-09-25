@@ -12,7 +12,7 @@
  * @module core/support
  */
 
-import { LENGTH_MAX, LENGTH_MIN, SECOND_DERIVATIVE_MAX, inRange } from './domain.js';
+import { ANGLE_MAX, LENGTH_MAX, LENGTH_MIN, SECOND_DERIVATIVE_MAX, inRange } from './domain.js';
 import { ellipticE } from './elliptic.js';
 
 /**
@@ -278,8 +278,10 @@ function locate(x, v) {
 function eccentricMethods(d) {
   const { radius: r, offset: e, phase } = d;
   // Radius 0 is a point: p = e·cos(ψ − phase), ρ = 0.
-  if (!inRange(r, 0, LENGTH_MAX) || !inRange(e, -LENGTH_MAX, LENGTH_MAX) || !Number.isFinite(phase)) {
-    throw new RangeError(`An eccentric circle track needs a finite radius from 0 to ${LENGTH_MAX} m, an offset of at most ${LENGTH_MAX} m and a finite phase`);
+  if (!inRange(r, 0, LENGTH_MAX) || !inRange(e, -LENGTH_MAX, LENGTH_MAX) || !inRange(phase, -ANGLE_MAX, ANGLE_MAX)) {
+    throw new RangeError(
+      `An eccentric circle track needs a finite radius from 0 to ${LENGTH_MAX} m, an offset of at most ${LENGTH_MAX} m and a phase of at most ${ANGLE_MAX} rad`,
+    );
   }
   const sinPhase = Math.sin(phase);
   return {
@@ -310,8 +312,8 @@ function ellipseMethods(d) {
   if (!(inRange(a, LENGTH_MIN, LENGTH_MAX) && inRange(b, LENGTH_MIN, LENGTH_MAX))) {
     throw new RangeError(`An ellipse track needs semi-axes from ${LENGTH_MIN} m to ${LENGTH_MAX} m`);
   }
-  if (!inRange(e, -LENGTH_MAX, LENGTH_MAX) || ![axisAngle, offsetAngle].every(Number.isFinite)) {
-    throw new RangeError(`An ellipse track needs finite angles and an offset of at most ${LENGTH_MAX} m`);
+  if (!inRange(e, -LENGTH_MAX, LENGTH_MAX) || ![axisAngle, offsetAngle].every((t) => inRange(t, -ANGLE_MAX - Math.PI, ANGLE_MAX + Math.PI))) {
+    throw new RangeError(`An ellipse track needs angles of at most ${ANGLE_MAX} rad and an offset of at most ${LENGTH_MAX} m`);
   }
   // ρ(u) = a²b²/(a²cos²u + b²sin²u)^(3/2) with u = ψ − axisAngle; the offset
   // adds nothing. Its minimum b²/a lies at u = k·π.
@@ -355,6 +357,41 @@ function ellipseMethods(d) {
   };
 }
 
+/**
+ * Largest |p|, |p'| and |p''| of the cubic p(t) = c0 + c1·t + c2·t² + c3·t³
+ * on [0, h]: the ends, the roots of p' for p and the root of p'' for p'.
+ * @param {ArrayLike<number>} c coefficients
+ * @param {number} o offset of c0 in c
+ * @param {number} h interval length
+ * @returns {[number, number, number]}
+ */
+function intervalExtent(c, o, h) {
+  const [c0, c1, c2, c3] = [c[o], c[o + 1], c[o + 2], c[o + 3]];
+  const p = (/** @type {number} */ t) => Math.abs(c0 + t * (c1 + t * (c2 + t * c3)));
+  const dp = (/** @type {number} */ t) => Math.abs(c1 + t * (2 * c2 + 3 * t * c3));
+  let largestP = Math.max(p(0), p(h));
+  let largestDp = Math.max(dp(0), dp(h));
+  const largestD2p = Math.max(Math.abs(2 * c2), Math.abs(2 * c2 + 6 * h * c3));
+  const inside = (/** @type {number} */ t) => t > 0 && t < h;
+  // p' = c1 + 2·c2·t + 3·c3·t² = 0.
+  const [A, B] = [3 * c3, 2 * c2];
+  const roots = [];
+  if (A === 0) {
+    if (B !== 0) roots.push(-c1 / B);
+  } else {
+    const disc = B * B - 4 * A * c1;
+    if (disc >= 0) {
+      const q = -0.5 * (B + Math.sign(B || 1) * Math.sqrt(disc));
+      roots.push(q / A);
+      if (q !== 0) roots.push(c1 / q);
+    }
+  }
+  for (const t of roots) if (inside(t)) largestP = Math.max(largestP, p(t));
+  // p'' = 2·c2 + 6·c3·t = 0.
+  if (c3 !== 0 && inside(-c2 / (3 * c3))) largestDp = Math.max(largestDp, dp(-c2 / (3 * c3)));
+  return [largestP, largestDp, largestD2p];
+}
+
 /** Relative tolerance of the continuity check of serialized spline data. */
 const SPLINE_CONTINUITY = 1e-9;
 
@@ -372,8 +409,8 @@ function checkSplineData(d) {
     throw new RangeError('Spline data needs matching knots and coefficients');
   }
   for (let i = 0; i <= n; i++) {
-    if (!Number.isFinite(knots[i]) || (i > 0 && !(knots[i] > knots[i - 1]))) {
-      throw new RangeError('Spline knots must be finite and increasing');
+    if (!inRange(knots[i], -ANGLE_MAX, ANGLE_MAX) || (i > 0 && !(knots[i] > knots[i - 1]))) {
+      throw new RangeError(`Spline knots must be increasing angles of at most ${ANGLE_MAX} rad`);
     }
   }
   for (let j = 0; j < 4 * n; j++) {
@@ -403,9 +440,13 @@ function checkSplineData(d) {
     for (let k = 0; k < 3; k++) scale[k] = Math.max(scale[k], Math.abs(value[k]), Math.abs(s[k]));
   }
   // The input domain: |p| and |p'| (a coordinate of the contact point) up
-  // to LENGTH_MAX, |p''| up to SECOND_DERIVATIVE_MAX.
-  if (!(scale[0] <= LENGTH_MAX && scale[1] <= LENGTH_MAX && scale[2] <= SECOND_DERIVATIVE_MAX)) {
-    throw new RangeError(`A spline track needs |p| and |p'| of at most ${LENGTH_MAX} m and |p''| of at most ${SECOND_DERIVATIVE_MAX} m`);
+  // to LENGTH_MAX, |p''| up to SECOND_DERIVATIVE_MAX, on the whole of every
+  // interval: the ends and the interior extrema.
+  for (let i = 0; i < n; i++) {
+    const [largestP, largestDp, largestD2p] = intervalExtent(coeffs, 4 * i, knots[i + 1] - knots[i]);
+    if (!(largestP <= LENGTH_MAX && largestDp <= LENGTH_MAX && largestD2p <= SECOND_DERIVATIVE_MAX)) {
+      throw new RangeError(`A spline track needs |p| and |p'| of at most ${LENGTH_MAX} m and |p''| of at most ${SECOND_DERIVATIVE_MAX} m`);
+    }
   }
   const joins = periodic ? n : n - 1;
   for (let i = 0; i < joins; i++) {
@@ -578,8 +619,16 @@ function coreMethods(data) {
  * @returns {SupportData}
  */
 function canonical(data) {
-  if (data?.kind === 'ellipse' && data.b > data.a) {
-    return { ...data, a: data.b, b: data.a, axisAngle: data.axisAngle + Math.PI / 2 };
+  if (data?.kind === 'ellipse') {
+    const swap = data.b > data.a;
+    const angle = swap ? data.axisAngle + Math.PI / 2 : data.axisAngle;
+    // The ellipse repeats every π in its axis angle. The reduced angle keeps
+    // the arc integral P = a·(E(ψ − θ) − E(−θ)) free of the cancellation
+    // between two large integrals; angles beyond ANGLE_MAX stay as given
+    // and are rejected.
+    const reduced = Math.abs(angle) <= ANGLE_MAX + Math.PI ? angle - Math.PI * Math.round(angle / Math.PI) : angle;
+    if (!swap && reduced === data.axisAngle) return data;
+    return swap ? { ...data, a: data.b, b: data.a, axisAngle: reduced } : { ...data, axisAngle: reduced };
   }
   if (data?.kind === 'offset' && data.base) {
     const base = canonical(data.base);
