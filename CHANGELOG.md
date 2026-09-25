@@ -6,6 +6,12 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Share link (`src/state/share.js`): File → Copy share link copies a link
+  whose `#design=` fragment holds the inputs and name as base64url JSON
+  (about 1.6 KB for the default design). Opening the link asks first when
+  the working copy has unsaved changes (Save mine first…, Open without
+  saving, Keep my design) and keeps the display units of the person who
+  opens it. A cut-off or damaged link shows a notice and changes nothing.
 - File menu in the page header: Save, Save as…, Open… (with Rename and
   Delete), Open sample…, Reset to default, Save to file (.json) and Open
   from file…; named designs in the browser (`src/state/library.js`), an

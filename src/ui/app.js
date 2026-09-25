@@ -1,12 +1,13 @@
 /**
  * Application wiring: store, editor, chart, table, settings, stats,
  * solver, results, cam view, toolbar, keyboard shortcuts, notices,
- * autosave and the File menu.
+ * autosave, the File menu and share links.
  * @module ui/app
  */
 
 import { createStore } from '../state/store.js';
 import { parseCurrent, serializeCurrent } from '../state/library.js';
+import { decodeShare } from '../state/share.js';
 import { loadCurrent, startAutosave, loadSaved } from './autosave.js';
 import { createFileMenu } from './filemenu.js';
 import { createCamView } from './camview.js';
@@ -28,16 +29,30 @@ import { createStringPlan } from './stringplan.js';
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 
 /**
- * Show a dismissible notice.
+ * Show a dismissible notice, optionally with an action button that
+ * removes the notice and runs the action.
  * @param {HTMLElement} area
  * @param {string} text
+ * @param {{ label: string, run: () => void }} [action]
  */
-function showNotice(area, text) {
+function showNotice(area, text, action) {
   const close = h('button', { type: 'button', class: 'notice-close', 'aria-label': 'Dismiss notice', 'data-testid': 'notice-close' }, '×');
-  const notice = h('div', { class: 'notice', role: 'status', 'data-testid': 'notice' }, h('p', {}, text), close);
+  const notice = h('div', { class: 'notice', role: 'status', 'data-testid': 'notice' }, h('p', {}, text));
+  if (action) {
+    const button = h('button', { type: 'button', class: 'notice-action', 'data-testid': 'notice-action' }, action.label);
+    button.addEventListener('click', () => {
+      notice.remove();
+      action.run();
+    });
+    notice.append(button);
+  }
+  notice.append(close);
   close.addEventListener('click', () => notice.remove());
   area.append(notice);
 }
+
+/** Fragment of a share link, before the link text. */
+export const SHARE_PREFIX = '#design=';
 
 /**
  * Text of the solve status link that stays in view beside the settings.
@@ -382,4 +397,64 @@ export function startApp() {
       showNotice(notices, 'This browser does not allow saving. Changes are lost when the page is closed.');
     }
   }, { current: (text) => serializeCurrent(fileMenu.current(), text) });
+
+  // Share links. Before autosave starts, persist returns false, so links
+  // are read only from here on. Only the newest link waiting for a dialog
+  // to close applies.
+  /** @type {string | null} */
+  let pendingLink = null;
+  let handling = false;
+
+  /** Resolve when every open dialog has closed. */
+  async function dialogsClosed() {
+    for (let d = document.querySelector('dialog[open]'); d; d = document.querySelector('dialog[open]')) {
+      const open = d;
+      await new Promise((resolve) => open.addEventListener('close', resolve, { once: true }));
+    }
+  }
+
+  /**
+   * Open a decoded design; a design kept open leaves a notice to open the
+   * shared one later.
+   * @param {ProjectState} state
+   * @param {string} name
+   * @param {boolean} filled
+   */
+  async function openLink(state, name, filled) {
+    if (await fileMenu.openShared(state, name, filled)) return;
+    showNotice(notices, `The shared design "${name}" was not opened; your design stays open.`, {
+      label: 'Open shared design',
+      run: () => void openLink(state, name, filled),
+    });
+  }
+
+  async function handleLinks() {
+    if (handling) return;
+    handling = true;
+    try {
+      while (pendingLink !== null) {
+        await dialogsClosed();
+        const text = pendingLink;
+        pendingLink = null;
+        const r = decodeShare(text);
+        if (r.state) await openLink(r.state, r.name, r.filled);
+        else showNotice(notices, `The shared design could not be opened. ${r.error}`);
+        // The fragment goes once the link is handled: a reload does not
+        // open it again. A newer link stays until its turn.
+        if (location.hash === SHARE_PREFIX + text) history.replaceState(null, '', location.pathname + location.search);
+      }
+    } finally {
+      handling = false;
+    }
+  }
+
+  // Other fragments, such as the #results-title of the solve chip, are
+  // page anchors and stay.
+  const readLink = () => {
+    if (!location.hash.startsWith(SHARE_PREFIX)) return;
+    pendingLink = location.hash.slice(SHARE_PREFIX.length);
+    void handleLinks();
+  };
+  window.addEventListener('hashchange', readLink);
+  readLink();
 }

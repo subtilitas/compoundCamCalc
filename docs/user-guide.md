@@ -430,6 +430,7 @@ the name:
 | Open sample… | Lists the sample designs. A sample opens as an unsaved design. |
 | Reset to default | Replaces all inputs with the default design. The name stays; Undo restores the inputs. |
 | Save to file (.json) | Downloads the inputs as `<name>.json`. |
+| Copy share link | Copies a link to the design to the clipboard. See [Share link](#share-link). |
 | Open from file… | Reads such a file. A file that is empty, larger than 1 MB or not a valid project changes nothing and the message names the reason. Missing values take their defaults, and the message says so. A file without force curve points gets the curve generated from its geometry and curve parameters. |
 
 Opening a design, a sample or a file asks first when the current inputs
@@ -458,6 +459,47 @@ measured limbs. The mini bow keeps every wall at 1.2 mm or more (3
 perimeters of a 0.4 mm nozzle) and uses 1.4 mm plates (7 layers of
 0.2 mm); a printed part holds about ±0.1 to 0.2 mm, coarser than the
 0.01 mm of the export files.
+
+## Share link
+
+**File → Copy share link** copies a link that opens the current design.
+The message "Share link copied (N characters)" gives its length. When the
+browser does not allow copying, a dialog shows the link in a selected
+field: copy it with Ctrl+C, or Command+C on a Mac.
+
+What the link contains:
+
+- Every input of the design and its name, as text in the link after
+  `#design=`. There is no server copy: the link is the design.
+- Anyone who has the link can read all inputs. Share it only with people
+  who may see the design.
+- The browser does not send the part after `#` to the web server.
+
+Opening a link:
+
+- Over an unchanged working copy, the design opens at once as an unsaved
+  design, marked "(not saved)", with the name from the link. Display units
+  stay those of the person who opens it.
+- With unsaved changes, or inputs of a deleted design, a dialog asks
+  first. **Save mine first…** stores the working copy under a name, then
+  opens the shared design. **Open without saving** discards the changes.
+  **Keep my design** leaves the inputs as they are; a notice then offers
+  **Open shared design** for later.
+- A link that is cut off or damaged, for example by a chat app that
+  shortens long messages, changes nothing. A notice names the reason: ask
+  for the whole link, or for a project file (Save to file).
+- A link from a newer version of the app asks to reload the page.
+- After the link is handled, the address bar shows the page address
+  without `#design=`, so a reload does not open the link again.
+
+The browser keeps one working copy for all tabs. Opening a link in a
+second tab replaces that saved working copy; the design in the first tab
+stays on screen until that tab is reloaded. Save a design under a name
+first to keep it.
+
+A link of the default design has about 1,600 characters. Most browsers
+and chat apps handle this, but some shorten long messages. A link longer
+than 64 KB (65,536 characters) is refused.
 
 ## Saving
 

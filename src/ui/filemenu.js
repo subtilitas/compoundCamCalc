@@ -1,10 +1,11 @@
 /**
  * File menu: the name of the current design with an unsaved-changes
  * marker, and Save, Save as…, Open…, Open sample…, Reset to default, Save to
- * file and Open from file…. Named designs live in localStorage
+ * file, Copy share link and Open from file…. Named designs live in localStorage
  * (state/library); the working copy stays with the autosave. Opening a
  * design replaces the store state and clears the undo history; Reset to
  * default is one undo step. Storage failures show a message; nothing throws.
+ * A shared design from a link opens through openShared, as a file does.
  * @module ui/filemenu
  */
 
@@ -15,6 +16,7 @@ import {
 } from '../state/library.js';
 import { SAMPLES } from '../state/samples.js';
 import { toJSON } from '../state/schema.js';
+import { encodeShare } from '../state/share.js';
 import { confirmDialog, dialogLiveRegion, openDialog } from './dialog.js';
 import { h } from './dom.js';
 import { download } from './download.js';
@@ -44,6 +46,15 @@ export function markerText(current, dirty) {
 }
 
 /**
+ * Link that opens a design: this page with the link text in the fragment,
+ * which the browser does not send to the server.
+ * @param {string} payload text from encodeShare
+ */
+export function shareLink(payload) {
+  return `${location.origin}${location.pathname}${location.search}#design=${payload}`;
+}
+
+/**
  * Local date and time of a saved design, or '' for none.
  * @param {string} iso
  */
@@ -65,7 +76,8 @@ function savedText(iso) {
  * @param {HTMLElement} container
  * @param {Store} store
  * @param {FileMenuOptions} options
- * @returns {{ current: () => Current, render: () => void }}
+ * @returns {{ current: () => Current, render: () => void, openShared: (state: ProjectState, name: string, filled?: boolean) => Promise<boolean> }}
+ *   openShared resolves to false when the working copy stays open
  */
 export function createFileMenu(container, store, options) {
   const now = options.now ?? (() => new Date());
@@ -198,12 +210,13 @@ export function createFileMenu(container, store, options) {
   const sampleBtn = item('sample', 'Open sample…');
   const resetBtn = item('reset', 'Reset to default', 'Replace all inputs with the default design');
   const toFileBtn = item('to-file', 'Save to file (.json)');
+  const shareBtn = item('share', 'Copy share link', 'Copy a link that holds all inputs of this design');
   const fromFileBtn = item('from-file', 'Open from file…');
   const fileInput = h('input', { type: 'file', accept: '.json,application/json', hidden: true, 'data-testid': 'file-input' });
   const storageNote = h('p', { class: 'hint file-note', 'data-testid': 'file-note' });
   storageNote.hidden = true;
   const panel = h('div', { class: 'file-panel', id: 'file-panel', 'data-testid': 'file-panel' },
-    saveBtn, saveAsBtn, openBtn, sampleBtn, resetBtn, toFileBtn, fromFileBtn, storageNote, fileInput);
+    saveBtn, saveAsBtn, openBtn, sampleBtn, resetBtn, toFileBtn, shareBtn, fromFileBtn, storageNote, fileInput);
   panel.hidden = true;
   const live = h('p', { class: 'file-status', role: 'status', 'data-testid': 'file-status' });
   container.append(
@@ -383,21 +396,24 @@ export function createFileMenu(container, store, options) {
    * @param {ProjectState} state
    * @param {Current} next
    * @param {string} message
+   * @returns {boolean} false when the state is not valid
    */
   function switchTo(state, next, message) {
     const errors = store.replace(state);
     if (errors.length > 0) {
       say(`Could not open "${next.name}": ${errors[0].message}`);
-      return;
+      return false;
     }
     const ok = setCurrent(next);
     say(ok ? message : `${message}. ${STORAGE_FULL}`);
+    return true;
   }
 
   /**
    * Save the working copy under a name.
    * @param {string} name
    * @param {string | null} id design to overwrite, or null for a new one
+   * @returns {Promise<boolean>} true when the saved design became the current one
    */
   async function saveUnder(name, id) {
     const state = store.getState();
@@ -413,28 +429,33 @@ export function createFileMenu(container, store, options) {
     });
     if (!r.ok) {
       say(STORAGE_FULL);
-      return;
+      return false;
     }
     if (r.value === null) {
       say(`"${name}" was not saved: another tab changed the designs. Try again.`);
-      return;
+      return false;
     }
     writable = true;
     if (epoch !== before) {
       say(`Saved "${name}". Another design was opened meanwhile and stays open.`);
-      return;
+      return false;
     }
     const ok = setCurrent({ id: r.value, name, source: 'saved', baseline: null });
     say(ok ? `Saved "${name}"` : `Saved "${name}", but the working copy was not updated: browser storage is full. Use Save to file.`);
+    return true;
   }
 
-  async function saveAs() {
+  /**
+   * @param {HTMLElement} [returnTo]
+   * @returns {Promise<boolean>} true when the saved design became the current one
+   */
+  async function saveAs(returnTo = menuButton) {
     close();
     const initial = current.source === 'new' ? '' : current.name;
     const own = current.source === 'saved' ? current.id : null;
-    const r = await askName('Save as', initial, own, menuButton);
-    if (!r) return;
-    await saveUnder(r.name, r.replaceId ?? (r.name.toLocaleLowerCase('en') === current.name.toLocaleLowerCase('en') ? own : null));
+    const r = await askName('Save as', initial, own, returnTo);
+    if (!r) return false;
+    return saveUnder(r.name, r.replaceId ?? (r.name.toLocaleLowerCase('en') === current.name.toLocaleLowerCase('en') ? own : null));
   }
 
   saveBtn.addEventListener('click', async () => {
@@ -596,6 +617,43 @@ export function createFileMenu(container, store, options) {
     menuButton.focus();
   });
 
+  shareBtn.addEventListener('click', async () => {
+    close();
+    const link = shareLink(encodeShare(store.getState(), current.name));
+    let copied = false;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+        copied = true;
+      }
+    } catch {
+      // Refused, for example without a secure context: the dialog shows the link.
+    }
+    if (copied) {
+      say(`Share link copied (${link.length} characters)`);
+      menuButton.focus();
+      return;
+    }
+    await dialog('Share link', (_d, done) => {
+      const inputId = `share-link-${Math.random().toString(36).slice(2)}`;
+      const input = h('input', { id: inputId, type: 'text', value: link, readonly: true, 'data-testid': 'share-link', autocomplete: 'off' });
+      const hintId = `${inputId}-hint`;
+      input.setAttribute('aria-describedby', hintId);
+      const closeBtn = h('button', { type: 'button', class: 'file-primary', 'data-testid': 'dialog-no' }, 'Close');
+      closeBtn.addEventListener('click', () => done(null));
+      queueMicrotask(() => {
+        input.focus();
+        input.select();
+      });
+      return [
+        h('label', { for: inputId, class: 'file-label' }, 'Link to this design'),
+        input,
+        h('p', { id: hintId, class: 'hint' }, `The browser did not allow copying. The link is selected: copy it with Ctrl+C, or Command+C on a Mac. It has ${link.length} characters.`),
+        h('div', { class: 'file-actions' }, closeBtn),
+      ];
+    }, menuButton);
+  });
+
   fromFileBtn.addEventListener('click', () => {
     close();
     fileInput.value = '';
@@ -630,6 +688,62 @@ export function createFileMenu(container, store, options) {
   // A closed picker returns focus to the File button.
   fileInput.addEventListener('cancel', () => menuButton.focus());
 
+  /**
+   * Ask what happens to unsaved changes before a shared design opens.
+   * @param {string} name of the shared design
+   * @returns {Promise<'save' | 'open' | 'keep'>}
+   */
+  function askShared(name) {
+    const what = current.source === 'unsaved' ? `"${current.name}" is not saved` : `"${current.name}" has unsaved changes`;
+    return dialog('Open a shared design', (d, done) => {
+      const save = h('button', { type: 'button', class: 'file-primary', 'data-testid': 'share-save' }, 'Save mine first…');
+      const open = h('button', { type: 'button', 'data-testid': 'share-open' }, 'Open without saving');
+      const keep = h('button', { type: 'button', 'data-testid': 'share-keep' }, 'Keep my design');
+      save.addEventListener('click', () => done('save'));
+      open.addEventListener('click', () => done('open'));
+      keep.addEventListener('click', () => done('keep'));
+      queueMicrotask(() => keep.focus());
+      const textId = `share-question-${Math.random().toString(36).slice(2)}`;
+      d.setAttribute('aria-describedby', textId);
+      return [
+        h('p', { id: textId }, `A link opens the design "${name}". ${what}. Opening the shared design replaces the inputs.`),
+        h('div', { class: 'file-actions' }, save, open, keep),
+      ];
+    }, menuButton).then((v) => v ?? 'keep');
+  }
+
+  /**
+   * Open a design from a share link as an unsaved design, as Open from
+   * file does. Unsaved changes or inputs of a deleted design ask first:
+   * save them, discard them, or keep them. The display units stay.
+   * @param {ProjectState} shared
+   * @param {string} name
+   * @param {boolean} [filled] fields of the link took default values
+   * @returns {Promise<boolean>} false when the working copy stays open
+   */
+  async function openShared(shared, name, filled = false) {
+    close();
+    let before = epoch;
+    if (dirty() || current.orphan) {
+      const choice = await askShared(name);
+      if (choice === 'keep') return false;
+      if (choice === 'save') {
+        if (!(await saveAs())) return false;
+        // The save itself changed the current design.
+        before = epoch;
+      }
+    }
+    // The current design changed meanwhile, for example through another
+    // tab: the user answered for a design that is no longer open.
+    if (epoch !== before) {
+      say(`The shared design "${name}" was not opened: the current design changed meanwhile`);
+      return false;
+    }
+    const state = { ...shared, units: store.getState().units };
+    return switchTo(state, { id: null, name, source: 'unsaved', baseline: state },
+      filled ? `Opened the shared design "${name}". Missing values in the link were set to their defaults` : `Opened the shared design "${name}"`);
+  }
+
   // Another tab changed the library: the open design may be gone or renamed.
   window.addEventListener('storage', (ev) => {
     if (ev.key !== LIBRARY_KEY || current.source !== 'saved') return;
@@ -657,6 +771,6 @@ export function createFileMenu(container, store, options) {
     current = { ...current, name: stored.name };
   }
   render();
-  return { current: () => current, render };
+  return { current: () => current, render, openShared };
 }
 

@@ -413,7 +413,7 @@ Independent set; everything else is derived and shown read-only.
 - One draw-position scrubber drives the force-chart marker, the cam rotation
   and the layout pose.
 - Exports: cam plate DXF files, reference DXF, string-plan DXF, STEP, CSV of
-  draw, force, θ, T_s, T_c; JSON project; shareable URL.
+  draw, force, θ, T_s, T_c; JSON project; share link.
 
 ## User interface rules
 
@@ -630,6 +630,48 @@ Independent set; everything else is derived and shown read-only.
     from 2 in, peak force from 5 N, limb stiffness from 0.1 N/mm, power
     stroke from 2 in.
   - Export file names keep the design id hash in this slice.
+- Share link (slice 7): File → Copy share link, after Save to file.
+  - Link: `location.origin + location.pathname + location.search +
+    '#design=' + payload`. The fragment is not sent to the server. The
+    payload (`src/state/share.js`, no DOM) is `v1.` and base64url of the
+    UTF-8 bytes of the JSON `{ name, state }`, without compression: about
+    1.6 KB for the default design. Base64url is written by hand ('-' and
+    '_', padding optional, any other character rejected, bytes in chunks);
+    UTF-8 through `TextEncoder` and a fatal `TextDecoder`.
+  - Limits: a payload over 64 KB is refused before decoding, decoded
+    bytes over 1 MB after. `readProjectText(text, bytes, noun)`, factored
+    out of `readProjectFile`, reads the state, so messages say "link" and
+    not "file".
+  - Messages: a cut-off or damaged link (bad base64url, UTF-8 or JSON, no
+    state) reads "The link is incomplete or damaged, often because a chat
+    app shortened it. Ask for the whole link, or for a project file." A
+    newer schema or link format reads "The link was made with a newer
+    version of the app; reload the page."
+  - Name: cut to 80 characters, then normalised; "Shared design" when
+    missing or invalid. It is set as text, never as markup.
+  - Copy: `navigator.clipboard.writeText`; status "Share link copied (N
+    characters)". Without the clipboard, or when it refuses, a dialog
+    shows the link selected in a read-only field with a Close button.
+  - Open: the app reads the fragment after autosave starts, on load and on
+    `hashchange`; only `#design=` fragments count, so the `#results-title`
+    anchor of the solve chip stays a page anchor. `openShared(state,
+    name)` of the File menu opens the design as Open from file does:
+    unsaved, with the link state as baseline and the display units of the
+    recipient. Unsaved changes or an orphaned design ask in "Open a shared
+    design": Save mine first… (Save as, then open), Open without saving,
+    Keep my design (default focus). Keep leaves a notice with an "Open
+    shared design" button that asks again while the changes are unsaved.
+    An open whose current design changed meanwhile (the epoch counter of
+    the File menu) is dropped. A link that arrives while a dialog is open
+    waits for it to close; only the newest waiting link applies. After a
+    link is handled, `history.replaceState` removes the fragment.
+  - Tests: unit tests for base64url against Node.js, a round trip of
+    every sample, cut links (50 %, 90 %, one character short), damaged
+    and wrong-prefix links, newer schema, oversize and name rules;
+    Playwright for copy and open in another browser profile with other
+    units, the clipboard fallback dialog, direct open, the three-choice
+    dialog with Keep and the notice, Save mine first, invalid links, a
+    name with markup, and links that arrive while a dialog is open.
   - Tests: unit tests for the library codec (parse, broken entry,
     unreadable library, names, file names), `store.replace`, the unsaved
     comparison (revert, reordered keys) and partial files; Playwright for
@@ -742,7 +784,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 4 | String plan layout, build lengths, loads chart, draw-position scrubber. Pose and loads in `src/core/layout.js` from the forward-model samples, linear between samples; no change to the solver, the worker or the project schema. The draw position is view state: not saved, not in the undo history, no solve. Zoom and pan shared in `src/ui/viewport.js` |
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export. Hand-written R2000 writer, five plate profiles with post holes in the flange plates, ZIP of all files, no mirror option (decisions of the user); exports use the last cam that met every check |
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
-| 7 | Share URL, glossary and help, print report, wiki user guide |
+| 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter
