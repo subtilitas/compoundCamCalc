@@ -106,6 +106,11 @@ export function writeDxf(doc) {
   }
 }
 
+/** Upper bound of the advance of one Standard (txt) glyph, in text heights. */
+const TEXT_ADVANCE = 1;
+/** Depth of descenders below the base line, in text heights. */
+const TEXT_DESCENT = 0.3;
+
 /**
  * Formats a number with at most 6 decimals, trailing zeros trimmed but one
  * digit after the point kept; '-0' becomes '0.0'. Throws for a non-finite
@@ -769,7 +774,12 @@ function writeEntity(out, e, handle, owner, layers, extend) {
       if (formatNumber(rotation) !== '0.0') out.num(50, rotation);
       out.raw(7, 'Standard');
       out.raw(100, 'AcDbText');
-      extend(t.x, t.y);
+      // The box the glyphs can cover, rotated about the insertion point.
+      const w = TEXT_ADVANCE * t.height * Math.max(1, t.text.length);
+      const a = (rotation * Math.PI) / 180;
+      for (const [u, v] of [[0, -TEXT_DESCENT * t.height], [w, -TEXT_DESCENT * t.height], [w, t.height], [0, t.height]]) {
+        extend(t.x + u * Math.cos(a) - v * Math.sin(a), t.y + u * Math.sin(a) + v * Math.cos(a));
+      }
       break;
     }
   }

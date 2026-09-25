@@ -462,11 +462,13 @@ Independent set; everything else is derived and shown read-only.
   groove, 3 middle flange (convex hull of both flanges), 4 cable groove, 5
   cable flange. Post holes only in the flange plates next to their cord's
   groove (string post 1 and 3, cable post and cable stop 3 and 5). A
-  flange plate that cannot hold the cable stop peg gets a boss of radius
-  peg + minimum wall around it; any other hole that does not fit is left
-  out with a warning that names the plates still holding the post.
+  flange plate that does not keep the minimum wall around the cable stop
+  peg gets a boss of radius peg + minimum wall around it; any other hole
+  that does not fit is left out with a warning that names the plates still
+  holding the post.
 - Number format: coordinates 6 decimals (mm), knots 12, spline control
-  points 10.
+  points 10. The drawing extents include the glyph box of every text
+  (advance of 1 text height per character, descent 0.3 text heights).
 - Files: five plate cut files, a reference drawing, a string plan, the force
   table (CSV) and a ZIP of all of them with a README; names
   `cam-<YYYYMMDD>-<design id>-<part>`, design id = first 6 hex digits of the

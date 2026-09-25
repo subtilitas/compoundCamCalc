@@ -918,10 +918,12 @@ vertices per outline.
 **Cable stop boss.** The cable stop peg of radius r clears the cable groove
 bottom by r, so it reaches past the cable flange by 2r − d_g, with d_g the
 cable groove depth: 2.5 mm on the default preset (r = 2.5 mm,
-d_g = 2.5 mm). A plate among 3 and 5 whose outline cannot hold the peg adds
-a disc of radius r + minimum wall around it, with support
-h(ψ) = c·n(ψ) + r + w, to the hull. The outline then follows the common
-tangents from the flange to the disc.
+d_g = 2.5 mm). A plate among 3 and 5 whose outline does not hold the disc
+of radius r + w around the peg, w the minimum wall, adds that disc, with
+support h(ψ) = c·n(ψ) + r + w, to the hull. The outline then follows the
+common tangents from the flange to the disc, and at least w of material
+surrounds the peg hole. On the default preset both plates 3 and 5 get the
+disc: plate 3 would keep 1.5 mm around the hole.
 
 **Number format.** Coordinates are written with 6 decimals in mm, knots with
 12. Spline control points keep 10 decimals: the Hermite pieces of a spline

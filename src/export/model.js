@@ -98,9 +98,10 @@ const POST_NAMES = Object.freeze({ 'string-post': 'string post', 'cable-post': '
 const POST_PLATES = Object.freeze({ 'string-post': [1, 3], 'cable-post': [3, 5], 'cable-stop': [3, 5] });
 
 /**
- * Posts that get a boss on a flange plate that cannot hold them. The cable
- * stop peg clears the groove bottom by its radius, so it reaches past the
- * cable flange whenever the groove depth is less than the peg diameter.
+ * Posts that get a boss on a flange plate that cannot hold them with the
+ * minimum wall around the hole. The cable stop peg clears the groove bottom
+ * by its radius, so it reaches past the cable flange whenever the groove
+ * depth is less than the peg diameter.
  */
 const BOSS_POSTS = Object.freeze(['cable-stop']);
 
@@ -218,8 +219,10 @@ function buildChecked(result, state, options) {
     const posts = result.posts.filter((post) => POST_PLATES[post.id]?.includes(number)
       && [post.x, post.y, post.radius].every(Number.isFinite) && post.radius > 0);
     for (const post of posts) {
-      if (!BOSS_POSTS.includes(post.id) || fits(supports, post.x, post.y, post.radius)) continue;
-      if (!(Number.isFinite(wall) && wall > 0)) continue;
+      // The boss keeps the minimum wall around the peg, as the solver keeps
+      // it around the bore.
+      if (!BOSS_POSTS.includes(post.id) || !(Number.isFinite(wall) && wall > 0)) continue;
+      if (fits(supports, post.x, post.y, post.radius + wall)) continue;
       const boss = { cx: post.x, cy: post.y, r: post.radius + wall };
       bosses.push(boss);
       supports.push(discSupport(boss));

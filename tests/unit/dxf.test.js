@@ -80,7 +80,23 @@ describe('writeDxf structure', () => {
     expect(first(HEADER.$MEASUREMENT, 70)).toBe('1');
     expect(first(HEADER.$DWGCODEPAGE, 3)).toBe('ANSI_1252');
     expect(Number(first(HEADER.$EXTMIN, 10))).toBe(-60);
-    expect(Number(first(HEADER.$EXTMAX, 20))).toBe(60);
+    // The text turned by 90° reaches 12 glyphs of 3.5 above its insertion point.
+    expect(Number(first(HEADER.$EXTMAX, 20))).toBe(55 + 12 * 3.5);
+  });
+
+  it('counts the glyph box of text in the extents', () => {
+    const doc = {
+      layers: [{ name: 'TEXT', color: 7 }],
+      entities: [
+        { type: 'circle', layer: 'TEXT', x: 0, y: 0, r: 10 },
+        { type: 'text', layer: 'TEXT', x: -10, y: 20, height: 5, text: 'ABCDEFGH' },
+      ],
+    };
+    const h = readDxf(written(/** @type {any} */ (doc))).sections.HEADER;
+    expect(Number(first(h.$EXTMAX, 10))).toBe(-10 + 8 * 5);
+    expect(Number(first(h.$EXTMAX, 20))).toBe(25);
+    expect(Number(first(h.$EXTMIN, 10))).toBe(-10);
+    expect(Number(first(h.$EXTMIN, 20))).toBe(-10);
   });
 
   it('gives unique handles, valid owners and a larger $HANDSEED', () => {

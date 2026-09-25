@@ -342,8 +342,9 @@ Post holes go only into the flange plates next to the groove of their cord:
 the string post into plates 1 and 3, the cable post and the cable stop into
 plates 3 and 5. The cable stop peg reaches past the cable flange whenever
 the cable groove is shallower than the peg diameter (2.5 mm against 5 mm on
-the default preset). Plates 3 and 5 then carry a boss: the outline grows
-around the peg by the minimum wall. Any other hole that reaches past a plate
+the default preset). A flange plate that does not keep the minimum wall
+around the peg carries a boss: the outline grows around the peg by the
+minimum wall. On the default preset plates 3 and 5 both carry one. Any other hole that reaches past a plate
 outline is left out. A warning under the buttons names the plate and the
 plates that still hold the post, for example "Plate 1 (flange, string
 side): the string post reaches past the outline, so this plate has no hole

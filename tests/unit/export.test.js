@@ -52,6 +52,22 @@ describe('export model', () => {
     const boss = { cx: stop.x, cy: stop.y, r: stop.radius + state.body.minWall };
     expect(model.plates[4].bosses).toEqual([boss]);
     expect(model.plates[4].outlineCircle).toBeNull();
+    // Every plate with a stop hole keeps the minimum wall around it: the
+    // distance from the peg centre to the cut outline is at least r + wall.
+    for (const plate of model.plates.filter((p) => p.holeIds.includes('cable-stop'))) {
+      const c = /** @type {number[]} */ (plate.contour);
+      let d = Infinity;
+      for (let i = 0; i < c.length; i += 2) {
+        const j = (i + 2) % c.length;
+        const ex = c[j] - c[i];
+        const ey = c[j + 1] - c[i + 1];
+        const f = Math.max(0, Math.min(1, ((stop.x - c[i]) * ex + (stop.y - c[i + 1]) * ey) / (ex * ex + ey * ey)));
+        d = Math.min(d, Math.hypot(c[i] + f * ex - stop.x, c[i + 1] + f * ey - stop.y));
+      }
+      expect(d).toBeGreaterThanOrEqual(boss.r - 1e-6);
+    }
+    // The middle flange covers the peg, but not with the full wall.
+    expect(model.plates[2].bosses).toEqual([boss]);
     for (const i of [0, 1, 3]) expect(model.plates[i].bosses).toEqual([]);
   });
 

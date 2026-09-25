@@ -115,7 +115,8 @@ All notable changes are listed here. Versions follow semantic versioning.
   - Export model (`src/export/model.js`): five plate cut outlines within
     ±0.01 mm (the middle flange is the convex hull of both flanges), bore
     and post holes in the flange plates next to their cord, a boss around
-    the cable stop peg where a flange cannot hold it, timing marks and
+    the cable stop peg where a flange does not keep the minimum wall
+    around it, timing marks and
     warnings that name the plates still holding a post.
   - DXF R2000 writer (`src/export/dxf.js`), CSV writer (`src/export/csv.js`)
     and ZIP writer (`src/export/zip.js`), all deterministic and never
