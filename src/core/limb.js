@@ -120,6 +120,26 @@ export function tableLimb({ rotation, moment, alpha0 }) {
  * @returns {{ limb: LimbData | null, error: string | null }}
  */
 export function limbFromState(limb, limbLength, options = {}) {
+  const result = limbDataFromState(limb, limbLength, options);
+  if (!result.limb) return result;
+  // The brace moment and energy must stay inside the floating-point range.
+  const made = createLimb(result.limb);
+  const moment = made.moment(0);
+  const energy = made.energy(0);
+  if (!(Number.isFinite(moment) && moment >= 0 && Number.isFinite(energy) && energy >= 0)) {
+    return { limb: null, error: 'The limb values give a brace moment or energy outside the numeric range' };
+  }
+  return result;
+}
+
+/**
+ * limbFromState without the numeric-range check of the brace state.
+ * @param {import('../state/schema.js').LimbState} limb
+ * @param {number} limbLength
+ * @param {{ drawEnergy?: number }} options
+ * @returns {{ limb: LimbData | null, error: string | null }}
+ */
+function limbDataFromState(limb, limbLength, options) {
   if (!(limbLength > 0 && Number.isFinite(limbLength))) {
     return { limb: null, error: 'The limb lever length must be a finite positive number' };
   }
@@ -155,7 +175,7 @@ export function limbFromState(limb, limbLength, options = {}) {
   const data = linearLimb({ stiffness, preloadTravel, limbLength });
   // k·R_L² or s_0/R_L can leave the floating-point range for extreme values.
   if (!(data.torsionalStiffness > 0 && Number.isFinite(data.torsionalStiffness) && Number.isFinite(data.alpha0))) {
-    return { limb: null, error: 'The limb stiffness and lever length give a torsional stiffness outside the numeric range' };
+    return { limb: null, error: 'The limb values give a brace moment or energy outside the numeric range' };
   }
   return { limb: data, error: null };
 }
