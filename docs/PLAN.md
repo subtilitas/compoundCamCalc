@@ -256,7 +256,13 @@ energy. Clearance is checked and reported.
 Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
 
 - Clamped cubic spline on uniform knots (values and end slopes as unknowns),
-  dual active-set QP of Goldfarb and Idnani.
+  dual active-set QP of Goldfarb and Idnani. The QP treats a constraint as
+  dependent when n constraints are active or when its step is at rounding
+  level, skips dependent equalities that hold, refines x onto the active
+  constraints after each added constraint, reports `infeasible` when
+  rounding leaves an active constraint outside the tolerance, and returns
+  `invalid` for mismatched sizes or non-finite data; the fit returns
+  `invalid` for out-of-range input instead of throwing.
 - Equalities at every curve point whose ideal lever arm meets p_min:
   p(ψ_k) = p_k and ∫ p dψ from ψ_c0 to ψ_k from the cable closure, plus
   p(ψ_c0) = p_c0. The fitted cam then passes through the target force and

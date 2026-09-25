@@ -110,4 +110,46 @@ describe('constrained cable track fit', () => {
     holes.p[10] = NaN;
     expect(fitCableTrack({ ...holes, start, end, rhoMin: 0.005, pMin: 0.008 }).status).toBe('optimal');
   });
+
+  it('returns invalid instead of throwing or ignoring a limit for out-of-range input', () => {
+    const data = samples(() => 0.02, start, end, 100);
+    const base = { ...data, start, end, rhoMin: 0.005, pMin: 0.008 };
+    expect(fitCableTrack(base).status).toBe('optimal');
+    /** @type {Partial<import('../../src/core/fit.js').FitInput>[]} */
+    const bad = [
+      { intervals: 0 },
+      { intervals: -1 },
+      { intervals: NaN },
+      { intervals: 1.5 },
+      { intervals: 201 },
+      { gridPerInterval: -1 },
+      { gridPerInterval: 0 },
+      { gridPerInterval: 2.5 },
+      { gridPerInterval: 51 },
+      { end: Infinity },
+      { start: -Infinity },
+      { start: NaN },
+      { end: 2e6 },
+      { start: 1, end: 1 + 1e-15 },
+      { rhoMin: NaN },
+      { rhoMin: Infinity },
+      { pMin: NaN },
+      { pMin: -Infinity },
+      { startValue: Infinity },
+      { startValue: NaN },
+      { margin: NaN },
+      { p: Float64Array.from(data.p, () => NaN) },
+      { ends: { start: [0.02, NaN, 0], end: [0.02, 0, 0] } },
+      { ends: { start: [0.02, 0, 0], end: [0.02, 0] } },
+    ];
+    for (const change of bad) {
+      const r = fitCableTrack({ ...base, ...change });
+      expect(r.status).toBe('invalid');
+      expect(r.spline).toBeNull();
+    }
+    // The smallest accepted knot spacing is 1e-9·max(1, |start|, |end|).
+    expect(fitCableTrack({ ...base, start: 1, end: 1 + 2e-9, intervals: 1 }).status).toBe('optimal');
+    expect(fitCableTrack({ ...base, start: 1, end: 1 + 5e-10, intervals: 1 }).status).toBe('invalid');
+    expect(fitCableTrack({ ...base, intervals: 200, gridPerInterval: 1 }).status).toBe('optimal');
+  });
 });

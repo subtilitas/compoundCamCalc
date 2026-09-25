@@ -29,6 +29,16 @@ import { createSupport, splineSupport } from './support.js';
 /** Scale of the internal unit (1 mm). */
 const MM = 1e-3;
 
+/** Smallest knot spacing relative to max(1, |start|, |end|). */
+const MIN_SPACING = 1e-9;
+
+/** Largest |start| and |end| (rad). */
+const MAX_ANGLE = 1e6;
+
+/** Largest number of knot intervals and of constraint points per interval. */
+const MAX_INTERVALS = 200;
+const MAX_GRID = 50;
+
 /**
  * @typedef {object} FitInput
  * @property {ArrayLike<number>} psi sample angles (rad), any order
@@ -37,14 +47,14 @@ const MM = 1e-3;
  * @property {number} end ψ_1 (rad), larger than start
  * @property {number} rhoMin smallest radius of curvature (m)
  * @property {number} pMin smallest lever arm (m)
- * @property {number} [intervals] knot intervals (default: about one per 10°, 17 to 37)
+ * @property {number} [intervals] knot intervals, 1 to 200 (default: about one per 10°, 17 to 37)
  * @property {number} [startValue] prescribed p(ψ_0) (m)
  * @property {{ psi: number, p: number, integral: number }[]} [through] points
  *   the track passes through: angle (rad), lever arm (m) and ∫ p dψ from
  *   ψ_0 (m·rad)
  * @property {{ start: ArrayLike<number>, end: ArrayLike<number> }} [ends] p, p'
  *   and p'' prescribed at both ends (m, m/rad, m/rad²), for a C2 join
- * @property {number} [gridPerInterval] constraint points per knot interval (default 8)
+ * @property {number} [gridPerInterval] constraint points per knot interval, 1 to 50 (default 8)
  * @property {number} [margin] added to both limits in the constraints (m, default 1e-6)
  */
 
@@ -71,7 +81,18 @@ function uniformKnots(start, end, intervals) {
 }
 
 /**
- * Fit the cable track. Never throws.
+ * True when every entry of the list is undefined or a finite number.
+ * @param {(number | undefined)[]} values
+ */
+const finiteOrUndefined = (values) => values.every((v) => v === undefined || Number.isFinite(v));
+
+/**
+ * Fit the cable track. Never throws. The status is 'invalid' unless
+ * start < end with |start| and |end| at most 1e6 rad, psi and p have the
+ * same length of at least 2 with at least one finite pair, rhoMin, pMin and
+ * the optional numbers are finite, intervals is an integer from 1 to 200,
+ * gridPerInterval an integer from 1 to 50, each end holds three finite
+ * numbers, and the knot spacing exceeds 1e-9·max(1, |start|, |end|).
  * @param {FitInput} input
  * @returns {FitResult}
  */
@@ -81,9 +102,31 @@ export function fitCableTrack(input) {
     status, spline: null, rms: NaN, maxDeviation: NaN, unknowns: 0, active: 0, minRho: NaN, minP: NaN,
   });
   const m = psi.length;
-  if (!(end > start) || m < 2 || p.length !== m) return failed('invalid');
   const span = end - start;
   const intervals = input.intervals ?? Math.min(37, Math.max(17, Math.round(span / (10 * (Math.PI / 180)))));
+  const perInterval = input.gridPerInterval ?? 8;
+  const ends = input.ends ? [input.ends.start, input.ends.end] : [];
+  let finitePairs = 0;
+  if (p.length === m) for (let i = 0; i < m; i++) if (Number.isFinite(psi[i]) && Number.isFinite(p[i])) finitePairs++;
+  const valid =
+    Math.abs(start) <= MAX_ANGLE &&
+    Math.abs(end) <= MAX_ANGLE &&
+    end > start &&
+    m >= 2 &&
+    p.length === m &&
+    finitePairs > 0 &&
+    Number.isFinite(rhoMin) &&
+    Number.isFinite(pMin) &&
+    finiteOrUndefined([input.startValue, input.margin]) &&
+    Number.isInteger(intervals) &&
+    intervals >= 1 &&
+    intervals <= MAX_INTERVALS &&
+    Number.isInteger(perInterval) &&
+    perInterval >= 1 &&
+    perInterval <= MAX_GRID &&
+    span / intervals > MIN_SPACING * Math.max(1, Math.abs(start), Math.abs(end)) &&
+    ends.every((v) => v.length === 3 && Array.from(v).every(Number.isFinite));
+  if (!valid) return failed('invalid');
   const knots = uniformKnots(start, end, intervals);
   const nv = intervals + 1;
   const n = nv + 2;
@@ -141,7 +184,6 @@ export function fitCableTrack(input) {
 
   // Constraints: equalities (start value, points passed through), then ρ
   // and p on the grid.
-  const perInterval = input.gridPerInterval ?? 8;
   const gridCount = intervals * perInterval;
   const margin = (input.margin ?? 1e-6) / MM;
   /** @type {{ row: Float64Array, value: number }[]} */

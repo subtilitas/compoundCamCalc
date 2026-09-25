@@ -511,6 +511,43 @@ primal step is z = G⁻¹·n⁺ − W·M⁻¹·Wᵀ·n⁺ and the dual step r = 
 is refactored by Cholesky after each change. Equality constraints enter
 first and keep multipliers of either sign.
 
+In the fit programmes the active normals are often nearly dependent: the
+condition number of M, estimated from the diagonal of its Cholesky factor,
+has a median of 6e5 and reaches 7e16 on 100 random near-default states.
+Three rules keep rounding from turning into large steps:
+
+- Linear dependence. With n active constraints every normal is a
+  combination of theirs. Below n, z vanishes in exact arithmetic when n⁺ is
+  a combination of the active normals, and rounding leaves
+  |z|_G = √(zᵀ·G·z) of the order of the machine precision times the terms
+  that cancel, √(n⁺ᵀ·G⁻¹·n⁺) + Σ|r_k|·√M_kk. The constraint counts as
+  dependent when |z|_G is at most 1e-8 of that sum. A dependent constraint
+  takes no primal step: an active inequality is dropped, or the programme
+  is infeasible. At most n constraints are active.
+- Redundant equalities. A dependent equality n_p = Σ r_k·n_k that holds
+  within the tolerance (1e-10) times s_p + Σ|r_k|·s_k, with the row scales
+  s = max(|b|, |c_j|), stays inactive with multiplier 0. One that does not
+  hold makes the programme infeasible.
+- Iterative refinement. After each added constraint, two passes move x by
+  W·M⁻¹·e and the multipliers by M⁻¹·e, with the residuals e of the active
+  constraints. G·x + a = N·u still holds, and the active constraints hold
+  to rounding. A pass that would turn an inequality multiplier negative is
+  skipped.
+
+The result is optimal only when every active constraint holds within the
+tolerance times max(s_i, |b_i| + Σ|c_ij·x_j|). Otherwise rounding has moved
+x off the active constraints, and the status is `infeasible`: the
+programme cannot be solved in double precision, for example with normals
+that differ by 1e-7 of their size and a solution 1e7 times the row scale
+away.
+
+On 600 random near-default states the 2597 fit programmes that `solve`
+builds end with every constraint met to 1.0e-10 of its row scale.
+`solveQP` returns `invalid` for sizes that do not match, meq outside 0 to
+m, a non-finite entry or options out of range, and `fitCableTrack` returns
+`invalid` for non-finite or out-of-range input (limits in the table of
+numerical settings) instead of throwing.
+
 The solver fits when the ideal track violates ρ_lim or p_min, when its
 contact angle does not increase, or when it cannot be sampled. It then runs
 the forward model on the fitted cam and compares the achieved curve with
@@ -685,8 +722,10 @@ Measured values are the largest errors over the tested samples.
 | Inverse kinematics: p_c = c_a·dα/dθ, dα/dx and dθ/dx against central differences along the draw | 1e-7 relative | passes |
 | Brace blend: p(ψ_c0), C2 join and the cable closure integral; Lagrange end slopes on uneven points | 1e-13; 1e-11 | passes |
 | Quadratic programme: reference problems, equality multipliers of either sign, dropped constraints; KKT (Karush–Kuhn–Tucker) conditions on 300 random convex problems (fast-check) | 1e-10 | passes |
-| Constrained fit: a track within the limits is reproduced; ρ ≥ ρ_min and p ≥ p_min where the samples violate them; prescribed points and integrals | 1e-7 m; 5e-6 m, 1e-7 m; 1e-12 m | passes |
-| Solver fit through the curve points of the default preset: forward force at those points | | 4.7e-11 N |
+| Quadratic programme: redundant and contradicting equalities; a dependent constraint with n active; nearly parallel constraints (1e-5 apart) met to the tolerance; a programme with rows 1e-7 apart reported `infeasible`; `invalid` for non-finite data, mismatched sizes and options out of range | 3e-10 | passes |
+| Quadratic programme against a brute-force solution (every set of independent constraints as equalities) on 500 small integer problems with repeated, scaled and negated rows (fast-check), feasible and arbitrary right-hand sides: x, KKT conditions relative to the size of their terms, `infeasible` exactly when the brute force finds nothing | 1e-9, 1e-12 | passes |
+| Constrained fit: a track within the limits is reproduced; ρ ≥ ρ_min and p ≥ p_min where the samples violate them; prescribed points and integrals; `invalid` for out-of-range input | 1e-7 m; 5e-6 m, 1e-7 m; 1e-12 m | passes |
+| Solver fit through the curve points of the default preset: forward force at those points | | 3.7e-13 N |
 | Closed cable track: lead-in arc and active track kept, periodic C2 join, ρ of the closing blend ≥ ρ_lim, closed outlines | 1e-8 m, 1e-12 | passes |
 | Offsets, maximum dimension, termination and cable stop posts, timing marks | 1e-15 m to 1e-6 m | passes |
 | Default preset: zero diagnostics; force within the fit tolerance; outlines closed and nested (groove bottom inside the pitch line and the flange, outside the bore and its wall); posts and marks at the achieved contacts | 4.0 N | 3.71 N |
@@ -723,6 +762,8 @@ first 123 mm of the power stroke.
 | Inverse string closure | Newton, residual below 1e-10 m, at most 30 iterations |
 | Ideal cable resampling | 0.5° (coarse), 0.25° (full); Illinois search stopped within 0.1 % of the step |
 | Constrained fit | one knot interval per about 10° (17 to 37), 8 constraint points per interval, margin 1e-6 m, penalty 1e-8·trace on second differences |
+| Constrained fit input | \|ψ\| ≤ 1e6 rad, 1 to 200 knot intervals, 1 to 50 constraint points per interval, knot spacing above 1e-9·max(1, \|ψ_0\|, \|ψ_1\|) |
+| Quadratic programme | violation tolerance 1e-10 of the row scale, for active constraints of max(row scale, size of the terms); dependence at \|z\|_G ≤ 1e-8 of the cancelled terms; two refinement passes per added constraint; at most 10·(n + m) + 20 steps |
 | Fit tolerance | force 1.5 % of the peak, at least 2 N; draw energy 0.5 % |
 | Groove margin in ρ_lim | 0.2 mm |
 | Outline samples | 360 (coarse), 720 (full) intervals |

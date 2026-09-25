@@ -81,7 +81,15 @@ All notable changes are listed here. Versions follow semantic versioning.
 - Constrained fit of the cable track (`src/core/fit.js`): C2 spline by
   least squares with the limits on radius of curvature and lever arm and
   with the target force and energy at the curve points, solved by a dense
-  dual active-set quadratic programming solver (`src/core/qp.js`).
+  dual active-set quadratic programming solver (`src/core/qp.js`). The
+  solver treats a constraint as dependent when n constraints are active or
+  its step is at rounding level, skips dependent equalities that hold,
+  refines x onto the active constraints after each step, reports
+  `infeasible` when rounding leaves an active constraint outside the
+  tolerance, and returns `invalid` for mismatched sizes or non-finite
+  data; the fit programmes of 600 random near-default states end with the
+  constraints met to 1e-10 of the row scale. The fit returns `invalid` for
+  non-finite or out-of-range input instead of throwing.
 - Closed cam outline (`src/core/outline.js`): lead-in arc, closing blend,
   periodic cable track, groove bottom and flange offsets, string, cable and
   cable stop posts, timing marks, sampled outlines and the cam maximum
