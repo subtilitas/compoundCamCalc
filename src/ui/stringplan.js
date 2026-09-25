@@ -32,6 +32,21 @@ export const OUTDATED_CAPTION = 'Bow of the previous inputs; solving the current
 export const SOLVING_SUFFIX = '; solving the current inputs';
 
 /**
+ * Accessible name of the string plan. It names the full-draw outline only
+ * when the solve reached full draw, as the drawing does.
+ * @param {number} ataBrace axle-to-axle length at brace (m), NaN when unknown
+ * @param {boolean} hasFull the solve reached full draw
+ * @param {boolean} stale the plan shows the last cam that met every check
+ * @param {Units} units
+ */
+export function planLabel(ataBrace, hasFull, stale, units) {
+  const ata = Number.isFinite(ataBrace) ? `, axle-to-axle ${dimsText(ataBrace, units)} at brace` : '';
+  const outlines = hasFull ? 'outlines at brace and full draw' : 'outline at brace; full draw not solved';
+  return `String plan, side view of the bow, top and bottom symmetric${ata}; ${outlines}, `
+    + `solid at the draw position; ${KEYS_HELP}${stale ? '; last cam that met every check' : ''}`;
+}
+
+/**
  * Caption of a plan or loads view, or '' for none. A stale view shows the
  * last cam that met every check, also while a newer solve runs; an outdated
  * view shows the previous inputs.
@@ -345,11 +360,7 @@ export function createStringPlan(container) {
       dims.replaceChildren(
         ...planDims(next, units).flatMap((d) => [h('dt', {}, d.label), h('dd', { 'data-testid': `plan-${d.key}` }, d.text)]),
       );
-      const ata = Number.isFinite(next.lengths.ataBrace) ? `, axle-to-axle ${dimsText(next.lengths.ataBrace, units)} at brace` : '';
-      setAttrs(root, {
-        'aria-label': `String plan, side view of the bow, top and bottom symmetric${ata}; outlines at brace and full draw, ` +
-          `solid at the draw position; ${KEYS_HELP}${stale ? '; last cam that met every check' : ''}`,
-      });
+      setAttrs(root, { 'aria-label': planLabel(next.lengths.ataBrace, hasFull, stale, units) });
     },
     setPose(pose, units) {
       lastPose = pose;

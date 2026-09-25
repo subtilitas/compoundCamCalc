@@ -6,7 +6,7 @@ import { defaultState } from '../../src/state/presets.js';
 import { forceAt } from '../../src/ui/chart.js';
 import { SERIES, loadRange, seriesRuns, tableRows } from '../../src/ui/loadchart.js';
 import { peakX, placeIn, positionText, sliderModel, stepOfX, xOfStep } from '../../src/ui/scrubber.js';
-import { ageCaption, camRadius, fullDrawPose, planPoses, loadDirection, planBounds, planDims } from '../../src/ui/stringplan.js';
+import { ageCaption, camRadius, fullDrawPose, planPoses, loadDirection, planBounds, planDims, planLabel } from '../../src/ui/stringplan.js';
 
 /** @typedef {import('../../src/core/layout.js').LayoutContext} LayoutContext */
 /** @typedef {import('../../src/state/schema.js').Units} Units */
@@ -158,6 +158,19 @@ describe('full-draw pose of the plan', () => {
     expect(pose.x).toBe(ctx.xFull);
     const partial = { ...ctx, valid: 500, xLast: ctx.a.x[499] };
     expect(fullDrawPose(partial, pose)).toBe(false);
+  });
+});
+
+describe('string plan name', () => {
+  it('names the full-draw outline only when the solve reached full draw', () => {
+    const full = planLabel(0.8, true, false, inches);
+    expect(full).toContain('outlines at brace and full draw');
+    expect(full).toContain('axle-to-axle');
+    const partial = planLabel(0.8, false, true, inches);
+    expect(partial).not.toContain('full draw,');
+    expect(partial).toContain('full draw not solved');
+    expect(partial).toContain('last cam that met every check');
+    expect(planLabel(Number.NaN, false, false, inches)).not.toContain('axle-to-axle');
   });
 });
 
