@@ -159,8 +159,10 @@ Explicit per sample, no marching (`src/core/inverse.js`):
   Implemented by the analytic brace expansion
   F''(x_b) = −(2·T_s0/l_0²)·(3·K_1 + ρ_s0/l_0),
   K_1 = (p_s'(0)·c_a0 + R_L·sin β_b·p_c0)/det_0 (derivation in
-  `docs/model.md`), which agrees with the forward model of a circle of
-  radius p_c0 to 1e-9. The target is rebuilt with
+  `docs/model.md`). A degree-7 fit of the forward force at x_b + k·1 mm
+  agrees with it to 1e-8 relative (tested; measured 4.7e-10 for the twin
+  cam and 2.3e-9 for a cable circle of radius p_c0). The target is rebuilt
+  with
   `createCurve(points, { startSlope, startSecondDerivative })`.
 - Refinement: F'''' at brace is fixed by the geometry too; a mismatch gives
   the cable track a (ψ − ψ_c0)^(3/2) term with negative ρ near brace. The
@@ -168,8 +170,14 @@ Explicit per sample, no marching (`src/core/inverse.js`):
   blend: the quintic in ψ with p(ψ_c0) = p_c0, a C2 join to the ideal track
   at point 2, ∫ p dψ from the cable closure
   (√(D_0² − p_c0²) − √(D_1² − p_1²)) and the smallest ∫ p'''² dψ. The cam
-  then reaches the target state at point 2 exactly; the achieved curve
-  differs from the target only inside the first segment.
+  then reaches the target state at point 2, and the achieved curve equals
+  the target from point 2 on to the accuracy of the resampled track: on a
+  test cam built without the fit, 1.3e-7 N (full) and 3.8e-7 N (coarse),
+  tested to 1e-6 N and 5e-6 N; θ and α at the curve points agree with the
+  inverse model to 1e-12 rad (full) and 2e-10 rad (coarse). Inside the
+  first segment the achieved curve follows the cam (0.006 N from the
+  target on that cam). A fitted track replaces the blend and meets the fit
+  tolerance instead.
 - The app shows the brace slope, the implied p_c0 and its feasible range.
 
 ### Target curve representation
@@ -317,23 +325,32 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
 - Implementation (`src/core/outline.js`): when the quintic blend bends below
   ρ_min or comes below p_min, a constrained spline fit with p, p', p''
   prescribed at both joins replaces it. The closed track is a periodic C2
-  cubic spline through samples of the pieces (at most 0.25° apart). The
+  cubic spline through samples of the pieces (at most 0.25° apart in a full
+  solve, 0.5° in a coarse solve). The
   cable stop peg touches the full-draw cable line on the axle side where it
   clears the cable groove bottom by its radius. The cam maximum dimension
   is the largest width of the union of both flange outlines.
 
 ### Numerics
 
-- Forward model: 1000–2000 draw samples for final results, about 100 while
-  dragging; closure residual < 1e-10 m; contact residual < 1e-12 m.
+- Forward model: 1500 draw samples for final results, 100 while dragging;
+  closure residual < 1e-10 m; contact residual < 1e-15 m. Budgets: 8 ms
+  for 100 samples and 100 ms for 1500 samples.
 - Inverse: samples uniform in ψ; E1⁻¹ residual < 1e-9 J. Draw grid of 100
   (coarse) or 600 (full) samples plus the curve points; cable samples every
   0.5° or 0.25°; string closure residual < 1e-10 m.
-- Solve budgets for the default preset: 30 ms coarse, 200 ms full. The
-  performance test reports the median and fails only above 5 times the
-  budget, which allows for shared continuous integration (CI) machines.
-  Measured medians with Node 24: about 17 ms coarse and 25 ms full; the first call, before
-  the JavaScript engine has optimised the code, takes about 100 ms.
+- Solve budgets for the default preset: 30 ms coarse (while dragging),
+  200 ms full (on release). The performance tests report the medians and
+  fail only above 5 times the budget, which allows for shared continuous
+  integration (CI) machines. The solve test times the solve in a worker
+  thread: the coverage run adds V8 block counters to the test process,
+  which slow the solve about 4 times, and the budget applies to the code as
+  the app runs it. Measured medians with Node 22 on a 4-core 2.1 GHz Xeon:
+  18 ms coarse and 26 ms to 29 ms full alone; 20 ms to 30 ms and 26 ms to
+  34 ms in the coverage run with the rest of the suite in parallel; 42 ms
+  to 47 ms and 57 ms to 74 ms with every core also loaded by another
+  process. The first call, before the JavaScript engine has optimised the
+  code, takes 165 ms to 300 ms.
 - Exported curves deviate from the model curve by at most the export
   tolerance (default 0.01 mm) along the normal.
 
@@ -378,7 +395,8 @@ Independent set; everything else is derived and shown read-only.
 - Validation on Enter, blur or stepper; sliders update live. Every field has
   min, max, step and unit; inline messages next to the field.
 - Solve runs in a Web Worker, latest request wins. Coarse solve while
-  dragging (budget 8 ms on a laptop), full solve on release (budget 100 ms).
+  dragging, full solve on release, within the solve budgets under
+  Numerics (30 ms and 200 ms for the default preset).
   `data-solve-state` attribute exposes idle / busy / ok / error.
 - On an infeasible result the last valid cam stays visible, dimmed; the
   diagnostic names the draw range, the constraint and the input to change.

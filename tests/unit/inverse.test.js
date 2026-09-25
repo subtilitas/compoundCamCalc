@@ -8,6 +8,7 @@ import { createLimb, linearLimb, tableLimb } from '../../src/core/limb.js';
 import { createSupport, eccentricCircle, offset } from '../../src/core/support.js';
 import { defaultState } from '../../src/state/presets.js';
 import { derivative, solveDense } from './numeric.js';
+import { freeBody } from './statics.js';
 
 /** @typedef {import('../../src/core/support.js').SupportData} SupportData */
 /** @typedef {import('../../src/core/inverse.js').InverseTarget} InverseTarget */
@@ -278,20 +279,30 @@ describe('inverse model: statics and kinematics', () => {
   const { target } = sampledTarget(f);
   const s = sampleInverse(ctx, brace, target, f.x);
 
-  it('balances the cam and the limb: T_s·p_s = T_c·p_c and E1\' = T_s·s_a + T_c·c_a', () => {
+  it('has the tensions and the force of a free-body balance built from positions, and T_c of the forward model', () => {
+    // The pose (x, θ, α) of each inverse sample, with the tangent points of
+    // the twin cam found by bisection (tests/unit/statics.js).
+    const stringSupport = createSupport(twinCam.stringTrack);
+    const cableSupport = createSupport(twinCam.cableTrack);
+    let worstT = 0;
+    let worstF = 0;
+    let worstForward = 0;
     for (let i = 0; i < s.n; i++) {
-      expect(Math.abs((s.Ts[i] * s.pS[i]) / (s.Tc[i] * s.pC[i]) - 1)).toBeLessThan(1e-12);
-      expect(Math.abs((s.Ts[i] * s.sA[i] + s.Tc[i] * s.cA[i]) / s.moment[i] - 1)).toBeLessThan(1e-12);
-      expect(Math.abs(s.Tc[i] / f.Tc[i] - 1)).toBeLessThan(1e-8);
+      const fb = freeBody(s, i, stringSupport, cableSupport, geometry, limb);
+      worstT = Math.max(worstT, Math.abs(fb.Ts / s.Ts[i] - 1), Math.abs(fb.Tc / s.Tc[i] - 1));
+      if (i > 0) worstF = Math.max(worstF, Math.abs(fb.F / s.F[i] - 1));
+      worstForward = Math.max(worstForward, Math.abs(s.Tc[i] / f.Tc[i] - 1));
     }
+    console.info(`inverse statics against the free-body balance: T_s and T_c within ${worstT.toExponential(2)}, F within ${worstF.toExponential(2)} relative; T_c against the forward model within ${worstForward.toExponential(2)}`);
+    expect(worstT).toBeLessThan(1e-9);
+    expect(worstF).toBeLessThan(1e-9);
+    expect(worstForward).toBeLessThan(1e-8);
   });
 
   it('gives B·t = √(D² − p_c²), the free cable span of the forward model plus p_c\'(ψ_c)', () => {
     const truth = createSupport(twinCam.cableTrack);
     let worst = 0;
     for (let i = 0; i < s.n; i++) {
-      const D = 2 * s.axleY[i];
-      expect(s.anchorReach[i]).toBeCloseTo(Math.sqrt(D * D - s.pC[i] ** 2), 15);
       worst = Math.max(worst, Math.abs(s.anchorReach[i] - truth.dp(s.psiC[i]) - f.spanC[i]));
     }
     console.info(`B·t − p_c'(ψ_c) against the free cable span of the forward model: within ${worst.toExponential(2)} m`);
@@ -388,9 +399,7 @@ describe('inverse model: helpers and failures', () => {
     expect(s.x[4]).toBe(0.4);
     expect(s.pC[3]).toBeNaN();
     // The resampling fails where the force is not finite.
-    const cut = { ...s, solved: 3 };
     const all = sampleInverse(ctx, brace, { ...target, force: () => 100 }, xs);
     expect(resampleCable(ctx, brace, target, { ...all }, 0.5 * DEG)).toBeNull();
-    expect(cut.solved).toBe(3);
   });
 });

@@ -3,14 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { drawRange, generateCurve, pointMetrics } from '../../src/core/curve.js';
 import { CODES, formatter } from '../../src/core/diagnostics.js';
 import { axle, bowGeometry } from '../../src/core/geometry.js';
-import { COARSE_SAMPLES, FULL_SAMPLES, drawGrid, solveForward } from '../../src/core/forward.js';
+import { COARSE_SAMPLES, FULL_SAMPLES, solveForward } from '../../src/core/forward.js';
 import { limbFromState } from '../../src/core/limb.js';
 import { FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE, GROOVE_MARGIN, forwardDiagnostics, leadInTrials, solve } from '../../src/core/solve.js';
-import { fitCableTrack } from '../../src/core/fit.js';
-import { createCurve } from '../../src/core/interp.js';
-import { braceConditions, createInverse, sampleInverse } from '../../src/core/inverse.js';
-import { closeCableTrack, createPiecewise } from '../../src/core/outline.js';
-import { createSupport, stringTrackSupport } from '../../src/core/support.js';
+import { createSupport, eccentricCircle, stringTrackSupport } from '../../src/core/support.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
 import { FIELDS, validate } from '../../src/state/schema.js';
@@ -18,6 +14,8 @@ import { reduce } from '../../src/state/store.js';
 
 /** @typedef {import('../../src/state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../../src/core/solve.js').SolveResult} SolveResult */
+/** @typedef {import('../../src/core/solve.js').SolveBrace} SolveBrace */
+/** @typedef {import('../../src/core/limb.js').LimbData} LimbData */
 
 const DEG = Math.PI / 180;
 
@@ -36,6 +34,37 @@ function modified(change, options = {}) {
 
 /** @param {SolveResult} r */
 const codes = (r) => r.diagnostics.map((d) => d.code);
+
+/**
+ * Sampled outline of a result; fails the test when it is absent.
+ * @param {SolveResult} r
+ * @param {keyof import('../../src/core/solve.js').SolveOutlines} name
+ */
+function outline(r, name) {
+  const o = r.outlines[name];
+  if (!o) throw new Error(`the result has no ${name} outline`);
+  return o;
+}
+
+/**
+ * Forward model of the cam a result built, at the nock positions xs, with
+ * the terminations of the result.
+ * @param {ProjectState} state
+ * @param {SolveResult} r
+ * @param {number[]} xs
+ */
+function forwardOfResult(state, r, xs) {
+  const limb = /** @type {LimbData} */ (limbFromState(state.limb, state.geometry.limbLength).limb);
+  return solveForward({
+    geometry: state.geometry,
+    stringTrack: /** @type {import('../../src/core/support.js').SupportData} */ (r.tracks.stringPitch),
+    cableTrack: /** @type {import('../../src/core/support.js').SupportData} */ (r.tracks.cablePitch),
+    limb,
+    x: xs,
+    stringTermination: r.tracks.string?.psiEnd,
+    cableTermination: r.tracks.cable?.psiStart,
+  });
+}
 
 /**
  * Point of the cam frame (cam turned by θ about the axle O) in the world frame.
@@ -100,54 +129,14 @@ describe('solve: default preset', () => {
     for (const m of r.fit.idealIssues) expect(m).toMatch(within);
     expect(Math.abs(r.fit.energyDifference)).toBeLessThan(0.005 * pointMetrics(state.curve.points).energy);
     // Both fit candidates keep the brace lever arm, so the brace slope is the target's.
-    const limb = /** @type {import('../../src/core/limb.js').LimbData} */ (limbFromState(state.limb, state.geometry.limbLength).limb);
-    const f = solveForward({ geometry: state.geometry, stringTrack: /** @type {any} */ (r.tracks.stringPitch), cableTrack: /** @type {any} */ (r.tracks.cablePitch), limb, samples: 50 });
-    expect(Math.abs(/** @type {any} */ (f.brace).slope / /** @type {any} */ (r.brace).slope - 1)).toBeLessThan(1e-9);
-  });
-
-  it('reaches the target state at the curve points a fitted track passes through', () => {
-    // The fit candidate through the curve points, built from the pieces of
-    // the solver: the cam then gives the target force at those points.
-    const limb = /** @type {import('../../src/core/limb.js').LimbData} */ (limbFromState(state.limb, state.geometry.limbLength).limb);
-    const stringTrack = stringTrackSupport(state.stringTrack, state.cords.stringDiameter);
-    const ctx = /** @type {import('../../src/core/inverse.js').InverseContext} */ (createInverse({ geometry: state.geometry, stringTrack, limb }).context);
-    const pts = state.curve.points;
-    const natural = createCurve(pts);
-    const slope = natural.derivative(pts[0].x);
-    const brace = braceConditions(ctx, slope);
-    const curve = createCurve(pts, { startSlope: slope, startSecondDerivative: brace.second });
-    const target = { force: (/** @type {number} */ x) => curve.evaluate(x), work: (/** @type {number} */ x) => curve.integral(pts[0].x, x), slope };
-    const grid = [...new Set([...drawGrid(pts[0].x, pts[pts.length - 1].x, 300), ...pts.map((q) => q.x)])].sort((u, v) => u - v);
-    const s = sampleInverse(ctx, brace, target, grid);
-    const n = s.n;
-    const D0 = 2 * ctx.bow.braceAxleY;
-    const pMin = state.body.boreDiameter / 2 + state.body.minWall + state.cords.cableDiameter / 2;
-    // From point 3 on: the ramp point lies in the brace region (see the
-    // solver); points whose lever arm is below the clearance are left out.
-    const matched = pts.slice(2, -1).filter((q) => s.pC[grid.indexOf(q.x)] >= pMin);
-    expect(matched.length).toBe(3);
-    const through = matched.map((q) => {
-      const i = grid.indexOf(q.x);
-      return { psi: s.psiC[i], p: s.pC[i], integral: Math.sqrt(D0 * D0 - s.pC[0] ** 2) - Math.sqrt((2 * s.axleY[i]) ** 2 - s.pC[i] ** 2) };
-    });
-    const psi = Float64Array.from(grid.slice(grid.indexOf(pts[1].x)), (_, k) => s.psiC[grid.indexOf(pts[1].x) + k]);
-    const p = Float64Array.from(psi, (_, k) => s.pC[grid.indexOf(pts[1].x) + k]);
-    const fit = fitCableTrack({ psi, p, start: s.psiC[0], end: s.psiC[n - 1], rhoMin: state.body.minBendRadius, pMin, startValue: s.pC[0], through });
-    expect(fit.status).toBe('optimal');
-    const active = createPiecewise([{ kind: 'spline', start: s.psiC[0], end: s.psiC[n - 1], data: /** @type {any} */ (fit.spline) }]);
-    const closed = /** @type {import('../../src/core/outline.js').ClosedCable} */ (
-      closeCableTrack(active, { leadIn: state.body.leadInWrap, rhoMin: state.body.minBendRadius, pMin, step: 0.25 * DEG })
-    );
-    const f = solveForward({ geometry: state.geometry, stringTrack, cableTrack: closed.support, limb, x: grid });
-    let worst = 0;
-    for (const q of matched) worst = Math.max(worst, Math.abs(f.F[grid.indexOf(q.x)] - q.F));
-    console.info(`fit through the curve points: force at the points within ${worst.toExponential(2)} N`);
-    expect(worst).toBeLessThan(1e-3);
+    const f = forwardOfResult(state, r, [state.curve.points[0].x, state.curve.points[1].x]);
+    const forwardBrace = /** @type {import('../../src/core/forward.js').BraceState} */ (f.brace);
+    expect(Math.abs(forwardBrace.slope / /** @type {SolveBrace} */ (r.brace).slope - 1)).toBeLessThan(1e-9);
   });
 
   it('returns closed, nested outlines and plain data', () => {
-    for (const name of ['stringPitch', 'stringGroove', 'stringFlange', 'cablePitch', 'cableGroove', 'cableFlange']) {
-      const o = r.outlines[name];
+    for (const name of /** @type {const} */ (['stringPitch', 'stringGroove', 'stringFlange', 'cablePitch', 'cableGroove', 'cableFlange'])) {
+      const o = outline(r, name);
       expect(o.x.length).toBe(721);
       expect(o.x[720]).toBe(o.x[0]);
       expect(o.y[720]).toBe(o.y[0]);
@@ -166,7 +155,7 @@ describe('solve: default preset', () => {
       }
     }
     const copy = structuredClone(r);
-    expect(copy.outlines.cablePitch.x).toEqual(r.outlines.cablePitch.x);
+    expect(outline(copy, 'cablePitch').x).toEqual(outline(r, 'cablePitch').x);
     expect(copy.tracks.cablePitch).toEqual(r.tracks.cablePitch);
   });
 
@@ -220,7 +209,7 @@ describe('solve: default preset', () => {
     expect(coarse.status).toBe('ok');
     expect(coarse.resolution).toBe('coarse');
     expect(coarse.achieved?.x.length).toBe(COARSE_SAMPLES);
-    expect(coarse.outlines.cablePitch.x.length).toBe(361);
+    expect(outline(coarse, 'cablePitch').x.length).toBe(361);
     for (const t of Object.values(coarse.timings)) expect(t).toBeGreaterThanOrEqual(0);
     expect(coarse.timings.total).toBeGreaterThanOrEqual(coarse.timings.forward);
   });
@@ -310,8 +299,7 @@ describe('solve: diagnostics', () => {
       fixed.curve.points[1].F = F2;
       const after = solve(fixed, { resolution: 'coarse' });
       expect(codes(after)).not.toContain('brace-tension');
-      const b = /** @type {any} */ (after.brace);
-      const ratio = b.slope / /** @type {any} */ (r.brace).maxSlope;
+      const ratio = /** @type {SolveBrace} */ (after.brace).slope / /** @type {SolveBrace} */ (r.brace).maxSlope;
       expect(ratio).toBeGreaterThan(0.75);
       expect(ratio).toBeLessThanOrEqual(0.8);
     }
@@ -330,7 +318,7 @@ describe('solve: diagnostics', () => {
     });
     /** @param {ProjectState} s */
     const ratio = (s) => {
-      const b = /** @type {any} */ (solve(s, { resolution: 'coarse' }).brace);
+      const b = /** @type {SolveBrace} */ (solve(s, { resolution: 'coarse' }).brace);
       return b.stringTension / b.maxStringTension;
     };
     // Point 2 at 8.3 in and 130 N needs 283.4 mm of preload travel.
@@ -474,7 +462,7 @@ describe('solve: diagnostics', () => {
     expect(validate(s)).toEqual([]);
     const { r, d } = expectCode(s, 'target-shape');
     expect(d.message).toMatch(/N\/in² instead of/);
-    expect(/** @type {any} */ (r.brace).shapePreserved).toBe(false);
+    expect(r.brace?.shapePreserved).toBe(false);
     const negative = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'nonpositive-force'));
     expect(negative.suggestion).toMatch(/point 2/);
     const [from, to] = /** @type {[number, number]} */ (negative.xRange);
@@ -498,7 +486,7 @@ describe('solve: diagnostics', () => {
     });
     expect(validate(s)).toEqual([]);
     const r = solve(s, { resolution: 'coarse' });
-    expect(/** @type {any} */ (r.brace).shapePreserved).toBe(true);
+    expect(r.brace?.shapePreserved).toBe(true);
     expect(codes(r)).not.toContain('target-shape');
     expect(codes(r)).not.toContain('nonpositive-force');
     const t = /** @type {NonNullable<SolveResult['target']>} */ (r.target);
@@ -584,6 +572,15 @@ describe('solve: diagnostics', () => {
     expect(codes(solve(lower, { resolution: 'coarse' }))).not.toContain('cable-clearance');
   });
 
+  it('returns the string outlines only when no cable track is built, and none for invalid input', () => {
+    const r = solve(modified((s) => (s.body.leadInWrap = 150 * DEG)), { resolution: 'coarse' });
+    expect(codes(r)).toEqual(['cable-wrap']);
+    expect(Object.keys(r.outlines)).toEqual(['stringPitch', 'stringGroove', 'stringFlange']);
+    // @ts-expect-error the cable outlines are optional: an access without a check does not typecheck
+    expect(() => r.outlines.cablePitch.x).toThrow(TypeError);
+    expect(solve(modified((s) => (s.geometry.ata = 0.1))).outlines).toEqual({});
+  });
+
   it('cable-wrap and closing-blend: a lead-in wrap that leaves too little of the turn', () => {
     const wrap = expectCode(modified((s) => (s.body.leadInWrap = 150 * DEG)), 'cable-wrap');
     expect(wrap.d.suggestion).toMatch(/lead-in wrap to at most \d+\.\d°/);
@@ -631,7 +628,7 @@ describe('solve: diagnostics', () => {
     expect(d.message).toMatch(/did not converge at \d+\.\d in/);
     expect(d.xRange?.[1]).toBe(defaultState().curve.points.at(-1)?.x);
     // The string track outlines are still there.
-    expect(r.outlines.stringPitch.x.length).toBe(361);
+    expect(outline(r, 'stringPitch').x.length).toBe(361);
   });
 });
 
@@ -686,6 +683,107 @@ describe('solve: brace contact of a fitted cam', () => {
     expect(Math.abs(cable.psiBrace - a.psiC[0])).toBeLessThan(1e-9);
     expect(cable.psiStart).toBeCloseTo(cable.psiBrace - state.body.leadInWrap, 12);
     expect(r.posts.find((p) => p.id === 'cable-post')?.psi).toBe(cable.psiStart);
+  });
+});
+
+describe('solve: ideal cable track without the fit', () => {
+  // Curve points from the forward model of a known cam: default geometry,
+  // string groove of radius 47.7 mm with 0.25 mm offset towards −16°, limb
+  // 12.45 N/mm with 190 mm preload travel, cable pitch circle of radius
+  // 13.5 mm with 0.9 mm offset towards −128°; seven points evenly spaced
+  // from brace to full draw. The ideal track through them keeps ρ ≥ 9.8 mm
+  // and clears the bore, so the solver builds it directly: the brace blend
+  // on [ψ_c0, ψ_1] and the spline through the resampled track.
+  const state = modified((s) => {
+    s.curve.mode = 'custom';
+    Object.assign(s.stringTrack, { shape: 'eccentric', radius: 0.0477, offset: 0.00025, phase: -16 * DEG });
+    Object.assign(s.limb, { mode: 'stiffness', stiffness: 12.45e3, preloadTravel: 0.19 });
+  });
+  const { xBrace, xFull } = drawRange(state.geometry.braceHeight, state.geometry.drawLength);
+  const xs = Array.from({ length: 7 }, (_, i) => xBrace + ((xFull - xBrace) * i) / 6);
+  const known = solveForward({
+    geometry: state.geometry,
+    stringTrack: stringTrackSupport(state.stringTrack, state.cords.stringDiameter),
+    cableTrack: eccentricCircle({ radius: 0.0135, offset: 0.0009, phase: -128 * DEG }),
+    limb: /** @type {LimbData} */ (limbFromState(state.limb, state.geometry.limbLength).limb),
+    x: xs,
+  });
+  state.curve.points = xs.map((x, i) => ({ x, F: i === 0 ? 0 : known.F[i] }));
+
+  /** @type {['full' | 'coarse', number, number][]} */
+  const cases = [['full', 1e-6, 1e-12], ['coarse', 5e-6, 2e-10]];
+  it.each(cases)('%s resolution: the achieved curve equals the target from point 2 on', (resolution, tolerance, angleTolerance) => {
+    expect(known.status).toBe('ok');
+    expect(validate(state)).toEqual([]);
+    const r = solve(state, { resolution });
+    expect(r.diagnostics).toEqual([]);
+    expect(r.fit.used).toBe(false);
+    expect(r.fit.reason).toBe('');
+    const ideal = /** @type {NonNullable<SolveResult['ideal']>} */ (r.ideal);
+    const i1 = ideal.x.indexOf(xs[1]);
+    // The brace blend runs from ψ_c0 to the ideal contact at point 2.
+    expect(r.brace?.blendStartPsi).toBe(ideal.psiC[0]);
+    expect(r.brace?.blendEndPsi).toBe(ideal.psiC[i1]);
+    expect(r.brace?.blendEndX).toBe(xs[1]);
+    const a = /** @type {NonNullable<SolveResult['achieved']>} */ (r.achieved);
+    const t = /** @type {NonNullable<SolveResult['target']>} */ (r.target);
+    let after = 0;
+    let before = 0;
+    for (let i = 0; i < a.x.length; i++) {
+      const d = Math.abs(a.F[i] - t.F[i]);
+      if (a.x[i] >= xs[1]) after = Math.max(after, d);
+      else before = Math.max(before, d);
+    }
+    console.info(`ideal track (${resolution}): achieved within ${after.toExponential(2)} N of the target from point 2 on, ${before.toFixed(3)} N before`);
+    expect(after).toBeLessThan(tolerance);
+    // The forward model of the built cam reaches the state of the inverse
+    // model (θ, α) and the target force at every curve point, and keeps the
+    // brace slope.
+    const f = forwardOfResult(state, r, xs);
+    for (let k = 1; k < xs.length; k++) {
+      const j = ideal.x.indexOf(xs[k]);
+      expect(Math.abs(f.F[k] - state.curve.points[k].F)).toBeLessThan(tolerance);
+      expect(Math.abs(f.alpha[k] - ideal.alpha[j])).toBeLessThan(angleTolerance);
+      expect(Math.abs(f.theta[k] - ideal.theta[j])).toBeLessThan(angleTolerance);
+    }
+    const forwardBrace = /** @type {import('../../src/core/forward.js').BraceState} */ (f.brace);
+    expect(Math.abs(forwardBrace.slope / /** @type {SolveBrace} */ (r.brace).slope - 1)).toBeLessThan(1e-9);
+  });
+});
+
+describe('solve: fit through the curve points', () => {
+  it('reaches the target state at the curve points the winning fit passes through', () => {
+    // Limb 3.5 N/mm, let-off 65 %, rise 50 %: the candidate through the
+    // curve points wins and matches the last four points. The forward model
+    // of the built cam gives the target force and the inverse state (θ, α)
+    // there, and differs from the target at points 2 and 3.
+    const state = modified((s) => {
+      s.limb.stiffness = 3.5e3;
+      s.curve.params.letOff = 0.65;
+      s.curve.params.riseFraction = 0.5;
+    }, { regenerate: true });
+    const r = solve(state);
+    expect(r.status).toBe('ok');
+    expect(r.fit.used).toBe(true);
+    expect(r.fit.pointsMatched).toBe(4);
+    const ideal = /** @type {NonNullable<SolveResult['ideal']>} */ (r.ideal);
+    const pts = state.curve.points;
+    const f = forwardOfResult(state, r, pts.map((q) => q.x));
+    let worst = 0;
+    const matched = [];
+    for (let k = 1; k < pts.length; k++) {
+      const j = ideal.x.indexOf(pts[k].x);
+      const dF = Math.abs(f.F[k] - pts[k].F);
+      const dAngle = Math.max(Math.abs(f.alpha[k] - ideal.alpha[j]), Math.abs(f.theta[k] - ideal.theta[j]));
+      if (dF < 1e-9 && dAngle < 1e-12) {
+        matched.push(k + 1);
+        worst = Math.max(worst, dF);
+      } else {
+        expect(dF).toBeGreaterThan(1e-3);
+      }
+    }
+    console.info(`fit through the curve points: points ${matched.join(', ')} within ${worst.toExponential(2)} N`);
+    expect(matched).toEqual([4, 5, 6, 7]);
   });
 });
 
@@ -744,6 +842,8 @@ describe('solve: lead-in and closing blend', () => {
 });
 
 describe('solve: robustness', () => {
+  // 0.9 s alone, 3 s to 5 s in the coverage run and 7 s to 10 s when other
+  // processes load every core: the time limit is 30 s.
   it('never throws on valid states and returns plain data', () => {
     const ranges = (/** @type {string} */ path) => FIELDS[path];
     const num = (/** @type {string} */ path, /** @type {number} */ lo = 0, /** @type {number} */ hi = 1) => {
@@ -805,7 +905,7 @@ describe('solve: robustness', () => {
       ),
       { numRuns: 100 },
     );
-  });
+  }, 30_000);
 
   it('reports draw positions as AMO draw lengths in the display units', () => {
     const fmt = formatter({ draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' });

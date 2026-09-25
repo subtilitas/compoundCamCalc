@@ -424,7 +424,9 @@ slope of the user's curve and rebuilds the curve with
 `createCurve(points, { startSlope, startSecondDerivative })`, so the first
 segment matches both; `shapePreserved` of the rebuilt curve is reported.
 The formula agrees with a degree-7 fit of the forward model at
-x_b + k·1 mm to 1e-9 relative, which is the accuracy of the fit.
+x_b + k·1 mm to 1e-8 relative (tested; measured 4.7e-10 for the twin cam
+and 2.3e-9 for a cable circle of radius p_c0), which is the accuracy of the
+fit.
 
 ### Brace blend
 
@@ -451,7 +453,11 @@ anchor (the sample field `anchorReach`; the free span is B·t − p_c'(ψ_c)).
 With it the cam reaches the target state (θ_1, α_1) at x_1, so the
 achieved curve equals the target from x_1 on and has the target's work
 W(x_1); on [x_b, x_1] it follows the cam, with F, F' and F'' of the target
-at both ends.
+at both ends. "Equals" holds to the accuracy of the spline through the
+resampled track: on a test cam that the solver builds without the fit
+(verification table), the achieved force differs from the target by at
+most 1.3e-7 N (full) and 3.8e-7 N (coarse) from x_1 on, and by 0.006 N
+inside [x_b, x_1].
 
 ### Sampling the ideal cable track
 
@@ -680,6 +686,17 @@ the project state and returns plain data (structured-cloneable):
    wraps).
 7. Outlines, posts and marks.
 
+The result keeps the brace conditions in `brace` (slope, second
+derivative, tensions, p_c0, ψ_c0, the limits `maxStringTension` and
+`maxSlope`), with `shapePreserved`, `naturalSecond` (F''(x_b) of the curve
+without the brace correction) and, when the ideal track is built, the ends
+of the brace blend: `blendStartPsi` (ψ_c0, rad), `blendEndPsi` (ψ_1, rad)
+and `blendEndX` (x_1, m). `outlines` holds all six sampled outlines when a
+cable track is built, the three string outlines when none is built (for
+example `brace-tension`, `cable-lever`, `cable-wrap`, `limb-energy`, or no
+track that the fit and the closing blend can build) and none for
+`invalid-input`.
+
 `status` is `no-convergence` when any diagnostic has that code,
 `infeasible` for any other diagnostic and `ok` without diagnostics. The
 solver never throws; an unexpected exception becomes a `no-convergence`
@@ -768,33 +785,34 @@ Measured values are the largest errors over the tested samples.
 | Realistic twin cam (below): peak between 150 N and 500 N, let-off above 20 %, each cord wrapped less than one turn | | 260 N, 38 %, 341° |
 | Forward model: coarse solve (100 samples) and full solve (1500 samples) | 8 ms and 100 ms, tested with a factor 5 margin | 0.3 ms and 2.7 ms after warm-up |
 | Inverse brace conditions against the forward model of the twin cam: T_s0, T_c0, p_c0, ψ_c0, c_a0 from F'(x_b) | 1e-12 relative, 1e-15 m, 1e-13 rad | passes |
-| Inverse F''(x_b) against a degree-7 fit of the forward force at x_b + k·1 mm, for the twin cam and for a cable circle of radius p_c0 | 1e-8 relative | passes |
+| Inverse F''(x_b) against a degree-7 fit of the forward force at x_b + k·1 mm, for the twin cam and for a cable circle of radius p_c0; F'(x_b) of the same fit | 1e-8 relative; 1e-9 relative | 4.7e-10 and 2.3e-9; 1.6e-14 |
 | Brace feasibility: T_s0 ≤ 0 and T_s0 ≥ M_b/s_a0 rejected, 0.999 of the limit accepted | | passes |
 | Reverse round trip: forward model of the twin cam (eccentric circles), F and its integral into the inverse model, p_c at the forward samples | 1e-8 m | 9.6e-13 m; θ 2.7e-14 rad |
 | Reverse round trip, concentric circles | 1e-8 m | 5.4e-13 m; θ 2.9e-14 rad |
-| Reverse round trip: ideal cable spline (brace blend and resampled spline) against the forward cable track over the draw | 1e-8 m | 9.5e-15 m over 258°; 9.0e-17 m over 241° (concentric) |
-| Inverse statics: T_s·p_s = T_c·p_c, E1' = T_s·s_a + T_c·c_a; T_c against the forward model | 1e-12, 1e-12, 1e-8 relative | passes |
+| Reverse round trip: spline through the cable track resampled from brace (no brace blend), from a dense target (degree-7 interpolation of 4001 forward samples), against the forward cable track over the draw | 1e-8 m | 9.5e-15 m over 258°; 9.0e-17 m over 241° (concentric) |
+| Inverse statics: T_s, T_c and F at the pose (x, θ, α) of each inverse sample against the free-body balance of the free-body rows (twin cam, tangent points by bisection); T_c against the forward model | 1e-9 relative; 1e-8 relative | 6.3e-11; 3.6e-11 |
 | Inverse kinematics: p_c = c_a·dα/dθ, dα/dx and dθ/dx against central differences along the draw | 1e-7 relative | passes |
-| Brace blend: p(ψ_c0), C2 join and the cable closure integral; Lagrange end slopes on uneven points | 1e-13; 1e-11 | passes |
-| Quadratic programme: reference problems, equality multipliers of either sign, dropped constraints; KKT (Karush–Kuhn–Tucker) conditions on 300 random convex problems (fast-check) | 1e-10 | passes |
+| Brace blend: p(ψ_c0), C2 join and the cable closure integral; Lagrange end slopes of a quartic test polynomial on uneven points | 5e-16 m (p), 5e-15 m/rad (p'), 5e-14 m/rad² (p''), 5e-15 m·rad (integral); 5e-13, 5e-12 | passes |
+| Quadratic programme: reference problems, equality multipliers of either sign, dropped constraints; KKT (Karush–Kuhn–Tucker) conditions on 300 random convex problems (fast-check) | 5e-13 (reference problems); 1e-10 (KKT) | passes |
 | Quadratic programme: redundant and contradicting equalities; a dependent constraint with n active; nearly parallel constraints (1e-5 apart) met to the tolerance; a programme with rows 1e-7 apart reported `infeasible`; `invalid` for non-finite data, mismatched sizes and options out of range | 3e-10 | passes |
 | Quadratic programme against a brute-force solution (every set of independent constraints as equalities) on 500 small integer problems with repeated, scaled and negated rows (fast-check), feasible and arbitrary right-hand sides: x, KKT conditions relative to the size of their terms, `infeasible` exactly when the brute force finds nothing | 1e-9, 1e-12 | passes |
-| Constrained fit: a track within the limits is reproduced; ρ ≥ ρ_min and p ≥ p_min where the samples violate them; prescribed points and integrals; `invalid` for out-of-range input | 1e-7 m; 5e-6 m, 1e-7 m; 1e-12 m | passes |
-| Solver fit through the curve points of the default preset: forward force at those points | | 3.7e-13 N |
-| Closed cable track: lead-in and active track kept, periodic C2 join, ρ of the closing blend ≥ ρ_lim, closed outlines | 1e-8 m, 1e-12 | passes |
-| Lead-in with ρ(ψ_c0) = 330 mm and 2 mm at p(ψ_c0) = 30 mm: ρ_0 = 30 mm and 5 mm, ρ(u) against the formula, monotone, p' and p'' against central differences, C2 join, p within 2λ·\|ρ(ψ_c0) − ρ_0\| of the arc of radius ρ_0; closed spline at most 5 % of the change in ρ below the smaller end value | 5e-13 m; 1e-9, 1e-4 | passes |
+| Constrained fit: a track within the limits is reproduced; ρ ≥ ρ_min and p ≥ p_min where the samples violate them; prescribed points and integrals; `invalid` for out-of-range input | 1e-7 m; 5e-6 m, 1e-7 m; 1e-12 m and m·rad | passes |
+| Solve where the fit through the curve points wins (limb 3.5 N/mm, let-off 65 %, rise 50 %): forward force of the built cam at the 4 matched points against the target, θ and α against the inverse model; more than 1e-3 N at the other points | 1e-9 N, 1e-12 rad | 4e-13 N, 5e-15 rad |
+| Solve without the fit: target of 7 points from the forward model of a known cam (string groove 47.7 mm with 0.25 mm offset, limb 12.45 N/mm with 190 mm preload, cable circle 13.5 mm with 0.9 mm offset), ideal track from brace blend and resampled spline: achieved force against the target from point 2 on; forward force, θ and α of the built cam at the curve points; brace slope | 1e-6 N (full), 5e-6 N (coarse); 1e-12 rad (full), 2e-10 rad (coarse); 1e-9 relative | 1.3e-7 N and 3.8e-7 N; 1.3e-13 rad and 1.8e-11 rad; 2e-16 |
+| Closed cable track: lead-in and active track kept, periodic C2 join, ρ of the closing blend ≥ ρ_lim, closed outlines | 1e-8 m (lead-in), 1e-9 m (active track and joins), 5e-13 m, m/rad and m/rad² (p, p', p'' after one period), 1e-6 m (ρ) | passes |
+| Lead-in with ρ(ψ_c0) = 330 mm and 2 mm at p(ψ_c0) = 30 mm: ρ_0 = 30 mm and 5 mm, ρ(u) against the formula, monotone, p' and p'' against central differences, C2 join, p within 2λ·\|ρ(ψ_c0) − ρ_0\| of the arc of radius ρ_0; closed spline at most 5 % of the change in ρ below the smaller end value | 5e-13 m; 1e-9 m/rad, 1e-4 m/rad² | passes |
 | Lead-in wrap 0, 1.5e-179, 1e-15 and 1e-9 rad: knots at least 1e-3 of the spacing apart, ρ of the closed track ≥ ρ_lim | 1e-6 m | passes |
-| Solve with rise 40 % at let-off 75 % and 65 %: no `closing-blend`, cam below 120 mm, closed track ρ ≥ ρ_lim | 1e-5 m | cam 113.9 mm and 114.1 mm |
+| Solve with rise 40 % at let-off 75 % and 65 %: no `closing-blend`, cam below 120 mm, closed track ρ ≥ ρ_lim | 1e-5 m | cam 114.0 mm and 113.4 mm |
 | Solve with a lead-in wrap of 0: no diagnostics, cable post at ψ_c0; minimum bend radius 20 mm with a lead-in wrap of 5° and 10°: `closing-blend`, `cable-radius`, `cable-clearance`; lead-in trials k·5° down to exactly 0 | | passes |
-| Offsets, maximum dimension, termination and cable stop posts, timing marks | 1e-15 m to 1e-6 m | passes |
+| Offsets, maximum dimension, termination and cable stop posts, timing marks | 5e-16 m to 1e-6 m | passes |
 | Default preset: zero diagnostics; force within the fit tolerance; outlines closed and nested (groove bottom inside the pitch line and the flange, outside the bore and its wall); posts and marks at the achieved contacts | 8.0 N | 3.71 N |
 | Edits of the default preset (peak 250, 260, 275, 285 N; rise 44 %, 48 %, 50 %; valley 0.9 in, 1.5 in): zero diagnostics | 3 % of the peak | 6.0 N at peak 250 N (7.5 N) |
-| Solve: one test per diagnostic code; 100 random states (fast-check) never throw and return plain data | | passes |
+| Solve: one test per diagnostic code; 100 random states (fast-check) never throw and return plain data; a result without a cable track has the three string outlines only, invalid input none | | passes |
 | Solve with the first curve point moved by ±1e-12 m, ±5e-10 m and ±1e-9 m, or the last by 1e-9 m (all accepted by validation): the result of the exact state; inverse samples within 1e-9 m of x_b take the brace values | | identical |
 | Inverse B·t = √(D² − p_c²) minus p_c'(ψ_c) against the free cable span of the forward model, twin cam | 1e-8 m | 4.8e-12 m |
 | Fitted cam without the brace value (10 mm wall, point 2 at 60 N): cable-brace mark at the brace contact of the forward model, 0.47° after ψ_c0, on the cable line to the anchor; lead-in from that contact | 1e-9 m, 1e-9 rad | passes |
 | Suggestions applied: the brace-tension force of point 2 at 30 mm and 50 mm preload travel (slope 0.77 and 0.80 of the limit), the cable-clearance hub and let-off limits at let-off 80 %, a lower or 2 in later point 2 for a cable contact behind brace at point 2, point 5 moved 0.5 in earlier for a `cable-radius` miss between points 5 and 6 | | passes |
-| Solve of the default preset: coarse and full | 30 ms and 200 ms, tested with a factor 5 margin | about 17 ms and 25 ms after warm-up |
+| Solve of the default preset: coarse and full, timed in a worker thread (no coverage counters) | 30 ms and 200 ms, tested with a factor 5 margin | 18 ms and 26 ms to 29 ms after warm-up (Node 22, 4-core 2.1 GHz Xeon); 20 ms to 30 ms and 26 ms to 34 ms in the coverage run |
 
 Realistic twin cam of the tests: default geometry (ATA 33 in, brace height
 6.5 in, draw length 29 in, limb lever 11 in at 25°), groove bottoms of an

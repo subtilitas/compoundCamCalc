@@ -111,10 +111,15 @@ All notable changes are listed here. Versions follow semantic versioning.
   otherwise the string track radius and, when it sets the limit, the
   minimum bend radius.
 - Solver entry point (`src/core/solve.js`): project state to cable track,
-  outlines, achieved force curve, tensions and metrics in about 17 ms
-  (coarse) and 25 ms (full) for the default preset, with 19 diagnostic
-  codes whose messages carry numbers and units and whose suggestions name
-  the input to change; never throws. `brace-tension` and `slack-cable` name
+  outlines, achieved force curve, tensions and metrics in 18 ms (coarse)
+  and 26 ms to 29 ms (full) for the default preset, within the budgets of
+  30 ms and 200 ms, with 19 diagnostic codes whose messages carry numbers
+  and units and whose suggestions name the input to change; never throws.
+  The result type names each outline, and a result without a cable track
+  has the string outlines only; `brace` holds the brace conditions and the
+  ends of the brace blend as ψ_c0, ψ_1 (rad) and x_1 (m). Without the fit
+  the achieved curve equals the target from point 2 on within 1.3e-7 N
+  (full) on a test cam. `brace-tension` and `slack-cable` name
   the limb preload travel while it stays within its range of 0 mm to
   400 mm, otherwise the stiffness. `brace-tension` gives the force of
   point 2 that makes the end slope of the curve 80 % of the limit.

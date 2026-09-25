@@ -49,6 +49,19 @@ import { FIELDS, validate } from '../state/schema.js';
 const DEG = Math.PI / 180;
 /** Margin of the groove bottom radius of curvature over d/2 (m). */
 export const GROOVE_MARGIN = 0.2e-3;
+
+/**
+ * Smallest allowed radius of curvature of a pitch line, ρ_lim: the minimum
+ * bend radius, and at least the cord radius plus GROOVE_MARGIN, so the
+ * groove bottom stays convex.
+ * @param {{ minBendRadius: number }} body
+ * @param {number} d cord diameter (m)
+ * @returns {number} (m)
+ */
+function rhoLimitFor(body, d) {
+  return Math.max(body.minBendRadius, d / 2 + GROOVE_MARGIN);
+}
+
 /**
  * Largest force difference between the achieved curve of a fitted cable
  * track and the target that still counts as meeting the target: this
@@ -89,6 +102,39 @@ export const RESOLUTIONS = Object.freeze({
  */
 
 /**
+ * Sampled closed outlines. A result without a cable track (for example
+ * brace-tension, cable-lever, cable-wrap, limb-energy, or no track that the
+ * fit and the closing blend can build) has the three string outlines only;
+ * an invalid-input result has none.
+ * @typedef {object} SolveOutlines
+ * @property {Outline} [stringPitch]
+ * @property {Outline} [stringGroove]
+ * @property {Outline} [stringFlange]
+ * @property {Outline} [cablePitch]
+ * @property {Outline} [cableGroove]
+ * @property {Outline} [cableFlange]
+ */
+
+/**
+ * Values of the solve beside the brace conditions of the target.
+ * @typedef {object} SolveBraceExtra
+ * @property {boolean} shapePreserved the target rebuilt with F''(x_b) is
+ *   monotone between its points
+ * @property {number} naturalSecond F''(x_b) of the curve without the brace
+ *   correction (N/m²)
+ * @property {number} [blendStartPsi] ψ_c0, start of the brace blend (rad)
+ * @property {number} [blendEndPsi] ψ_1, cable contact angle at point 2, end
+ *   of the brace blend (rad)
+ * @property {number} [blendEndX] x_1, nock position of point 2 (m)
+ */
+
+/**
+ * Brace conditions of the target; the blend fields exist when the ideal
+ * cable track was built.
+ * @typedef {import('./inverse.js').BraceConditions & SolveBraceExtra} SolveBrace
+ */
+
+/**
  * @typedef {object} SolveMetrics
  * @property {number} peak achieved peak draw force (N)
  * @property {number} holding holding weight: smallest force after the peak (N)
@@ -120,7 +166,7 @@ export const RESOLUTIONS = Object.freeze({
  *   forward model of the final cam
  * @property {{ x: Float64Array, F: Float64Array, theta: Float64Array, alpha: Float64Array, Ts: Float64Array,
  *   Tc: Float64Array, pC: Float64Array, psiC: Float64Array } | null} ideal inverse model samples
- * @property {object | null} brace brace conditions and the brace blend
+ * @property {SolveBrace | null} brace brace conditions and the brace blend
  * @property {{ stringPitch: SupportData | null, cablePitch: SupportData | null,
  *   grooves: { string: SupportData | null, cable: SupportData | null },
  *   flanges: { string: SupportData | null, cable: SupportData | null },
@@ -132,7 +178,7 @@ export const RESOLUTIONS = Object.freeze({
  *   full-draw contact angle, arc of the closing blend (rad), radius of curvature
  *   ρ_0 the lead-in settles to and smallest ρ of the closing blend (m);
  *   string: full-draw contact angle and termination (rad)
- * @property {Record<string, Outline>} outlines sampled closed outlines
+ * @property {SolveOutlines} outlines
  * @property {Post[]} posts
  * @property {Mark[]} marks
  * @property {{ used: boolean, reason: string, rms: number, maxDeviation: number, peakDifference: number,
@@ -294,7 +340,9 @@ function solveState(state, resolution, maxIterations) {
   const targetMetrics = curveMetrics(curve);
   const forwardGrid = drawGrid(xBrace, xFull, settings.forward);
   res.target = { x: forwardGrid, F: Float64Array.from(forwardGrid, (x) => curve.evaluate(x)) };
-  res.brace = { ...brace, shapePreserved: curve.shapePreserved, naturalSecond: natural.derivative(xBrace, 2) };
+  /** @type {SolveBrace} */
+  const solveBrace = { ...brace, shapePreserved: curve.shapePreserved, naturalSecond: natural.derivative(xBrace, 2) };
+  res.brace = solveBrace;
   if (!braceOk(brace, state, ctx, limbData, points, fmt, diags)) {
     finishStringOnly(res, stringSupport, state, settings);
     return res;
@@ -345,11 +393,10 @@ function solveState(state, resolution, maxIterations) {
   }
   const n = samples.n;
   const psiSFull = samples.psiS[n - 1];
-  const alphaFull = samples.alpha[n - 1];
   checkIdeal(samples, i1, state, ctx, limbData, targetMetrics, fmt, diags);
 
   // Ideal cable track: blend on [ψ_c0, ψ_1] and spline on [ψ_1, ψ_cf].
-  const rhoLimitCable = Math.max(body.minBendRadius, cords.cableDiameter / 2 + GROOVE_MARGIN);
+  const rhoLimitCable = rhoLimitFor(body, cords.cableDiameter);
   const pMin = body.boreDiameter / 2 + body.minWall + cords.cableDiameter / 2;
   const monotone = !diags.some((d) => d.code === 'cable-fold' || d.code === 'slack-cable');
   /** @type {import('./outline.js').Piecewise | null} */
@@ -382,7 +429,7 @@ function solveState(state, resolution, maxIterations) {
           psi: Float64Array.from([samples.psiC[0], ...resampled.psi]),
           x: Float64Array.from([xBrace, ...resampled.x]),
         };
-        res.brace = { ...res.brace, blendEnd: x1, blendStart: samples.psiC[0], blendAngle: psi1 };
+        res.brace = { ...solveBrace, blendStartPsi: samples.psiC[0], blendEndPsi: psi1, blendEndX: x1 };
       }
     }
     if (!ideal) {
@@ -403,8 +450,9 @@ function solveState(state, resolution, maxIterations) {
   const tFit = now();
   const psiC0 = samples.psiC[0];
   const psiCF = samples.psiC[n - 1];
-  const violations = ideal ? checkCableTrack(ideal, psiToX, blendEnd, rhoLimitCable, pMin, state, samples, fmt) : [];
-  if (ideal) res.idealTrack = trackSummary(ideal, rhoLimitCable);
+  const checked = ideal ? checkCableTrack(ideal, psiToX, blendEnd, rhoLimitCable, pMin, state, samples, fmt) : null;
+  const violations = checked ? checked.violations : [];
+  res.idealTrack = checked ? checked.summary : null;
   /** @type {{ active: import('./outline.js').Piecewise, pointsMatched: number, rms: number, maxDeviation: number }[]} */
   const candidates = [];
   if (ideal && violations.length === 0) {
@@ -458,7 +506,7 @@ function solveState(state, resolution, maxIterations) {
 
   const stringEnd = psiSFull + body.residualWrap;
   res.tracks.string = { psiFull: psiSFull, psiEnd: stringEnd };
-  checkStringTrack(stringSupport, state, psiSFull, fmt, diags);
+  const minRhoString = checkStringTrack(stringSupport, state, psiSFull, fmt, diags);
 
   // Closed outline and forward model of each candidate; the candidate whose
   // achieved curve is closest to the target (largest force difference) wins,
@@ -588,9 +636,7 @@ function solveState(state, resolution, maxIterations) {
   res.timings.outline += now() - tOutline2;
 
   // Metrics.
-  const rhoLimitString = Math.max(body.minBendRadius, cords.stringDiameter / 2 + GROOVE_MARGIN);
   const achievedMetrics = sampleMetrics(forward.x, forward.F);
-  const minRhoString = minimumOn((psi) => stringSupport.rho(psi), 0, 2 * Math.PI, 720).value;
   const minRhoCable = minimumOn((psi) => cableSupport.rho(psi), closed.psiStart, closed.psiStart + 2 * Math.PI, 1440).value;
   res.metrics = {
     peak: achievedMetrics.peak,
@@ -605,11 +651,10 @@ function solveState(state, resolution, maxIterations) {
     cableLength: forward.cableLength,
     camMaxDimension: maxDimension([stringFlange, cableFlange]),
     minRho: Math.min(minRhoString, minRhoCable),
-    rhoLimit: Math.min(rhoLimitString, rhoLimitCable),
+    rhoLimit: Math.min(rhoLimitFor(body, cords.stringDiameter), rhoLimitCable),
     stringWrap: stringEnd - forward.psiS[0],
     cableWrap: forward.psiC[forward.n - 1] - closed.psiStart,
   };
-  if (!Number.isFinite(alphaFull)) res.metrics.limbRotation = NaN;
   if (res.fit.used) {
     const maxDiff = best.maxDiff;
     res.fit.peakDifference = achievedMetrics.peak - targetMetrics.peak;
@@ -679,32 +724,6 @@ function braceContact(track, D) {
 function trimTrack(track, psi) {
   const pieces = track.pieces.filter((q) => q.end > psi).map((q, k) => (k === 0 && q.kind === 'spline' ? { ...q, start: psi } : q));
   return { ...createPiecewise(pieces), start: psi };
-}
-
-/**
- * Smallest ρ and p, largest p and the shortfall ∫ max(0, ρ_lim − ρ) dψ of
- * a cable track on a 0.1° grid.
- * @param {import('./outline.js').Piecewise} track
- * @param {number} rhoLimit (m)
- * @returns {{ minRho: number, minP: number, maxP: number, rhoShortfall: number, start: number, end: number }}
- */
-function trackSummary(track, rhoLimit) {
-  const count = Math.max(200, Math.ceil((track.end - track.start) / (0.1 * DEG)));
-  const h = (track.end - track.start) / count;
-  const buf = new Float64Array(3);
-  let minRho = Infinity;
-  let minP = Infinity;
-  let maxP = -Infinity;
-  let rhoShortfall = 0;
-  for (let k = 0; k <= count; k++) {
-    track.evaluate(track.start + k * h, buf);
-    const rho = buf[0] + buf[2];
-    minRho = Math.min(minRho, rho);
-    minP = Math.min(minP, buf[0]);
-    maxP = Math.max(maxP, buf[0]);
-    rhoShortfall += Math.max(0, rhoLimit - rho) * h;
-  }
-  return { minRho, minP, maxP, rhoShortfall, start: track.start, end: track.end };
 }
 
 /**
@@ -979,9 +998,12 @@ function checkIdeal(s, i1, state, ctx, limbData, targetMetrics, fmt, diags) {
 const EVEN_RISE = 'Move point 2 so that the force rises more evenly from brace to point 3';
 
 /**
- * Radius of curvature and lever arm of the ideal cable track: at most one
- * diagnostic per code, naming the worst range. Returns the diagnostics
- * without adding them (the result of the fit is appended later).
+ * Radius of curvature and lever arm of the ideal cable track on a 0.1°
+ * grid (at least 200 intervals): at most one diagnostic per code, naming the
+ * worst range. Returns the diagnostics without adding them (the result of
+ * the fit is appended later) and the summary of the track: smallest ρ and
+ * p, largest p and the shortfall ∫ max(0, ρ_lim − ρ) dψ as a sum over the
+ * grid points.
  *
  * The brace blend on [ψ_c0, ψ_1] often bends the wrong way (ρ down to
  * −503 mm on the default preset), and the fit replaces it; its runs of ρ
@@ -995,7 +1017,7 @@ const EVEN_RISE = 'Move point 2 so that the force rises more evenly from brace t
  * @param {ProjectState} state
  * @param {import('./inverse.js').InverseSamples} samples
  * @param {ReturnType<typeof formatter>} fmt
- * @returns {SolveDiagnostic[]}
+ * @returns {{ violations: SolveDiagnostic[], summary: NonNullable<SolveResult['idealTrack']> }}
  */
 function checkCableTrack(track, psiToX, blendEnd, rhoLimit, pMin, state, samples, fmt) {
   const count = Math.max(200, Math.ceil((track.end - track.start) / (0.1 * DEG)));
@@ -1004,12 +1026,21 @@ function checkCableTrack(track, psiToX, blendEnd, rhoLimit, pMin, state, samples
   const rho = new Float64Array(count + 1);
   const p = new Float64Array(count + 1);
   const buf = new Float64Array(3);
+  let minRho = Infinity;
+  let minP = Infinity;
+  let maxP = -Infinity;
+  let rhoShortfall = 0;
   for (let k = 0; k <= count; k++) {
     psi[k] = track.start + ((track.end - track.start) * k) / count;
     track.evaluate(psi[k], buf);
     p[k] = buf[0];
     rho[k] = buf[0] + buf[2];
+    minRho = Math.min(minRho, rho[k]);
+    minP = Math.min(minP, p[k]);
+    maxP = Math.max(maxP, p[k]);
+    rhoShortfall += Math.max(0, rhoLimit - rho[k]) * h;
   }
+  const summary = { minRho, minP, maxP, rhoShortfall, start: track.start, end: track.end };
   /** @param {number} v */
   const xAt = (v) => (psiToX ? interpolate(psiToX.psi, psiToX.x, v) : NaN);
   /**
@@ -1111,7 +1142,7 @@ function checkCableTrack(track, psiToX, blendEnd, rhoLimit, pMin, state, samples
       ),
     );
   }
-  return out;
+  return { violations: out, summary };
 }
 
 /**
@@ -1245,17 +1276,19 @@ function closingDiagnostic(closed, active, state, rhoLimit, pMin, step, fmt) {
 }
 
 /**
- * Radius of curvature, clearance and wrap of the string track.
+ * Radius of curvature, clearance and wrap of the string track. Returns the
+ * smallest radius of curvature over one turn (m).
  * @param {Support} s string pitch line
  * @param {ProjectState} state
  * @param {number} psiFull string contact angle at full draw (rad)
  * @param {ReturnType<typeof formatter>} fmt
  * @param {SolveDiagnostic[]} diags
+ * @returns {number}
  */
 function checkStringTrack(s, state, psiFull, fmt, diags) {
   const { body, cords, stringTrack: track } = state;
   const d = cords.stringDiameter;
-  const rhoLimit = Math.max(body.minBendRadius, d / 2 + GROOVE_MARGIN);
+  const rhoLimit = rhoLimitFor(body, d);
   const low = minimumOn((psi) => s.rho(psi), 0, 2 * Math.PI, 720);
   if (!(low.value >= rhoLimit)) {
     const need = rhoLimit - low.value;
@@ -1301,6 +1334,7 @@ function checkStringTrack(s, state, psiFull, fmt, diags) {
       ),
     );
   }
+  return low.value;
 }
 
 /**
