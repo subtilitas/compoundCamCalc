@@ -5,7 +5,7 @@ import { CODES, formatter } from '../../src/core/diagnostics.js';
 import { axle, bowGeometry } from '../../src/core/geometry.js';
 import { COARSE_SAMPLES, FULL_SAMPLES, drawGrid, solveForward } from '../../src/core/forward.js';
 import { limbFromState } from '../../src/core/limb.js';
-import { FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE, GROOVE_MARGIN, forwardDiagnostics, solve } from '../../src/core/solve.js';
+import { FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE, GROOVE_MARGIN, forwardDiagnostics, leadInTrials, solve } from '../../src/core/solve.js';
 import { fitCableTrack } from '../../src/core/fit.js';
 import { createCurve } from '../../src/core/interp.js';
 import { braceConditions, createInverse, sampleInverse } from '../../src/core/inverse.js';
@@ -403,6 +403,60 @@ describe('solve: diagnostics', () => {
     expect(d.xRange?.[1]).toBe(defaultState().curve.points.at(-1)?.x);
     // The string track outlines are still there.
     expect(r.outlines.stringPitch.x.length).toBe(361);
+  });
+});
+
+describe('solve: lead-in and closing blend', () => {
+  it('solves with a lead-in wrap of 0, with the cable post at the brace contact', () => {
+    const r = solve(modified((s) => (s.body.leadInWrap = 0)), { resolution: 'coarse' });
+    expect(r.diagnostics).toEqual([]);
+    expect(r.status).toBe('ok');
+    const cable = /** @type {NonNullable<SolveResult['tracks']['cable']>} */ (r.tracks.cable);
+    expect(cable.psiStart).toBe(cable.psiBrace);
+    expect(r.posts.find((p) => p.id === 'cable-post')?.psi).toBe(cable.psiBrace);
+  });
+
+  it('closing-blend: a 20 mm bend radius with a lead-in of 5° or 10° is reported with the other diagnostics', () => {
+    for (const lead of [5, 10]) {
+      const r = solve(modified((s) => {
+        s.body.minBendRadius = 0.02;
+        s.body.leadInWrap = lead * DEG;
+      }), { resolution: 'coarse' });
+      expect(codes(r)).toEqual(['closing-blend', 'cable-radius', 'cable-clearance']);
+      const d = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'closing-blend'));
+      expect(d.suggestion).toMatch(/^Increase the string track radius, so the cam turns less over the draw.*, or reduce the minimum bend radius$/);
+    }
+  });
+
+  it('tries the lead-in wraps k·5° below the input, down to exactly 0°', () => {
+    expect(leadInTrials(0)).toEqual([]);
+    expect(leadInTrials(5 * DEG)).toEqual([0]);
+    expect(leadInTrials(32 * DEG)).toEqual([6, 5, 4, 3, 2, 1, 0].map((k) => k * 5 * DEG));
+    for (const deg of [10, 15, 30, 45, 60, 90, 180]) {
+      const trials = leadInTrials(deg * DEG);
+      expect(trials.length).toBe(deg / 5);
+      expect(trials[0]).toBe((deg / 5 - 1) * 5 * DEG);
+      expect(trials.at(-1)).toBe(0);
+    }
+  });
+
+  it('keeps the cam compact when the fit flattens the brace region: rise 40 % at let-off 75 % and 65 %', () => {
+    for (const letOff of [0.75, 0.65]) {
+      const r = solve(modified((s) => {
+        s.curve.params.riseFraction = 0.4;
+        s.curve.params.letOff = letOff;
+      }, { regenerate: true }));
+      expect(codes(r)).not.toContain('closing-blend');
+      const m = /** @type {import('../../src/core/solve.js').SolveMetrics} */ (r.metrics);
+      const cable = /** @type {NonNullable<SolveResult['tracks']['cable']>} */ (r.tracks.cable);
+      const pitch = createSupport(/** @type {any} */ (r.tracks.cablePitch));
+      // The fitted track has ρ ≈ 390 mm at brace; the lead-in settles to p(ψ_c0) ≈ 50 mm.
+      expect(pitch.rho(cable.psiBrace)).toBeGreaterThan(0.3);
+      expect(cable.leadInRho).toBeCloseTo(pitch.p(cable.psiBrace), 12);
+      console.info(`rise 40 %, let-off ${letOff * 100} %: cam ${(m.camMaxDimension * 1e3).toFixed(1)} mm, lead-in ρ_0 ${(cable.leadInRho * 1e3).toFixed(1)} mm`);
+      expect(m.camMaxDimension).toBeLessThan(0.12);
+      expect(m.minRho).toBeGreaterThanOrEqual(m.rhoLimit - 1e-5);
+    }
   });
 });
 

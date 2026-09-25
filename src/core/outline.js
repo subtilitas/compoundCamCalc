@@ -2,14 +2,16 @@
  * Closed cam outline in the cam frame (axle at the origin, lengths in m,
  * angles in rad).
  *
- * Cable track: the active part [ψ_c0, ψ_cf] covers the draw. Before ψ_c0 a
- * lead-in arc of constant radius of curvature ρ_0 = ρ(ψ_c0) carries the
- * lead-in wrap, p = ρ_0 + A·cos(ψ − ψ_c0) + B·sin(ψ − ψ_c0) with
- * A = −p''(ψ_c0), B = p'(ψ_c0), so p, p' and p'' are continuous. The
- * remaining arc from ψ_cf to ψ_c0 − lead-in + 2π is closed by the quintic in
- * ψ that matches p, p', p'' at both joins. A periodic p with p + p'' > 0 is a
- * closed convex curve. The closed track is stored as a periodic C2 cubic
- * spline through samples of these pieces (spacing about 0.25° to 0.5°).
+ * Cable track: the active part [ψ_c0, ψ_cf] covers the draw. Before ψ_c0 the
+ * lead-in carries the lead-in wrap. Its radius of curvature settles from
+ * ρ(ψ_c0) to ρ_0 = clamp(ρ(ψ_c0), ρ_min, p(ψ_c0)):
+ * ρ(u) = ρ_0 + (ρ(ψ_c0) − ρ_0)·(1 + u/λ)·e^(−u/λ), u = ψ_c0 − ψ, λ = 0.5°.
+ * p solves p'' + p = ρ from p(ψ_c0) and p'(ψ_c0), so p, p' and p'' are
+ * continuous at ψ_c0. The remaining arc from ψ_cf to ψ_c0 − lead-in + 2π is
+ * closed by the quintic in ψ that matches p, p', p'' at both joins. A
+ * periodic p with p + p'' > 0 is a closed convex curve. The closed track is
+ * stored as a periodic C2 cubic spline through samples of these pieces
+ * (spacing about 0.25° to 0.5°).
  *
  * String track: the closed parametric track of the project; its post sits
  * at the full-draw contact angle plus the residual wrap.
@@ -25,6 +27,16 @@ import { createSupport, offset, splineSupport } from './support.js';
 
 const DEGREE = Math.PI / 180;
 
+/** Decay length λ of the lead-in radius of curvature (rad). */
+export const LEAD_IN_DECAY = 0.5 * DEGREE;
+
+/**
+ * Knots of the closed spline closer than this fraction of the knot spacing
+ * to the previous knot are left out. A near-zero interval turns rounding of
+ * the values into a spike of p''.
+ */
+const MIN_KNOT_GAP = 1e-3;
+
 /** @typedef {import('./support.js').Support} Support */
 /** @typedef {import('./support.js').SupportData} SupportData */
 /** @typedef {import('./support.js').SplineData} SplineData */
@@ -39,17 +51,48 @@ const DEGREE = Math.PI / 180;
  */
 
 /**
- * @typedef {object} ArcPiece
- * @property {'arc'} kind
+ * Lead-in before the join ψ_c0 = end. With u = end − ψ its radius of
+ * curvature is ρ(u) = rho + excess·(1 + u/λ)·e^(−u/λ), and
+ * p = rho + A·cos u − B·sin u + excess·h(u), where h solves h'' + h =
+ * (1 + u/λ)·e^(−u/λ) with h(0) = h'(0) = 0.
+ * @typedef {object} LeadInPiece
+ * @property {'lead-in'} kind
  * @property {number} start (rad)
- * @property {number} end (rad)
- * @property {number} origin angle of the matching point (rad)
- * @property {number} rho radius of curvature (m)
- * @property {number} A (m)
- * @property {number} B (m)
+ * @property {number} end join with the active track ψ_c0 (rad)
+ * @property {number} rho radius of curvature ρ_0 away from the join (m)
+ * @property {number} excess ρ(ψ_c0) − ρ_0 (m)
+ * @property {number} A p(ψ_c0) − ρ_0 (m)
+ * @property {number} B p'(ψ_c0) (m)
  */
 
-/** @typedef {(PolyPiece & { end: number }) | SplinePiece | ArcPiece} TrackPiece */
+/** @typedef {(PolyPiece & { end: number }) | SplinePiece | LeadInPiece} TrackPiece */
+
+/**
+ * Evaluator of a lead-in piece: p, p', p'' at ψ.
+ * @param {LeadInPiece} piece
+ * @returns {(psi: number, out: Float64Array) => Float64Array}
+ */
+function leadInEvaluator(piece) {
+  const { rho, excess, A, B } = piece;
+  // h(u) = (α + β·u)·e^(−a·u) − α·cos u + γ·sin u with a = 1/λ.
+  const a = 1 / LEAD_IN_DECAY;
+  const alpha = (1 + 3 * a * a) / (1 + a * a) ** 2;
+  const beta = a / (1 + a * a);
+  const gamma = a * alpha - beta;
+  return (psi, out) => {
+    const u = piece.end - psi;
+    const c = Math.cos(u);
+    const s = Math.sin(u);
+    const e = Math.exp(-a * u);
+    const shape = (1 + a * u) * e;
+    const h = (alpha + beta * u) * e - alpha * c + gamma * s;
+    const dh = (beta - a * alpha - a * beta * u) * e + alpha * s + gamma * c;
+    out[0] = rho + A * c - B * s + excess * h;
+    out[1] = A * s + B * c - excess * dh;
+    out[2] = -A * c + B * s + excess * (shape - h);
+    return out;
+  };
+}
 
 /**
  * @typedef {object} Piecewise
@@ -72,16 +115,7 @@ export function createPiecewise(pieces) {
       const s = createSupport(piece.data);
       return (/** @type {number} */ psi, /** @type {Float64Array} */ out) => s.evaluate(psi, out);
     }
-    if (piece.kind === 'arc') {
-      return (/** @type {number} */ psi, /** @type {Float64Array} */ out) => {
-        const c = Math.cos(psi - piece.origin);
-        const s = Math.sin(psi - piece.origin);
-        out[0] = piece.rho + piece.A * c + piece.B * s;
-        out[1] = -piece.A * s + piece.B * c;
-        out[2] = -piece.A * c - piece.B * s;
-        return out;
-      };
-    }
+    if (piece.kind === 'lead-in') return leadInEvaluator(piece);
     return (/** @type {number} */ psi, /** @type {Float64Array} */ out) => evaluatePoly(piece, psi, out);
   });
   const buf = new Float64Array(3);
@@ -184,7 +218,8 @@ export function minimumOn(f, a, b, count) {
  * @property {number} blendMinRhoAt its angle (rad)
  * @property {number} blendMinP smallest lever arm on the closing blend (m)
  * @property {boolean} blendFitted the blend is the constrained fit, not the quintic
- * @property {number} leadInRho ρ of the lead-in arc (m)
+ * @property {number} leadInRho ρ_0, the radius of curvature the lead-in
+ *   settles to (m)
  * @property {Piecewise} track lead-in, active pieces and closing blend
  */
 
@@ -211,7 +246,7 @@ function pieceKnots(piece, step) {
 }
 
 /**
- * Close the active cable track with the lead-in arc and the closing blend.
+ * Close the active cable track with the lead-in and the closing blend.
  * The blend is the quintic Hermite piece when it keeps ρ ≥ rhoMin and
  * p ≥ pMin; otherwise the constrained fit (core/fit) of a clamped spline to
  * the quintic, with p, p', p'' prescribed at both joins and the two limits
@@ -231,11 +266,13 @@ export function closeCableTrack(active, { leadIn, rhoMin, pMin = 0, step }) {
   const blendLength = psiStart + 2 * Math.PI - psiFull;
   if (!(blendLength > 0)) return null;
   const a0 = active.evaluate(psiBrace, new Float64Array(3));
-  const rho0 = a0[0] + a0[2];
-  /** @type {ArcPiece} */
-  const arc = { kind: 'arc', start: psiStart, end: psiBrace, origin: psiBrace, rho: rho0, A: -a0[2], B: a0[1] };
+  // ρ_0 at most p(ψ_c0) keeps the lead-in from swinging outwards.
+  const rhoBrace = a0[0] + a0[2];
+  const rho0 = Math.max(rhoMin, Math.min(rhoBrace, a0[0]));
+  /** @type {LeadInPiece} */
+  const lead = { kind: 'lead-in', start: psiStart, end: psiBrace, rho: rho0, excess: rhoBrace - rho0, A: a0[0] - rho0, B: a0[1] };
   const endState = active.evaluate(psiFull, new Float64Array(3));
-  const leadStart = createPiecewise([arc]).evaluate(psiStart, new Float64Array(3));
+  const leadStart = createPiecewise([lead]).evaluate(psiStart, new Float64Array(3));
   /** @type {TrackPiece} */
   let blend = hermiteQuintic(psiFull, blendLength, endState, leadStart);
   const psiEnd = psiFull + blendLength;
@@ -264,12 +301,18 @@ export function closeCableTrack(active, { leadIn, rhoMin, pMin = 0, step }) {
       low = limits(blend);
     }
   }
-  const track = createPiecewise([arc, ...active.pieces, blend]);
+  const track = createPiecewise([lead, ...active.pieces, blend]);
 
   /** @type {number[]} */
-  const knots = [];
-  for (const piece of [arc, ...active.pieces, blend]) knots.push(...pieceKnots(piece, step));
-  knots.push(psiStart + 2 * Math.PI);
+  const knots = [psiStart];
+  const gap = MIN_KNOT_GAP * step;
+  const psiClose = psiStart + 2 * Math.PI;
+  for (const piece of [lead, ...active.pieces, blend]) {
+    for (const psi of pieceKnots(piece, step)) {
+      if (psi - /** @type {number} */ (knots.at(-1)) >= gap && psiClose - psi >= gap) knots.push(psi);
+    }
+  }
+  knots.push(psiClose);
   const values = new Float64Array(knots.length);
   const buf = new Float64Array(3);
   for (let k = 0; k < knots.length - 1; k++) values[k] = track.evaluate(knots[k], buf)[0];

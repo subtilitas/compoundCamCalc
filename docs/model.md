@@ -563,21 +563,55 @@ difference, the tolerance and the differences in peak (N), let-off
 
 `src/core/outline.js` closes the active cable track [ψ_c0, ψ_cf]:
 
-- Lead-in arc on [ψ_c0 − lead-in wrap, ψ_c0] with the constant radius of
-  curvature ρ_0 = ρ(ψ_c0): p = ρ_0 + A·cos(ψ − ψ_c0) + B·sin(ψ − ψ_c0) with
-  A = −p''(ψ_c0), B = p'(ψ_c0), so p, p' and p'' are continuous. The cable
-  post sits at its start, the cable termination.
+- Lead-in on [ψ_c0 − lead-in wrap, ψ_c0]. Its radius of curvature settles
+  to ρ_0 = clamp(ρ(ψ_c0), ρ_lim, p(ψ_c0)). With u = ψ_c0 − ψ and
+  λ = 0.5°:
+
+  ```text
+  ρ(u) = ρ_0 + (ρ(ψ_c0) − ρ_0)·(1 + u/λ)·e^(−u/λ)
+  ```
+
+  p solves p'' + p = ρ from p(ψ_c0) and p'(ψ_c0) in closed form:
+  p = ρ_0 + A·cos u − B·sin u + (ρ(ψ_c0) − ρ_0)·h(u) with A = p(ψ_c0) − ρ_0,
+  B = p'(ψ_c0) and h = (α + β·u)·e^(−u/λ) − α·cos u + (α/λ − β)·sin u,
+  α = (1 + 3/λ²)/(1 + 1/λ²)², β = (1/λ)/(1 + 1/λ²). At ψ_c0, ρ = ρ(ψ_c0),
+  so p, p' and p'' are continuous. ρ lies between ρ(ψ_c0) and ρ_0; the
+  factor (1 + u/λ)·e^(−u/λ) is 4e-8 at 10° and 3e-12 at 15°. The settling
+  moves the lead-in by at most 2λ·|ρ(ψ_c0) − ρ_0| from the arc of radius
+  ρ_0: 5.9 mm for a change in ρ of 340 mm.
+- The upper bound p(ψ_c0) keeps the lead-in from swinging outwards. A fit
+  that flattens the brace region has ρ(ψ_c0) of 260 mm to 830 mm; a lead-in
+  of that radius makes the cam 205 mm to 451 mm across, and the closing
+  blend fails. With the bound the same states give 114 mm to 144 mm and
+  close. The cable contact never runs on the lead-in (the smallest contact
+  angle of the forward model is ψ_c0), so the lead-in changes the cable
+  length, not the force curve.
+- The lead-in settles over λ instead of starting at ρ_0 because the
+  periodic spline cannot follow a jump of p'': at a knot it dips about 13 %
+  of the jump, (2 − √3)/2, below ρ_0. For ρ(ψ_c0) = 390 mm and
+  ρ_0 = 50 mm that is a dip to 5 mm; smaller ρ_0 gives a concave dent. The
+  cable post sits at the start of the lead-in, the cable termination.
 - Closing blend from ψ_cf to ψ_c0 − lead-in + 2π: the quintic Hermite piece
   that matches p, p', p'' at both joins. When it bends below ρ_lim or comes
   below p_min, the constrained fit replaces it: a clamped spline close to
   the quintic with p, p', p'' prescribed at both joins and the two limits
   as constraints. When no such spline exists the solver reports
-  `closing-blend` and names the largest lead-in wrap (in 5° steps) that
-  closes the track.
+  `closing-blend` and names the largest lead-in wrap k·5° below the input,
+  down to 0°, that closes the track. When none does, it names the string
+  track radius: a larger string track turns the cam less over the draw and
+  leaves a longer arc for the blend. When ρ_lim is the minimum bend radius
+  and the blend bends too sharply, it also names that radius. On 119
+  states without a closing lead-in wrap (rise 30 % to 50 %, let-off 60 % to
+  80 %, limb 2.0 to 4.0 N/mm with 84 mm to 200 mm preload, lead-in 15°, 30°
+  and 60°), a string track radius 5 mm or 10 mm larger closes 113, half the
+  minimum bend radius closes 68, 5 points less let-off closes 12 and a
+  valley 1 in longer closes 5.
 - The closed track is stored as a periodic C2 cubic spline through samples
   of the pieces at a spacing of at most 0.25° (full) or 0.5° (coarse); the
-  knots of spline pieces are kept. A periodic p with p + p'' > 0 is a
-  closed convex curve.
+  knots of spline pieces are kept. A knot closer than 1e-3 of the spacing
+  to the previous one is left out (a lead-in wrap of 0 or near 0), so no
+  interval is near zero and rounding does not spike p''. A periodic p with
+  p + p'' > 0 is a closed convex curve.
 
 The string track is the closed parametric track of the project; the string
 post sits at its termination, the full-draw contact angle plus the residual
@@ -652,9 +686,9 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `string-clearance` | the string groove bottom closer to the axle than bore/2 + wall | the radius or the offset (computed) |
 | `string-wrap` | full-draw contact angle plus residual wrap ≥ 360° | the string track radius (computed) or the residual wrap |
 | `cable-radius` | ρ of the ideal cable track below ρ_lim and the fitted cam outside the tolerance | a more gradual force change in the range |
-| `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in arc too close to the bore | the let-off (computed limit), the force at the position, the string track radius (computed) or the bore and wall |
+| `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in too close to the bore | the let-off (computed limit), the force at the position, the string track radius (computed) or the bore and wall |
 | `cable-wrap` | active cable range plus lead-in wrap ≥ 360° | the lead-in wrap (computed) or the string track radius |
-| `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min | the largest lead-in wrap that closes the track, or less let-off |
+| `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the string track radius, and the minimum bend radius when it sets ρ_lim |
 | `no-convergence` | a closure, the resampling, the constrained fit or the forward model of the final cam fails, or an internal error | the input to change |
 | `slack-string` | the string of the final cam goes slack (forward model) | the force in the range or the let-off |
 | `wrap-exhausted` | a contact of the final cam passes its termination (forward model) | the residual and lead-in wrap |
@@ -726,7 +760,11 @@ Measured values are the largest errors over the tested samples.
 | Quadratic programme against a brute-force solution (every set of independent constraints as equalities) on 500 small integer problems with repeated, scaled and negated rows (fast-check), feasible and arbitrary right-hand sides: x, KKT conditions relative to the size of their terms, `infeasible` exactly when the brute force finds nothing | 1e-9, 1e-12 | passes |
 | Constrained fit: a track within the limits is reproduced; ρ ≥ ρ_min and p ≥ p_min where the samples violate them; prescribed points and integrals; `invalid` for out-of-range input | 1e-7 m; 5e-6 m, 1e-7 m; 1e-12 m | passes |
 | Solver fit through the curve points of the default preset: forward force at those points | | 3.7e-13 N |
-| Closed cable track: lead-in arc and active track kept, periodic C2 join, ρ of the closing blend ≥ ρ_lim, closed outlines | 1e-8 m, 1e-12 | passes |
+| Closed cable track: lead-in and active track kept, periodic C2 join, ρ of the closing blend ≥ ρ_lim, closed outlines | 1e-8 m, 1e-12 | passes |
+| Lead-in with ρ(ψ_c0) = 330 mm and 2 mm at p(ψ_c0) = 30 mm: ρ_0 = 30 mm and 5 mm, ρ(u) against the formula, monotone, p' and p'' against central differences, C2 join, p within 2λ·\|ρ(ψ_c0) − ρ_0\| of the arc of radius ρ_0; closed spline at most 5 % of the change in ρ below the smaller end value | 5e-13 m; 1e-9, 1e-4 | passes |
+| Lead-in wrap 0, 1.5e-179, 1e-15 and 1e-9 rad: knots at least 1e-3 of the spacing apart, ρ of the closed track ≥ ρ_lim | 1e-6 m | passes |
+| Solve with rise 40 % at let-off 75 % and 65 %: no `closing-blend`, cam below 120 mm, closed track ρ ≥ ρ_lim | 1e-5 m | cam 113.9 mm and 114.1 mm |
+| Solve with a lead-in wrap of 0: no diagnostics, cable post at ψ_c0; minimum bend radius 20 mm with a lead-in wrap of 5° and 10°: `closing-blend`, `cable-radius`, `cable-clearance`; lead-in trials k·5° down to exactly 0 | | passes |
 | Offsets, maximum dimension, termination and cable stop posts, timing marks | 1e-15 m to 1e-6 m | passes |
 | Default preset: zero diagnostics; force within the fit tolerance; outlines closed and nested (groove bottom inside the pitch line and the flange, outside the bore and its wall); posts and marks at the achieved contacts | 4.0 N | 3.71 N |
 | Solve: one test per diagnostic code; 100 random states (fast-check) never throw and return plain data | | passes |

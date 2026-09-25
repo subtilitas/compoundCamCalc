@@ -285,7 +285,11 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
 
 - The active part of each track covers the draw. Extensions: lead-in wrap at
   brace for the cable, residual wrap at full draw for the string (inputs,
-  default 30°), each at constant ρ, ending at a post.
+  0° to 180°, default 30°), each ending at a post. The string residual wrap
+  lies on the string track. The cable lead-in keeps p, p' and p''
+  continuous at ψ_c0 and settles within about 10° to a constant
+  ρ_0 = clamp(ρ(ψ_c0), ρ_min, p(ψ_c0)), so it cannot swing outwards
+  (`docs/model.md`).
 - The remaining arc is closed by a quintic blend in ψ that matches p, p', p''
   at both joins with ρ ≥ ρ_min. Any periodic p with p + p'' > 0 gives a closed
   convex curve.

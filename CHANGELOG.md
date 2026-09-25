@@ -90,10 +90,17 @@ All notable changes are listed here. Versions follow semantic versioning.
   data; the fit programmes of 600 random near-default states end with the
   constraints met to 1e-10 of the row scale. The fit returns `invalid` for
   non-finite or out-of-range input instead of throwing.
-- Closed cam outline (`src/core/outline.js`): lead-in arc, closing blend,
+- Closed cam outline (`src/core/outline.js`): lead-in, closing blend,
   periodic cable track, groove bottom and flange offsets, string, cable and
   cable stop posts, timing marks, sampled outlines and the cam maximum
-  dimension.
+  dimension. The lead-in keeps p, p' and p'' continuous at brace and
+  settles within about 10° to ρ_0 = clamp(ρ(ψ_c0), ρ_lim, p(ψ_c0)), so a
+  fitted track with ρ of 260 mm to 830 mm at brace gives a cam of 114 mm
+  to 144 mm that closes. A lead-in wrap of 0 is valid: knots less than
+  1e-3 of the spacing apart are left out. The `closing-blend` suggestion
+  names the largest lead-in wrap k·5° down to 0° that closes the track,
+  otherwise the string track radius and, when it sets the limit, the
+  minimum bend radius.
 - Solver entry point (`src/core/solve.js`): project state to cable track,
   outlines, achieved force curve, tensions and metrics in about 17 ms
   (coarse) and 25 ms (full) for the default preset, with 19 diagnostic

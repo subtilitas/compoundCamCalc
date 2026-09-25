@@ -117,9 +117,9 @@ export const RESOLUTIONS = Object.freeze({
  *     blendMinRho: number } | null,
  *   string: { psiFull: number, psiEnd: number } | null }} tracks pitch lines
  *   as support data; cable: termination ψ_c0 − lead-in, brace and full-draw
- *   contact angles, arc of the closing blend (rad), ρ of the lead-in arc and
- *   smallest ρ of the closing blend (m); string: full-draw contact angle and
- *   termination (rad)
+ *   contact angles, arc of the closing blend (rad), radius of curvature
+ *   ρ_0 the lead-in settles to and smallest ρ of the closing blend (m);
+ *   string: full-draw contact angle and termination (rad)
  * @property {Record<string, Outline>} outlines sampled closed outlines
  * @property {Post[]} posts
  * @property {Mark[]} marks
@@ -1000,9 +1000,24 @@ function fitData(ideal, samples, i1) {
 }
 
 /**
+ * Lead-in wraps the closing-blend diagnostic tries: the whole multiples k·5°
+ * below the given wrap, largest first, down to exactly 0.
+ * @param {number} wrap lead-in wrap (rad)
+ * @returns {number[]} (rad)
+ */
+export function leadInTrials(wrap) {
+  const out = [];
+  for (let k = Math.ceil(wrap / (5 * DEG) - 1e-9) - 1; k >= 0; k--) out.push(k * 5 * DEG);
+  return out;
+}
+
+/**
  * Diagnostic of a closing blend that bends too sharply or comes too close
- * to the axle, with the largest lead-in wrap (in 5° steps) that closes the
- * track.
+ * to the axle, with the largest lead-in wrap (in 5° steps, down to 0°) that
+ * closes the track. When no lead-in wrap closes it, a larger string track
+ * turns the cam less over the draw and leaves a longer arc for the blend.
+ * A smaller minimum bend radius is named too when it sets the limit of a
+ * blend that bends too sharply.
  * @param {import('./outline.js').ClosedCable} closed
  * @param {import('./outline.js').Piecewise} active
  * @param {ProjectState} state
@@ -1012,15 +1027,17 @@ function fitData(ideal, samples, i1) {
  * @param {ReturnType<typeof formatter>} fmt
  */
 function closingDiagnostic(closed, active, state, rhoLimit, pMin, step, fmt) {
-  let suggestion = 'Reduce let-off, or make the force curve end with a longer valley';
-  for (let lead = state.body.leadInWrap - 5 * DEG; lead >= 0; lead -= 5 * DEG) {
+  const tooSharp = closed.blendMinRho < rhoLimit - 1e-5;
+  const bendLimit = tooSharp && state.body.minBendRadius > state.cords.cableDiameter / 2 + GROOVE_MARGIN;
+  let suggestion = 'Increase the string track radius, so the cam turns less over the draw and leaves a longer arc to close the track' +
+    (bendLimit ? ', or reduce the minimum bend radius' : '');
+  for (const lead of leadInTrials(state.body.leadInWrap)) {
     const trial = closeCableTrack(active, { leadIn: lead, rhoMin: rhoLimit, pMin, step });
     if (trial?.ok) {
-      suggestion = `Reduce the lead-in wrap to at most ${fmt.angle(lead)}`;
+      suggestion = `Reduce the lead-in wrap to ${lead > 0 ? 'at most ' : ''}${fmt.angle(lead)}`;
       break;
     }
   }
-  const tooSharp = closed.blendMinRho < rhoLimit - 1e-5;
   const message = tooSharp
     ? `The cable track cannot be closed over the remaining ${fmt.angle(closed.blendLength)} with a radius of curvature of at least ${fmt.size(rhoLimit)}: ` +
       `the closing curve reaches ${fmt.size(closed.blendMinRho)}`
@@ -1089,7 +1106,7 @@ function checkStringTrack(s, state, psiFull, fmt, diags) {
 }
 
 /**
- * Clearance of the cable groove from the bore on the lead-in arc (the
+ * Clearance of the cable groove from the bore on the lead-in (the
  * active range is checked on the ideal track, the closing blend by its
  * construction).
  * @param {Support} cable closed cable pitch line

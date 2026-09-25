@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  cableStopPost, closeCableTrack, createPiecewise, hermiteQuintic, maxDimension, minimumOn, sampleOutline,
+  LEAD_IN_DECAY, cableStopPost, closeCableTrack, createPiecewise, hermiteQuintic, maxDimension, minimumOn, sampleOutline,
   terminationPost, trackMark, trackOffsets,
 } from '../../src/core/outline.js';
 import { createSupport, eccentricCircle, splineSupport } from '../../src/core/support.js';
@@ -58,12 +58,12 @@ describe('closed cable track', () => {
   );
   const s = createSupport(closed.support);
 
-  it('continues the active track with the lead-in arc of constant radius of curvature', () => {
+  it('continues the active track with a lead-in of constant ρ when ρ(ψ_c0) lies within [ρ_min, p(ψ_c0)]', () => {
     expect(closed.ok).toBe(true);
     expect(closed.psiStart).toBeCloseTo(psi0 - 30 * DEG, 15);
     // The end second derivative of the sampled spline is accurate to O(h²).
     expect(closed.leadInRho).toBeCloseTo(0.022, 8);
-    // An eccentric circle has constant ρ, so the lead-in arc is the circle itself.
+    // An eccentric circle has constant ρ, so the lead-in is the circle itself.
     for (let psi = closed.psiStart; psi <= psi0; psi += 2 * DEG) expect(Math.abs(s.p(psi) - circle.p(psi))).toBeLessThan(1e-8);
     for (let psi = psi0; psi <= psiF; psi += 2 * DEG) expect(Math.abs(s.p(psi) - circle.p(psi))).toBeLessThan(1e-9);
   });
@@ -93,6 +93,68 @@ describe('closed cable track', () => {
     const X = s.point(closed.psiStart + (2 * Math.PI * 100) / 720);
     expect(o.x[100]).toBeCloseTo(X.x, 15);
     expect(o.y[100]).toBeCloseTo(X.y, 15);
+  });
+
+  it('lets the lead-in settle to ρ_0 = clamp(ρ(ψ_c0), ρ_min, p(ψ_c0)) with p, p\' and p\'\' continuous', () => {
+    const lambda = LEAD_IN_DECAY;
+    // p(ψ_c0) = 30 mm with ρ(ψ_c0) = 330 mm (clamped to 30 mm) and 2 mm
+    // (clamped to ρ_min = 5 mm).
+    for (const [second, rho0] of [[0.3, 0.03], [-0.028, 0.005]]) {
+      const rhoBrace = 0.03 + second;
+      const excess = rhoBrace - rho0;
+      const track = createPiecewise([hermiteQuintic(psi0, 200 * DEG, [0.03, 0, second], [0.03, 0, 0])]);
+      const r = /** @type {import('../../src/core/outline.js').ClosedCable} */ (
+        closeCableTrack(track, { leadIn: 30 * DEG, rhoMin: 0.005, step: 0.5 * DEG })
+      );
+      expect(r.leadInRho).toBeCloseTo(rho0, 15);
+      const out = new Float64Array(3);
+      let previous = rhoBrace;
+      for (let u = 0; u <= 30 * DEG + 1e-12; u += 0.1 * DEG) {
+        // ρ(u) = ρ_0 + (ρ(ψ_c0) − ρ_0)·(1 + u/λ)·e^(−u/λ), monotone between both values.
+        const rho = r.track.rho(psi0 - u);
+        expect(rho).toBeCloseTo(rho0 + excess * (1 + u / lambda) * Math.exp(-u / lambda), 12);
+        expect((previous - rho) * Math.sign(excess)).toBeGreaterThanOrEqual(-1e-15);
+        previous = rho;
+        // No outward swing: p stays within 2λ·|ρ(ψ_c0) − ρ_0| of the arc of radius ρ_0.
+        r.track.evaluate(psi0 - u, out);
+        expect(Math.abs(out[0] - 0.03)).toBeLessThanOrEqual(2 * lambda * Math.abs(excess) + (0.03 - rho0) * (1 - Math.cos(u)) + 1e-15);
+      }
+      // p' and p'' of the lead-in against central differences.
+      for (const u of [0.3 * DEG, 2 * DEG, 20 * DEG]) {
+        const d = 1e-5;
+        const f = (/** @type {number} */ psi) => r.track.evaluate(psi, new Float64Array(3))[0];
+        r.track.evaluate(psi0 - u, out);
+        expect(Math.abs((f(psi0 - u + d) - f(psi0 - u - d)) / (2 * d) - out[1])).toBeLessThan(1e-9);
+        expect(Math.abs((f(psi0 - u + d) - 2 * f(psi0 - u) + f(psi0 - u - d)) / (d * d) - out[2])).toBeLessThan(1e-4);
+      }
+      // p, p', p'' continuous at the join with the active track.
+      const left = Float64Array.from(r.track.evaluate(psi0 - 1e-9, out));
+      track.evaluate(psi0, out);
+      for (let i = 0; i < 3; i++) expect(Math.abs(out[i] - left[i])).toBeLessThan(1e-9);
+      // The closed spline smooths the kink of ρ at the join by less than 5 %
+      // of the change in ρ; a lead-in that starts at ρ_0 (p'' jumps at the
+      // join) makes the spline dip about 13 % below ρ_0.
+      const s2 = createSupport(r.support);
+      const low = minimumOn((psi) => s2.rho(psi), r.psiStart, psi0, 1200);
+      expect(low.value).toBeGreaterThan(Math.min(rho0, rhoBrace) - 0.05 * Math.abs(excess));
+    }
+  });
+
+  it('closes the track with no lead-in or one far below the knot spacing', () => {
+    const step = 0.25 * DEG;
+    for (const leadIn of [0, 1.5e-179, 1e-15, 1e-9]) {
+      const r = /** @type {import('../../src/core/outline.js').ClosedCable} */ (closeCableTrack(active, { leadIn, rhoMin: 0.005, step }));
+      expect(r.ok).toBe(true);
+      expect(r.psiStart).toBe(psi0 - leadIn);
+      const { knots } = r.support;
+      expect(knots[0]).toBe(r.psiStart);
+      expect(knots[knots.length - 1]).toBe(r.psiStart + 2 * Math.PI);
+      for (let k = 1; k < knots.length; k++) expect(knots[k] - knots[k - 1]).toBeGreaterThanOrEqual(1e-3 * step);
+      const t = createSupport(r.support);
+      // No spike of p'' where the lead-in meets the active track.
+      expect(minimumOn((psi) => t.rho(psi), r.psiStart, r.psiStart + 2 * Math.PI, 2880).value).toBeGreaterThan(0.005 - 1e-6);
+      for (let psi = psi0; psi <= psiF; psi += 2 * DEG) expect(Math.abs(t.p(psi) - circle.p(psi))).toBeLessThan(1e-9);
+    }
   });
 
   it('reports an arc too short to close and a blend that bends too sharply', () => {
