@@ -84,7 +84,15 @@ test.describe('solver in the page', () => {
   test('switching the dimension unit re-labels the results', async ({ page }) => {
     await page.goto('./');
     await solved(page);
-    await page.getByTestId('unit-dims').selectOption('in');
+    // The cached values switch at once, in the same task as the change,
+    // before the next solve can finish.
+    const text = await page.evaluate(() => {
+      const select = /** @type {HTMLSelectElement} */ (document.querySelector('[data-testid="unit-dims"]'));
+      select.value = 'in';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      return document.querySelector('[data-testid="metric-camMaxDimension"]')?.textContent;
+    });
+    expect(text).toMatch(/^\d+\.\d{3} in$/);
     await expect(page.getByTestId('metric-camMaxDimension')).toHaveText(/^\d+\.\d{3} in$/, { timeout: 20_000 });
     await expect(page.getByTestId('field-bore')).toHaveValue(/^0\.3\d+$/);
   });

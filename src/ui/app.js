@@ -219,7 +219,10 @@ export function startApp() {
     const pending = solverStatus === 'busy' && performance.now() - busySince >= PENDING_DELAY;
     const { current, stale, outdated, status, shown, withCurve } = solveView(latest, lastGood, solverStatus, pending);
     const now = store.getState();
-    results.render({ status, result: current?.result ?? null, state: current?.state ?? now, stale, outdated });
+    // Cached values show in the units selected now.
+    results.render({
+      status, result: current?.result ?? null, state: current ? { ...current.state, units: now.units } : now, stale, outdated,
+    });
     // The drawn cam keeps its geometry; labels follow the current units.
     camView.render(
       shown?.result ?? null,
