@@ -143,12 +143,29 @@ Explicit per sample, no marching:
   fixed at x_f.
 - Interpolant: C2 piecewise quintic Hermite; slopes by Fritsch–Carlson,
   second derivatives limited so monotone data stay monotone. C2 matters
-  because ρ_c depends on F''.
+  because ρ_c depends on F''. Construction (`src/core/interp.js`): slopes
+  d_i by the Fritsch–Butland weighted harmonic mean with the three-point end
+  formula (as SciPy `PchipInterpolator`); s_i = mean of the end second
+  derivatives of the two adjacent cubic Hermite pieces. Per interval the
+  minimum of the quartic q' on [0, 1] is found exactly (roots of q'' isolated
+  on monotone pieces of q''). Where q' changes sign against the data, a
+  bisection finds the largest common factor for s at both knots; if s = 0 is
+  not enough, the largest factor for d. Neighbours are re-checked. The
+  monotone parameter set is convex and contains d = s = 0 (quintic
+  smoothstep), so the search is exact and terminates; after 20·n fixes both
+  knots of a violating interval are set to d = s = 0. Result: each interval
+  is monotone between its end values, local extrema sit at knots, flat data
+  stay flat.
 - Definitions: F_hold = min F on [x_peak, x_f]; let-off =
   (F_peak − F_hold) / F_peak; valley width = length of the interval around the
   minimum where F ≤ F_hold + 0.05·F_peak.
 - Peak slider scales all interior points. Let-off slider applies an affine map
-  to the points after the peak. Points stay > 0 N.
+  to the points after the peak. Points stay ≥ 1 N.
+- Parametric generator: brace, ramp point (40 % of the rise, 70 % of the
+  peak), peak start (rise fraction of the power stroke), peak end (60 % of
+  the way to the valley), let-off transition point (halfway, half the drop),
+  valley start and full draw; the flat part at full draw is adjusted until
+  the measured valley width matches the requested one.
 - Walls are vertical in the rigid model; the wall position is x_f. A cable
   stop post is placed on the cable span at θ(x_f).
 
@@ -250,8 +267,8 @@ Independent set; everything else is derived and shown read-only.
   dynamics not modelled.
 - Touch: Pointer Events, `touch-action: none` on the editor, hit targets
   ≥ 44 px. Keyboard: points focusable, arrows move 0.1 in / 1 N, Shift ×10.
-- Responsive layout: side-by-side panels on wide screens, tabs on narrow
-  screens.
+- Responsive layout: side-by-side panels on screens from 960 px, stacked
+  panels on narrower screens; no horizontal scroll at 320 px.
 
 ## Export geometry
 

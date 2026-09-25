@@ -1,2 +1,3 @@
 - [Home](Home.md)
+- [User guide](user-guide.md)
 - [Plan](PLAN.md)

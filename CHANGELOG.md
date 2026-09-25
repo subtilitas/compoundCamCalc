@@ -13,4 +13,26 @@ All notable changes are listed here. Versions follow semantic versioning.
   1 lbf = 4.4482216152605 N) and parsing of decimal comma input.
 - CI, docs-to-wiki and release workflows; Pages deploy on push to `main`.
 - README coverage figure with a `--check` mode.
-- Stub page.
+- CI check that fails on session links in tracked files or commit messages
+  (`scripts/check-session-links.js`).
+- Force curve interpolant (`src/core/interp.js`): C2 piecewise quintic
+  Hermite spline with Fritsch–Butland slopes (as SciPy
+  `PchipInterpolator`) and second derivatives limited per interval, so
+  monotone data stay monotone without overshoot; exact integral; optional
+  prescribed slope and second derivative at the start point.
+- Force curve model (`src/core/curve.js`): peak, holding weight, let-off,
+  valley width (5 % band), draw energy and power stroke; parametric
+  generator with seven points; move, add and remove point operations with a
+  0.1 in (2.54 mm) minimum gap and a 1 N to 5000 N force range; peak scaling
+  and let-off mapping.
+- Project state (`src/state/`): schema version 1 in SI units with
+  validation messages in plain words, migration of saved data, JSON codec
+  that never throws, default preset (ATA 33 in, brace height 6.5 in, draw
+  length 29 in, peak 267 N, let-off 80 %, string diameter 2.5 mm) and a
+  store with undo and redo of 100 steps and transactions for drag gestures.
+- Force curve editor: SVG chart with mouse, touch and keyboard editing,
+  floating position readout, toolbar, point table with inline messages,
+  stats line, settings for geometry, peak, let-off, rise and valley width,
+  unit selectors for draw length, force and energy, parametric and custom
+  curve modes, glossary popovers, autosave to localStorage.
+- User guide (`docs/user-guide.md`).

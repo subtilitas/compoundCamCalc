@@ -13,9 +13,49 @@
       <p class="tagline">Twin-cam track design from a target draw force curve</p>
     </header>
     <main id="app" class="app-main" data-solve-state="idle">
-      <section class="panel" aria-labelledby="status-title">
-        <h2 id="status-title">Status</h2>
-        <p>The calculator is under construction. The force curve editor, the cam solver and the DXF and STEP exports follow in later releases.</p>
+      <div id="notices" class="notices"></div>
+      <section class="panel panel-curve" aria-labelledby="curve-title">
+        <div class="panel-head">
+          <h2 id="curve-title">Force curve</h2>
+          <span id="curve-mode" class="mode-badge" data-testid="curve-mode"></span>
+          <button type="button" id="btn-regenerate" class="link-button" data-testid="btn-regenerate">Regenerate from parameters</button>
+        </div>
+        <div class="toolbar" role="toolbar" aria-label="Curve editing" aria-controls="chart-wrap">
+          <button type="button" id="btn-add-point" data-testid="btn-add-point">Add point</button>
+          <button type="button" id="btn-delete-point" data-testid="btn-delete-point">Delete point</button>
+          <button type="button" id="btn-undo" data-testid="btn-undo" aria-keyshortcuts="Control+Z Meta+Z">Undo</button>
+          <button type="button" id="btn-redo" data-testid="btn-redo" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">Redo</button>
+          <button type="button" id="btn-reset-curve" data-testid="btn-reset-curve">Reset curve</button>
+        </div>
+        <div id="chart-wrap" class="chart-wrap"></div>
+        <p id="chart-help" class="hint">
+          Drag a point to move it. Double-click empty space to add a point, right-click a point to remove it.
+          On a touch screen, tap a point to select it and use the buttons above.
+          With the keyboard, Tab to a point and use the arrow keys (Shift for steps of 10),
+          Delete to remove it and + to add a point after it.
+        </p>
+        <dl id="stats" class="stats" data-testid="stats"></dl>
+        <p id="edit-status" class="edit-status" role="status" data-testid="edit-status"></p>
+        <details id="point-table" class="point-table" data-testid="point-table">
+          <summary>Point table</summary>
+          <div class="table-scroll">
+            <table>
+              <caption class="visually-hidden">Force curve points</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Point</th>
+                  <th scope="col" id="th-draw">Draw length (AMO)</th>
+                  <th scope="col" id="th-force">Draw force</th>
+                </tr>
+              </thead>
+              <tbody id="point-rows"></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+      <section class="panel panel-settings" aria-labelledby="settings-title">
+        <h2 id="settings-title">Settings</h2>
+        <div id="settings-body"></div>
       </section>
     </main>
     <footer class="app-footer">

@@ -7,14 +7,15 @@ and cam plate files for CAD and CNC work (DXF and STEP). It runs in the
 browser without a server and is hosted on GitHub Pages:
 <https://subtilitas.github.io/compoundCamCalc/>.
 
-Status: not usable yet. The live page is a placeholder; the calculator is
-built in stages listed in [docs/PLAN.md](docs/PLAN.md). Changes are recorded
-in [CHANGELOG.md](CHANGELOG.md).
+Status: in development. The live page contains the force curve editor
+([user guide](docs/user-guide.md)); the cam solver and the exports follow in
+the stages listed in [docs/PLAN.md](docs/PLAN.md). Changes are recorded in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Coverage
 
 <!-- coverage:start -->
-Line coverage of `src/core`, `src/state` and `src/export`: **100 %**
+Line coverage of `src/core`, `src/state` and `src/export`: **99 %**
 <!-- coverage:end -->
 
 UI code is covered by the Playwright tests and is not part of this figure.
@@ -40,6 +41,7 @@ Chromium executable.
 
 ```
 src/core/     model code in SI units, no DOM access
+src/state/    project state: schema, presets, validation, store, no DOM access
 src/ui/       user interface
 scripts/      tooling
 tests/unit/   Vitest
