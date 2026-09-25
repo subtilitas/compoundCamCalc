@@ -389,3 +389,26 @@ describe('setLetOff', () => {
     expect(r.letOff).toBe(0);
   });
 });
+
+describe('generator at short power strokes', () => {
+  it('gives valid points for every rise from 2 to 3 in of power stroke', async () => {
+    const { validatePoints } = await import('../../src/state/schema.js');
+    const { defaultState } = await import('../../src/state/presets.js');
+    const base = defaultState().geometry;
+    const failures = [];
+    for (let stroke = 2.01; stroke <= 3.0001; stroke += 0.05) {
+      const geometry = { ...base, braceHeight: 6 * INCH, drawLength: (6 + 1.75 + stroke) * INCH };
+      const range = drawRange(geometry.braceHeight, geometry.drawLength);
+      for (const riseFraction of [0.1, 0.15, 0.6]) {
+        for (const letOff of [0, 0.5, 0.9]) {
+          for (const valleyWidth of [0.1 * INCH, 1 * INCH, 6 * INCH]) {
+            const points = generateCurve({ ...range, peak: 300, letOff, riseFraction, valleyWidth });
+            const errors = validatePoints(points, geometry);
+            if (errors.length > 0) failures.push(`${stroke.toFixed(2)} in, rise ${riseFraction}: ${errors[0].message}`);
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  }, 30_000);
+});

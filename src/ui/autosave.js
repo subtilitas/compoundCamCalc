@@ -13,6 +13,8 @@ import { fromJSON, toJSON } from '../state/schema.js';
 
 /** localStorage key of the saved project. */
 export const STORAGE_KEY = 'compoundCamCalc.project';
+/** localStorage key of the current design: id, name and source of the working copy. */
+export const CURRENT_KEY = 'compoundCamCalc.current';
 /** localStorage key of a copy of saved data that could not be loaded. */
 export const BACKUP_KEY = 'compoundCamCalc.project.unreadable';
 /** Delay between the last change and the save, in ms. */
@@ -52,21 +54,41 @@ export function loadSaved() {
 }
 
 /**
+ * Stored current design text, or null.
+ * @returns {string | null}
+ */
+export function loadCurrent() {
+  try {
+    return window.localStorage.getItem(CURRENT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Save the store state after every change, debounced. A pending save is
- * written at once when the page is hidden or closed.
+ * written at once when the page is hidden or closed. The current design
+ * text, when given, is written together with the working copy, so both
+ * always come from one tab.
  * @param {Store} store
  * @param {(status: 'pending' | 'saved' | 'error') => void} onStatus
+ * @param {{ current?: () => string }} [options]
+ * @returns {{ saveNow: () => boolean }} saveNow writes at once; false when storage refuses
  */
-export function startAutosave(store, onStatus) {
+export function startAutosave(store, onStatus, options = {}) {
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;
   const save = () => {
+    clearTimeout(timer);
     timer = undefined;
     try {
       window.localStorage.setItem(STORAGE_KEY, toJSON(store.getState()));
+      if (options.current) window.localStorage.setItem(CURRENT_KEY, options.current());
       onStatus('saved');
+      return true;
     } catch {
       onStatus('error');
+      return false;
     }
   };
   const flush = () => {
@@ -83,4 +105,5 @@ export function startAutosave(store, onStatus) {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') flush();
   });
+  return { saveNow: save };
 }

@@ -166,7 +166,9 @@ describe('export files', () => {
     expect(set.files.map((f) => f.name)).toEqual([
       'plate1-string-flange', 'plate2-string-groove', 'plate3-middle-flange', 'plate4-cable-groove', 'plate5-cable-flange',
       'reference', 'string-plan',
-    ].map((p) => `cam-20260925-${id}-${p}.dxf`).concat(`cam-20260925-${id}-force-curve.csv`));
+    ].map((p) => `cam-20260925-${id}-${p}.dxf`).concat(`cam-20260925-${id}-force-curve.csv`, [
+      'cam', 'plate1-string-flange', 'plate2-string-groove', 'plate3-middle-flange', 'plate4-cable-groove', 'plate5-cable-flange',
+    ].map((p) => `cam-20260925-${id}-${p}.step`)));
     // The id ignores the display units and follows the inputs.
     expect(designId({ ...state, units: { ...state.units, dims: 'in' } })).toBe(id);
     expect(designId({ ...state, geometry: { ...state.geometry, ata: 0.85 } })).not.toBe(id);

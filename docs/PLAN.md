@@ -16,7 +16,7 @@ This file is the running record of the project. Each slice updates it.
 | Geometry model | 2D, top/bottom symmetric: rigid limb levers rotate about a pivot (pseudo-rigid-body model), axles move on an arc, string and cable contacts solved at every draw step |
 | Draw length convention | AMO (Archery Manufacturers Organization) / ATA (Archery Trade Association): draw length = nock to grip pivot point + 1.75 in; brace height = grip pivot point to string |
 | Exported curves | Pitch line (cord centre), groove bottom (pitch − d/2) and flange edge (groove bottom + groove depth), each labelled |
-| STEP content | One prismatic solid per cam layer (flange or groove-bottom outline with axle bore), pitch curves as wireframe; no Boolean operations |
+| STEP content | One prismatic solid per cam plate (flange or groove-bottom outline with axle bore and post holes), thickness from the flange thickness and groove clearance settings; a stacked file of all five plates with the pitch lines as wireframe, and one file per plate; no Boolean operations |
 | DXF content | Separate files: one cut file per cam plate, one reference file, one string-plan file; always millimetres |
 | Stack | Plain JavaScript ES modules with JSDoc types checked by `tsc`, Vite, Vitest, Playwright, ESLint |
 | Units | SI internally (m, N, rad, J, N·m/rad). Default display: draw length in in, force in N, part dimensions in mm, energy in J. Each quantity switchable |
@@ -458,7 +458,8 @@ Independent set; everything else is derived and shown read-only.
   control its number format.
 - Cut contours: closed LWPOLYLINE on the track offset outwards by the export
   tolerance, at a constant angle step, so every chord stays within ±0.01 mm.
-- Plates (no layer thicknesses in the schema yet): 1 string flange, 2 string
+- Plates (thicknesses from the flange thickness and groove clearance
+  settings, see STEP below): 1 string flange, 2 string
   groove, 3 middle flange (convex hull of both flanges), 4 cable groove, 5
   cable flange. Post holes only in the flange plates next to their cord's
   groove (string post 1 and 3, cable post and cable stop 3 and 5). A
@@ -473,17 +474,156 @@ Independent set; everything else is derived and shown read-only.
   table (CSV) and a ZIP of all of them with a README; names
   `cam-<YYYYMMDD>-<design id>-<part>`, design id = first 6 hex digits of the
   FNV-1a hash of the inputs without display units.
-- STEP AP214 (automotive design schema), hand-written:
-  - one MANIFOLD_SOLID_BREP per layer: SURFACE_OF_LINEAR_EXTRUSION side face
-    with a seam edge, planar top and bottom faces with the bore as inner loop,
-    CYLINDRICAL_SURFACE bore;
-  - pitch curves as B_SPLINE_CURVE_WITH_KNOTS in a
-    GEOMETRICALLY_BOUNDED_WIREFRAME_SHAPE_REPRESENTATION linked to the solid
-    representation;
-  - shared vertices, one EDGE_CURVE per edge used twice with opposite
-    orientation, Euler–Poincaré check;
-  - REAL tokens always contain a decimal point, upper-case exponent;
-    deterministic entity ids; timestamp injected.
+- STEP AP214 (automotive design schema, ISO 10303-214), hand-written
+  Part 21 text (`src/export/step.js`), millimetres:
+  - Plate thicknesses from two cam body settings (decision of the user):
+    flange thickness t_f (default 2 mm, 0.5 to 20 mm) for plates 1, 3 and
+    5; groove clearance c (default 0.5 mm, 0 to 5 mm) for plates 2 and 4,
+    which are d + c thick with d the diameter of their cord. The fields fill
+    in with their defaults when a saved project lacks them, so the schema
+    version stays 1.
+  - Files (decision of the user): one stacked file and one file per plate
+    with its solid on z ∈ [0, t]. The stack has plate 5 on z ∈ [0, t_f] and
+    plate 1 on top, so +Z points towards a viewer on the string side, as in
+    the drawings. The pitch lines lie in the mid-plane of their groove
+    plate. All six files go into the ZIP and have their own buttons.
+  - One MANIFOLD_SOLID_BREP per plate, named after the plate, in one
+    ADVANCED_BREP_SHAPE_REPRESENTATION of one product (a multi-body part,
+    no assembly structure); product name "Cam <design id>" in the stacked
+    file, the plate name in the others. No Boolean operations: the outline
+    and the holes are the loops of the planar faces.
+  - Outline: the exact track, not the cut offset of the DXF files, within
+    tol/2 = 0.005 mm (the user's tolerance: ±0.01 mm is enough):
+    - a plate of one track without a boss reuses the export fit of that
+      track (plate 1 string flange, 2 string groove, 4 cable groove, 5
+      cable flange): a CIRCLE for an eccentric circle, the Hermite pieces
+      of a spline track, the C2 interpolant of an ellipse;
+    - plate 3 and a plate with a boss use the hull fit (`fitHull`): arcs of
+      h(ψ) = max p_k(ψ) with crossings from a 0.25° grid refined by
+      bisection; Hermite pieces with exact points and tangents on each arc
+      (breakpoints on the track knots, at most π/8 apart otherwise, pieces
+      that fail the tol/2 check at 9 points halved); an exact straight
+      cubic on each common tangent P → Q, knot interval 2L/(ρ_a + ρ_b) and
+      inner points P + (Δu/3)ρ_a·t, Q − (Δu/3)ρ_b·t, so the curve is C1 in
+      u. The boss is an eccentric-circle track. A hull of one track over
+      the whole turn reuses that track's curve. The curve starts at ψ_0 = 0
+      (plates 1 to 3) or at the cable track start (plates 4 and 5).
+    - Interior triple knots are reduced to double ones where the curve is
+      C1 in u (exact knot removal); coordinates carry 12 significant
+      digits, knots 15.
+  - Holes: bore and post holes as CIRCLE edges and CYLINDRICAL_SURFACE
+    faces. A hole closer than tol to the outline or to another hole is left
+    out of the solids with a warning.
+  - Topology and orientation: per closed profile two vertices at its start
+    point (bottom, top), three edges (bottom curve, top curve, vertical
+    seam LINE) and one side face; V = 2n, E = 3n, F = n + 2, L = 3n for n
+    profiles, so V − E + 2F − L = 2(1 − G) with G = n − 1 holes. Profiles
+    run counter-clockwise seen from +Z. Outline side face: loop (bottom
+    .T., seam .T., top .F., seam .F.), same_sense .T.; hole side face:
+    loop (bottom .F., seam .T., top .T., seam .F.), same_sense .F.; top
+    PLANE (axis +Z) same_sense .T. with the outline .T. and holes .F.;
+    bottom PLANE same_sense .F. with the outline .F. and holes .T.; outer
+    loops FACE_OUTER_BOUND, holes FACE_BOUND. No topology is shared
+    between solids.
+  - Pitch lines: a GEOMETRIC_CURVE_SET in a
+    GEOMETRICALLY_BOUNDED_WIREFRAME_SHAPE_REPRESENTATION linked to the
+    B-rep by SHAPE_REPRESENTATION_RELATIONSHIP; a circle is written as a
+    TRIMMED_CURVE over one turn (a bounded curve). Some programs hide
+    wireframe on import.
+  - Header: FILE_SCHEMA AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 },
+    time stamp YYYY-MM-DDThh:mm:ss of the export; units millimetre, radian,
+    steradian; uncertainty 1E-6 mm. REAL tokens always carry a decimal
+    point; strings escape ' and \ and write other characters as
+    \X2\hhhh\X0\, above U+FFFF as \X4\hhhhhhhh\X0\.
+- File menu (request of the user, same slice as STEP): several named
+  designs in the browser plus JSON project files (decision of the user),
+  and sample designs.
+  - Header: "Design: <name>" and one "File" button (disclosure with
+    `aria-expanded`, not `role=menu`; Escape closes it and returns focus)
+    opening Save, Save as…, Open…, Open sample…, Reset to default, Save to
+    file (.json) and Open from file…. "(unsaved changes)" follows the name while the
+    inputs differ from the saved copy; it is not a live region. Without a
+    current design the name reads "Untitled"; a design opened from a file
+    reads "<file name> (from file, not saved)".
+  - Dialogs: native `<dialog>` with `showModal()` for Save as, Rename, Open
+    and confirmations; focus returns to the control that opened them; the
+    Ctrl+Z/Y handler ignores keys while a dialog is open. Name fields have
+    visible labels, errors use `aria-invalid` and `aria-describedby`. The
+    Open list shows name and saved time per row with Open, Rename and
+    Delete buttons whose accessible names carry the design name; at 320 px
+    the row stacks, every target is 44 px, nothing scrolls sideways.
+    Results ("Saved "bow"", "Opened "bow"", errors) go to one live region
+    that is always in the page.
+  - Library (`src/state/library.js`, no DOM): localStorage key
+    `compoundCamCalc.designs` holds `{ version: 1, designs: [{ id, name,
+    savedAt, state }] }`, savedAt as ISO 8601. Names are trimmed, inner
+    white space collapsed, NFC-normalised, 1 to 80 characters, unique
+    ignoring case; a clash in Save as or Rename shows "A design named
+    "<name>" already exists" with a Replace button. Every operation reads
+    the library right before writing; a `storage` event from another tab
+    refreshes the list, the name and the marker. Each entry is checked with
+    migrate and validate when listed; a broken entry reads "cannot be
+    opened" and can only be deleted. A library that cannot be parsed is
+    copied to `compoundCamCalc.designs.unreadable` and never overwritten.
+  - Current design: `compoundCamCalc.current` holds `{ id, name, source }`
+    (id null for an unsaved design) and is written in the same save as the
+    working copy `compoundCamCalc.project`, and at once on Open, Save, Save
+    as, Rename and Delete, so name and inputs always come from one tab. A
+    reload restores the working copy with its name and marker. There is no
+    leave-page prompt: the working copy is autosaved.
+  - Unsaved changes: `toJSON(state)` differs from the saved copy after
+    `fromJSON` (key order normalised by `migrate`, including table rows).
+    Recomputed after each change outside a gesture; undoing back to the
+    saved inputs clears it; display units count. Without a current design,
+    the marker shows when the inputs differ from the default preset, so an
+    untouched default never asks before Open.
+  - Save writes the working copy into the current design; without one it
+    opens Save as…, prefilled with the file name for a design from a file.
+    Opening a design or a file while the marker shows asks first (Discard
+    or Cancel).
+  - Reset to default replaces the inputs with the default preset, keeps
+    the display units, leaves the saved design untouched (the marker
+    shows) and is one undo step. Its description reads "Replace all inputs
+    with the default design", unlike Reset curve.
+  - Open and Open from file use a new store method `replace(state)`:
+    validates the state, clears undo, redo and any open gesture, always
+    notifies, is not undoable. The app then drops the latest and last-valid
+    solve results, so exports wait for a cam of the opened design, and the
+    editor clears its point selection and message.
+  - Delete of the open design (here or in another tab) keeps the inputs as
+    an unsaved design with the same name; the confirmation says so.
+  - Save to file downloads `<name>.json` (characters `/\:*?"<>|` and
+    control characters replaced by '-', fallback `design.json`) with the
+    project state in the autosave format, schema version 1. Open from file…
+    rejects empty files, files over 1 MB and non-JSON text before parsing;
+    with any `fromJSON` error nothing changes and the message reads "Could
+    not open <file>: <first error>"; a file that lacked fields opens with
+    "Missing values in <file> were set to their defaults". The file input
+    is cleared after each pick.
+  - Storage blocked or full: a failed write keeps the marker and says "The
+    design was not saved: browser storage is full or blocked. Use Save to
+    file."; with storage blocked, Save, Save as and Open… are disabled with
+    that note, and the file actions keep working. Nothing throws.
+  - Open sample… lists the sample designs (`src/state/samples.js`) with a
+    one-line description each; a sample opens like a file, as an unsaved
+    design named after the sample. Samples (request of the user): the
+    default target compound bow, a hunting compound bow, a crossbow and a
+    mini bow whose cams print on an FDM (fused deposition modelling)
+    printer with a 0.4 mm nozzle. Each solves with zero diagnostics; a unit
+    test checks that.
+  - Input ranges widen for crossbows and small bows: axle-to-axle length
+    8 to 48 in, brace height from 1.5 in, draw length from 6 in, limb lever
+    from 2 in, peak force from 5 N, limb stiffness from 0.1 N/mm, power
+    stroke from 2 in.
+  - Export file names keep the design id hash in this slice.
+  - Tests: unit tests for the library codec (parse, broken entry,
+    unreadable library, names, file names), `store.replace`, the unsaved
+    comparison (revert, reordered keys) and partial files; Playwright for
+    the first visit, Save as and reload, a name clash, Open with unsaved
+    changes, undo after Open and after Reset to default, Delete of the open
+    design, Save to file and Open from file round trip, invalid files,
+    blocked storage, two pages sharing a library, the export panel after
+    Open, 320 px layout, focus return and a keyboard-only flow.
 
 ## Verification
 
@@ -505,10 +645,18 @@ Committed as tests with stated tolerances:
 - Property tests: interpolant monotone on monotone data; envelope point on its
   tangent line; ρ matches finite differences.
 - Default preset solves with zero diagnostics.
-- STEP: custom Part 21 checker (references, REAL format, knot sums, edge use,
-  loop connectivity, Euler–Poincaré); `occt-import-js` (dev dependency) for
-  solid count, face count, volume against ½∫(p² − p'²)dψ within 0.1 %, bounding
-  box and unit handling.
+- STEP: a Part 21 checker (`tests/unit/step-reader.js`, also run by
+  `scripts/validate-step.js` in the CI export job): references, REAL and
+  INTEGER tokens, knot sums, edge use, loop connectivity, Euler–Poincaré,
+  loop orientation on the planar faces (signed area against the face
+  normal) and side-face orientation. occt-import-js heals orientation
+  errors, so its import proves neither. occt-import-js (dev dependency,
+  absolute deflection 0.001 mm, angular 0.1): one mesh per solid, face
+  count, z range, and mesh volume against t·(outline area − hole areas)
+  within 2e-4, with the outline area from the written B-spline (Green,
+  3-point Gauss per span). The outline area against the exact hull area
+  ½∫p(p + p'')dψ on the arcs plus ½ P × Q on each tangent stays within
+  0.4 m × tol/2.
 - DXF: round trip with an own reader (`tests/unit/dxf-reader.js`); `ezdxf audit` in CI; header units; end-to-end
   test that parses the exported DXF, rebuilds the tracks, runs the forward
   model and matches the target.
@@ -579,8 +727,8 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 3b | User interface of slice 3: solver worker (latest request wins, coarse while dragging, full on release), results card with diagnostics, achieved-curve overlay, cam view, settings for limbs, string track, cords and cam body |
 | 4 | String plan layout, build lengths, loads chart, draw-position scrubber. Pose and loads in `src/core/layout.js` from the forward-model samples, linear between samples; no change to the solver, the worker or the project schema. The draw position is view state: not saved, not in the undo history, no solve. Zoom and pan shared in `src/ui/viewport.js` |
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export. Hand-written R2000 writer, five plate profiles with post holes in the flange plates, ZIP of all files, no mirror option (decisions of the user); exports use the last cam that met every check |
-| 6 | STEP export |
-| 7 | Additional presets, JSON save/load, share URL, glossary and help, print report, wiki user guide |
+| 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
+| 7 | Share URL, glossary and help, print report, wiki user guide |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter

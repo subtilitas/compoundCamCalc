@@ -1,12 +1,14 @@
 /**
  * Application wiring: store, editor, chart, table, settings, stats,
- * solver, results, cam view, toolbar, keyboard shortcuts, notices and
- * autosave.
+ * solver, results, cam view, toolbar, keyboard shortcuts, notices,
+ * autosave and the File menu.
  * @module ui/app
  */
 
 import { createStore } from '../state/store.js';
-import { startAutosave, loadSaved } from './autosave.js';
+import { parseCurrent, serializeCurrent } from '../state/library.js';
+import { loadCurrent, startAutosave, loadSaved } from './autosave.js';
+import { createFileMenu } from './filemenu.js';
 import { createCamView } from './camview.js';
 import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
 import { createChart } from './chart.js';
@@ -107,6 +109,14 @@ export function startApp() {
   const saved = loadSaved();
   const store = createStore(saved.state);
   const editor = createEditor(store);
+  /** @type {{ saveNow: () => boolean } | null} */
+  let autosave = null;
+  const fileMenu = createFileMenu(byId('file-area', HTMLDivElement), store, {
+    // A notice about unreadable saved data means the working copy is the
+    // default design, whatever the stored current design says.
+    current: saved.notice ? parseCurrent(null) : parseCurrent(loadCurrent()),
+    persist: () => autosave?.saveNow() ?? false,
+  });
 
   const chart = createChart(byId('chart-wrap', HTMLDivElement), editor);
   const table = createPointTable(
@@ -192,6 +202,8 @@ export function startApp() {
 
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    // A dialog of the File menu keeps its keys.
+    if (document.querySelector('dialog[open]')) return;
     const t = e.target;
     // Text fields keep their own undo.
     if ((t instanceof HTMLInputElement && t.type === 'text') || t instanceof HTMLTextAreaElement) return;
@@ -230,6 +242,10 @@ export function startApp() {
   const pose = createBowPose();
   /** @type {{ result: SolveResult, state: ProjectState } | null} */
   let lastGood = null;
+  /** Count of design switches (store.replace); results carry the count of their request. */
+  let generation = 0;
+  /** @type {WeakMap<ProjectState, number>} */
+  const generationOf = new WeakMap();
   /** @type {{ result: SolveResult, state: ProjectState } | null} */
   let latest = null;
   /** @type {'idle' | 'busy' | 'error'} */
@@ -302,6 +318,11 @@ export function startApp() {
 
   const solver = createSolver({
     onResult(result, _resolution, state) {
+      // A result for a design that was replaced since is dropped.
+      if (generationOf.get(state) !== generation) {
+        showSolve();
+        return;
+      }
       latest = { result, state };
       if (meetsEveryCheck(result)) lastGood = latest;
       showSolve();
@@ -328,8 +349,18 @@ export function startApp() {
     const resolution = store.inTransaction() ? 'coarse' : 'full';
     if (sent && sent.state === s && (sent.resolution === 'full' || resolution === 'coarse')) return;
     sent = { state: s, resolution };
+    generationOf.set(s, generation);
     solver.request(s, resolution);
   };
+  // Another design: no result of the previous one stays in view or in the
+  // export panel, also none still in flight.
+  store.subscribe((_s, _p, info) => {
+    if (!info.replaced) return;
+    generation++;
+    latest = null;
+    lastGood = null;
+    showSolve();
+  });
   store.subscribe((s) => requestSolve(s));
   // Unit changes relabel the solve views at once.
   let shownUnits = store.getState().units;
@@ -344,11 +375,11 @@ export function startApp() {
   if (saved.notice) showNotice(notices, saved.notice);
   let storageWarned = false;
   root.dataset.autosave = 'idle';
-  startAutosave(store, (state) => {
+  autosave = startAutosave(store, (state) => {
     root.dataset.autosave = state;
     if (state === 'error' && !storageWarned) {
       storageWarned = true;
       showNotice(notices, 'This browser does not allow saving. Changes are lost when the page is closed.');
     }
-  });
+  }, { current: () => serializeCurrent(fileMenu.current()) });
 }

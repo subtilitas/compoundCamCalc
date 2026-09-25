@@ -12,6 +12,7 @@ import {
   parseLimbRows,
   quantityOf,
   seedLimbTable,
+  sliderStep,
   stringTrackExtra,
   stringTrackMessage,
   toDisplay,
@@ -264,5 +265,18 @@ describe('limb table rows', () => {
     expect(nextLimbRow([{ travel: 0.3, force: 1 }, { travel: 0.399995, force: 2 }])).toBeNull();
     const full = Array.from({ length: LIMB_TABLE.maxRows }, (_, i) => ({ travel: i * 0.001, force: 100 }));
     expect(nextLimbRow(full)).toBeNull();
+  });
+});
+
+describe('slider step', () => {
+  it('divides the range with both ends reachable', () => {
+    expect(sliderStep(895, 895)).toBe(1);
+    expect(sliderStep(191, 382)).toBe(0.5);
+    // 201.1 lbf in 402 steps: a decimal step at most the exact one.
+    const step = sliderStep(202.3 - 1.2, 402);
+    expect(step).toBeLessThanOrEqual((202.3 - 1.2) / 402);
+    expect(step * 402).toBeGreaterThan(202.3 - 1.2 - 1e-9);
+    expect(String(step).replace(/^0\.|\./, '').replace(/^0+/, '').length).toBeLessThanOrEqual(12);
+    expect(Math.floor((202.3 - 1.2) / step)).toBe(402);
   });
 });

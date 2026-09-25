@@ -110,8 +110,9 @@ focus moves to the next useful button.
 ## Settings
 
 - **Axle-to-axle length (ATA)**, **Brace height**, **Draw length (AMO)**:
-  bow geometry. The draw length must exceed the brace height by more than
-  6.75 in (1.75 in AMO offset plus 5 in of power stroke). A change of brace
+  bow geometry, from 8 to 48 in axle to axle, so crossbows and small bows
+  fit. The draw length must exceed the brace height by more than
+  3.75 in (1.75 in AMO offset plus 2 in of power stroke). A change of brace
   height or draw length moves the brace point and the full-draw point; the
   other points keep their relative position in the power stroke. Where that
   brings two points closer than 0.1 in, they move apart to 0.1 in.
@@ -140,8 +141,11 @@ focus moves to the next useful button.
   phase), measured on the groove bottom.
 - **Cords**: string and cable diameter and the depth of each groove.
 - **Cam body**: axle bore diameter, minimum wall between groove bottom and
-  bore, post diameter, minimum bend radius of a track, lead-in wrap of the
-  cable at brace and residual wrap of the string at full draw.
+  bore, post diameter, minimum bend radius of a track, flange plate
+  thickness (plates 1, 3 and 5, default 2 mm), groove clearance (plates 2
+  and 4 are the cord diameter plus the clearance thick, default 0.5 mm),
+  lead-in wrap of the cable at brace and residual wrap of the string at
+  full draw. The two plate fields only change the STEP export.
 - **Units**: draw length in in, mm or cm; force in N or lbf; dimensions in
   mm or in; energy in J or ft·lbf; stiffness in N/mm or lbf/in. The model works in SI units (metre, newton, joule); the units only
   change the display and the default unit of typed values.
@@ -321,6 +325,8 @@ data, the file list and the warnings. Each file also has its own button.
 | Reference drawing (DXF) | Pitch line, groove bottom and flange of both tracks as splines or circles, the middle-flange outline, all holes, timing marks and a title block |
 | String plan (DXF) | The whole bow at brace (layer BRACE) and full draw (FULL) with limbs, cams, string and cables, and the cord lengths as text |
 | Force table (CSV) | One row per solved draw position, in this column order: draw length (AMO), nock to pivot point, target draw force, achieved draw force, cam rotation from brace, limb rotation, string tension, tension of each cable, load on each limb tip. Each header carries its unit |
+| Stacked cam (STEP) | All five plates as solids, plate 5 at the bottom and plate 1 on top, with the pitch lines of both tracks as wireframe in the middle of their groove plates |
+| Plates 1 to 5 (STEP) | One solid per file, on z = 0 to its thickness |
 
 File names read `cam-<date>-<design id>-<part>`, for example
 `cam-20260925-187dd8-plate1-string-flange.dxf`. The design id changes with
@@ -334,8 +340,8 @@ every input except the display units, so files of one design share it.
 4. cable groove;
 5. flange, cable side.
 
-Plate thicknesses are not part of the project yet; a groove plate needs at
-least the cord diameter plus clearance. Top and bottom cams use the same
+Flange plates are the Flange plate thickness thick, groove plates the cord
+diameter plus the Groove clearance (Cam body settings). Top and bottom cams use the same
 plates: cut each plate twice and turn the bottom set over.
 
 Post holes go only into the flange plates next to the groove of their cord:
@@ -349,6 +355,15 @@ outline is left out. A warning under the buttons names the plate and the
 plates that still hold the post, for example "Plate 1 (flange, string
 side): the string post reaches past the outline, so this plate has no hole
 for it; plate 3 still holds it".
+
+**STEP solids.** The STEP files (AP214, millimetres) hold each plate as a
+prism: flange plates are the flange plate thickness thick, groove plates
+the cord diameter plus the groove clearance (Cam body settings). Their
+outlines follow the tracks within 0.005 mm, without the cut offset of the
+DXF files. A hole closer than 0.01 mm to the outline or to another hole is
+left out of the solids, and a warning says so. Some CAD programs hide the
+wireframe pitch lines on import; the solids import as bodies named after
+the plates.
 
 **Units and accuracy.** DXF files are in millimetres at 1:1, with the origin
 at the axle centre and the cam at brace, +X towards the archer and +Y up.
@@ -392,9 +407,58 @@ uses 900 N".
 and unit changes. One drag of a point or of a slider counts as one change;
 Undo and Redo wait until the drag ends.
 
+## File menu
+
+The File button in the page header opens the design actions. The name of
+the current design stands next to it. A first visit shows "Untitled". After
+the name:
+
+- "(unsaved changes)": the inputs differ from the saved copy (for Untitled:
+  from the default design). Display units do not count.
+- "(not saved)": a sample, an opened file or a deleted design, unchanged
+  since it opened.
+- "(not saved, changed)": the same, with changes.
+
+| Action | What it does |
+|---|---|
+| Save | Stores a saved design under its name. For a new design, a sample, an opened file or a deleted design it asks for a name, as Save as. |
+| Save as… | Asks for a name (1 to 80 characters) and stores a copy. A name another design has, ignoring case, shows an error with a Replace button. |
+| Open… | Lists the stored designs, newest first, with Open, Rename and Delete per design. |
+| Open sample… | Lists the sample designs. A sample opens as an unsaved design. |
+| Reset to default | Replaces all inputs with the default design. The name stays; Undo restores the inputs. |
+| Save to file (.json) | Downloads the inputs as `<name>.json`. |
+| Open from file… | Reads such a file. A file that is empty, larger than 1 MB or not a valid project changes nothing and the message names the reason. Missing values take their defaults, and the message says so. |
+
+Opening a design, a sample or a file asks first when the current inputs
+have unsaved changes or belong to a deleted design, and clears the undo
+history. Results and exports of the previous design disappear until the
+opened design is solved; a solve of the previous design that was still
+running is dropped. Deleting the open design, here or in another tab,
+keeps its inputs open, marked "(not saved)". Designs are stored in this
+browser only (localStorage key `compoundCamCalc.designs`); use Save to file
+to move a design to another computer or keep a backup. A browser that
+blocks storage turns Save, Save as and Open off. Full storage turns Save
+and Save as off and keeps Open, so designs can be deleted to free space.
+The file actions keep working in both cases.
+
+Sample designs, each solving without problems:
+
+| Sample | Axle to axle | Draw | Peak, let-off | Cam |
+|---|---|---|---|---|
+| Compound bow, target (60 lbf) | 33 in | 29 in | 267 N, 75 % | 98 mm |
+| Compound bow, hunting (70 lbf) | 31 in | 29 in | 311 N, 80 %, elliptical string track | 132 mm |
+| Crossbow (169 lbf) | 16 in | 19 in (13.25 in power stroke) | 750 N, 50 % | 86 mm |
+| Mini bow for FDM printing | 10 in | 8.5 in | 30 N, 60 % | 26 mm, M3 bore, 1 mm line |
+
+The limb values of the samples are assumptions and are not checked against
+measured limbs. The mini bow keeps every wall at 1.2 mm or more (3
+perimeters of a 0.4 mm nozzle) and uses 1.4 mm plates (7 layers of
+0.2 mm); a printed part holds about ±0.1 to 0.2 mm, coarser than the
+0.01 mm of the export files.
+
 ## Saving
 
-The project is saved in the browser (localStorage) 300 ms after each change,
+The working copy is saved in the browser (localStorage) 300 ms after each change,
 or at once when the page is hidden or closed, and restored when the page
 opens again. When saved data cannot be read, for example data from a newer
 version of the app, the default project is shown and a notice explains why.

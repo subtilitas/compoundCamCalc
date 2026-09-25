@@ -125,6 +125,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/export-samples.js export-samples
+      - run: node scripts/validate-step.js export-samples
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'

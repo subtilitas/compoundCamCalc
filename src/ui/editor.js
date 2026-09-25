@@ -72,10 +72,11 @@ export function createEditor(store) {
 
   // Every store change clears the message: editor actions say() after they
   // dispatch, so undo, redo, drags and settings leave no stale text. Keep
-  // the selection valid after undo, redo and loads.
-  store.subscribe((state) => {
+  // the selection valid after undo, redo and loads; another design starts
+  // without a selection.
+  store.subscribe((state, _previous, info) => {
     message = '';
-    if (selected >= state.curve.points.length) {
+    if (info?.replaced || selected >= state.curve.points.length) {
       selected = -1;
       notify();
     }

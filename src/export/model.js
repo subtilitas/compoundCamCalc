@@ -22,9 +22,9 @@
  * @module export/model
  */
 
-import { EXPORT_TOLERANCE, fitSupport, supportCircle } from '../core/bspline.js';
+import { EXPORT_TOLERANCE, fitHull, fitSupport, supportCircle } from '../core/bspline.js';
 import { describeError } from '../core/errors.js';
-import { createSupport } from '../core/support.js';
+import { createSupport, eccentricCircle } from '../core/support.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../core/support.js').SupportData} SupportData */
@@ -71,6 +71,17 @@ const CONTACT = 1e-9;
  * @property {Circle[]} holes bore first, then posts
  * @property {string[]} holeIds 'bore' or the post id, per hole
  * @property {Circle[]} bosses discs added to the outline around a post
+ * @property {PlateOutline | null} outline exact outline for solids (STEP):
+ *   the track curve within tol/2, not offset; null when it cannot be fitted
+ * @property {boolean[]} holeClear per hole: at least tol from the outline
+ *   and from every other hole, so a solid can carry it
+ */
+
+/**
+ * @typedef {object} PlateOutline
+ * @property {Circle | null} circle
+ * @property {BSpline | null} spline closed
+ * @property {string} source curve id it reuses, or 'hull'
  */
 
 /**
@@ -198,20 +209,25 @@ function buildChecked(result, state, options) {
   const sg = createSupport(data.stringGroove);
   const cf = createSupport(data.cableFlange);
   const cg = createSupport(data.cableGroove);
-  /** @type {[number, string, string, Support[], SupportData | null][]} */
+  /**
+   * number, id, name, supports, single track, the curve ids of the tracks,
+   * start angle of the outline.
+   * @type {[number, string, string, Support[], SupportData | null, [SupportData, string][], number][]}
+   */
   const plateDefs = [
-    [1, 'plate1-string-flange', '1 Flange, string side', [sf], data.stringFlange],
-    [2, 'plate2-string-groove', '2 String groove', [sg], data.stringGroove],
-    [3, 'plate3-middle-flange', '3 Middle flange', [sf, cf], null],
-    [4, 'plate4-cable-groove', '4 Cable groove', [cg], data.cableGroove],
-    [5, 'plate5-cable-flange', '5 Flange, cable side', [cf], data.cableFlange],
+    [1, 'plate1-string-flange', '1 Flange, string side', [sf], data.stringFlange, [[data.stringFlange, 'string-flange']], 0],
+    [2, 'plate2-string-groove', '2 String groove', [sg], data.stringGroove, [[data.stringGroove, 'string-groove']], 0],
+    [3, 'plate3-middle-flange', '3 Middle flange', [sf, cf], null,
+      [[data.stringFlange, 'string-flange'], [data.cableFlange, 'cable-flange']], 0],
+    [4, 'plate4-cable-groove', '4 Cable groove', [cg], data.cableGroove, [[data.cableGroove, 'cable-groove']], cableStart],
+    [5, 'plate5-cable-flange', '5 Flange, cable side', [cf], data.cableFlange, [[data.cableFlange, 'cable-flange']], cableStart],
   ];
   const wall = state.body.minWall;
   /** @type {Plate[]} */
   const plates = [];
   /** @type {{ plate: string, id: keyof typeof POST_NAMES }[]} */
   const missed = [];
-  for (const [number, id, name, flanges, single] of plateDefs) {
+  for (const [number, id, name, flanges, single, tracks, psi0] of plateDefs) {
     /** @type {HullSupport[]} */
     const supports = [...flanges];
     /** @type {Circle[]} */
@@ -246,7 +262,16 @@ function buildChecked(result, state, options) {
       holes.push({ cx: post.x, cy: post.y, r: post.radius });
       holeIds.push(post.id);
     }
-    plates.push({ number, id, name, contour, outlineCircle: circle, holes, holeIds, bosses });
+    const outline = plateOutline(curves, tracks, bosses, psi0, tol);
+    if (!outline) warnings.push(`${label}: the outline for the solid could not be fitted, so the STEP files leave this plate out`);
+    const holeClear = holes.map((hole, i) => {
+      const inside = circle ? circleClearance(circle, hole.cx, hole.cy, hole.r) >= tol : fits(supports, hole.cx, hole.cy, hole.r + tol);
+      return inside && holes.every((o, j) => j === i || Math.hypot(o.cx - hole.cx, o.cy - hole.cy) >= o.r + hole.r + tol);
+    });
+    holeClear.forEach((ok, i) => {
+      if (!ok) warnings.push(`${label}: the ${i === 0 ? 'axle bore' : POST_NAMES[/** @type {keyof typeof POST_NAMES} */ (holeIds[i])]} lies closer than ${(tol * 1000).toFixed(2)} mm to the outline or another hole, so the STEP files leave that hole out`);
+    });
+    plates.push({ number, id, name, contour, outlineCircle: circle, holes, holeIds, bosses, outline, holeClear });
   }
   for (const { plate, id } of missed) {
     const holders = plates.filter((p) => p.holeIds.includes(id)).map((p) => p.number);
@@ -264,6 +289,32 @@ function buildChecked(result, state, options) {
     .filter((m) => [m.x, m.y, m.nx, m.ny].every(Number.isFinite))
     .map((m) => ({ id: m.id, x: m.x, y: m.y, nx: m.nx, ny: m.ny }));
   return { model: { curves, plates, marks, tolerance: tol, warnings }, error: null };
+}
+
+/**
+ * Exact outline of a plate for solids: the fitted curve of its single
+ * track, or the hull fit of its tracks and bosses. null when the fit fails.
+ * @param {ExportCurve[]} curves
+ * @param {[SupportData, string][]} tracks
+ * @param {Circle[]} bosses
+ * @param {number} psi0
+ * @param {number} tol
+ * @returns {PlateOutline | null}
+ */
+function plateOutline(curves, tracks, bosses, psi0, tol) {
+  /** @param {string} curveId */
+  const reuse = (curveId) => {
+    const c = curves.find((x) => x.id === curveId);
+    return c ? { circle: c.circle, spline: c.spline, source: curveId } : null;
+  };
+  if (tracks.length === 1 && bosses.length === 0) return reuse(tracks[0][1]);
+  const list = [...tracks.map((t) => t[0]), ...bosses.map((b) => eccentricCircle({ radius: b.r, offset: Math.hypot(b.cx, b.cy), phase: Math.atan2(b.cy, b.cx) }))];
+  const fit = fitHull(list, psi0, tol);
+  if (fit.spline) return { circle: null, spline: fit.spline, source: 'hull' };
+  if (fit.single === null) return null;
+  if (fit.single < tracks.length) return reuse(tracks[fit.single][1]);
+  const b = bosses[fit.single - tracks.length];
+  return { circle: { cx: b.cx, cy: b.cy, r: b.r }, spline: null, source: 'hull' };
 }
 
 /**

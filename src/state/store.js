@@ -40,7 +40,8 @@ export const HISTORY_LIMIT = 100;
  */
 
 /**
- * @typedef {(state: ProjectState, previous: ProjectState) => void} Listener
+ * @typedef {(state: ProjectState, previous: ProjectState, info: { replaced: boolean }) => void} Listener
+ *   replaced: the state came from {@link Store.replace} (another design)
  */
 
 /**
@@ -54,6 +55,10 @@ export const HISTORY_LIMIT = 100;
  *   transaction is open
  * @property {() => boolean} redo false when there is nothing to redo or a
  *   transaction is open
+ * @property {(next: ProjectState) => ValidationError[]} replace switches
+ *   to another design: applies a valid state, clears undo, redo and any
+ *   open transaction, and always notifies; not undoable. Returns the
+ *   validation errors and keeps everything otherwise
  * @property {() => boolean} canUndo
  * @property {() => boolean} canRedo
  * @property {() => boolean} beginTransaction
@@ -233,9 +238,13 @@ export function createStore(initial, options = {}) {
   /** @type {Set<Listener>} */
   const listeners = new Set();
 
-  /** @param {ProjectState} previous */
-  function emit(previous) {
-    for (const listener of [...listeners]) listener(state, previous);
+  /**
+   * @param {ProjectState} previous
+   * @param {boolean} [replaced]
+   */
+  function emit(previous, replaced = false) {
+    const info = { replaced };
+    for (const listener of [...listeners]) listener(state, previous, info);
   }
 
   /** @param {ProjectState} previous */
@@ -265,6 +274,17 @@ export function createStore(initial, options = {}) {
       if (txStart === null) record(previous);
       state = next;
       emit(previous);
+      return [];
+    },
+    replace(next) {
+      const errors = validate(next);
+      if (errors.length > 0) return errors;
+      past.length = 0;
+      future = [];
+      txStart = null;
+      const previous = state;
+      state = next;
+      emit(previous, true);
       return [];
     },
     subscribe(listener) {

@@ -717,3 +717,229 @@ export function fitSupport(supportData, psiStart, psiEnd, tol) {
     return { spline: null, error: describeError(err) };
   }
 }
+
+/** Angle step of the grid that finds the arcs of a hull (rad). */
+const HULL_GRID = (0.25 * Math.PI) / 180;
+/** Hull arcs shorter than this are dropped (rad). */
+const HULL_ARC_MIN = 1e-9;
+/** Common tangents shorter than this are dropped (m). */
+const HULL_LINE_MIN = 1e-9;
+/** Angle step of the check that no hull arc was missed (rad). */
+const HULL_CHECK_GRID = (0.005 * Math.PI) / 180;
+/** Longest Hermite piece on a track without knots (rad). */
+const HERMITE_STEP_MAX = Math.PI / 8;
+
+/**
+ * @typedef {object} HullArc
+ * @property {number} index support that forms the hull on the arc
+ * @property {number} start (rad)
+ * @property {number} end (rad)
+ */
+
+/**
+ * Index of the support with the largest p(ψ); the first on a tie.
+ * @param {Support[]} supports
+ * @param {number} psi
+ */
+function hullIndexAt(supports, psi) {
+  let k = 0;
+  let best = supports[0].p(psi);
+  for (let i = 1; i < supports.length; i++) {
+    const v = supports[i].p(psi);
+    if (v > best) {
+      best = v;
+      k = i;
+    }
+  }
+  return k;
+}
+
+/**
+ * Arcs of the convex hull of several supports over [psi0, psi0 + 2π]: on
+ * each arc one support gives h(ψ) = max p_k(ψ). Crossings come from a
+ * 0.25° grid refined by bisection to rounding; arcs shorter than 1e-9 rad
+ * are dropped.
+ * @param {Support[]} supports
+ * @param {number} psi0
+ * @returns {HullArc[]}
+ */
+export function hullArcs(supports, psi0) {
+  const n = Math.ceil(TURN / HULL_GRID);
+  /** @type {HullArc[]} */
+  const arcs = [];
+  let index = hullIndexAt(supports, psi0);
+  let start = psi0;
+  /** @param {number} cross */
+  const close = (cross) => {
+    if (cross - start > HULL_ARC_MIN) arcs.push({ index, start, end: cross });
+    else if (arcs.length > 0) arcs[arcs.length - 1].end = cross;
+  };
+  for (let i = 1; i <= n; i++) {
+    const cellEnd = psi0 + (i * TURN) / n;
+    const endIndex = hullIndexAt(supports, i === n ? psi0 : cellEnd);
+    let a = psi0 + ((i - 1) * TURN) / n;
+    // Every crossing inside the cell, in order: bisect to the first point
+    // where the index changes, take the index just past it, go on.
+    for (let guard = 0; index !== endIndex && guard < supports.length + 1; guard++) {
+      let lo = a;
+      let hi = cellEnd;
+      for (let it = 0; it < 80 && hi - lo > 1e-15; it++) {
+        const m = (lo + hi) / 2;
+        if (hullIndexAt(supports, m) === index) lo = m;
+        else hi = m;
+      }
+      const cross = (lo + hi) / 2;
+      close(cross);
+      index = hullIndexAt(supports, hi);
+      start = cross;
+      a = hi;
+    }
+  }
+  const end = psi0 + TURN;
+  if (end - start > HULL_ARC_MIN || arcs.length === 0) arcs.push({ index, start, end });
+  else arcs[arcs.length - 1].end = end;
+  return arcs;
+}
+
+/**
+ * Largest amount by which any support exceeds the support assigned to the
+ * arcs, on a 0.005° grid (m): an arc narrower than the search grid that
+ * the scan missed shows here.
+ * @param {Support[]} supports
+ * @param {HullArc[]} arcs
+ */
+function hullMiss(supports, arcs) {
+  const n = Math.ceil(TURN / HULL_CHECK_GRID);
+  let worst = 0;
+  let k = 0;
+  const psi0 = arcs[0].start;
+  for (let i = 0; i < n; i++) {
+    const psi = psi0 + (i * TURN) / n;
+    while (k < arcs.length - 1 && psi > arcs[k].end) k++;
+    const own = supports[arcs[k].index].p(psi);
+    for (const s of supports) worst = Math.max(worst, s.p(psi) - own);
+  }
+  return worst;
+}
+
+/**
+ * Open Hermite fit of a track on [start, end]: breakpoints on the knots of
+ * a spline track, else at most π/8 apart; pieces that fail the checks are
+ * halved.
+ * @param {Support} support
+ * @param {SupportData} data
+ * @param {number} start
+ * @param {number} end
+ * @param {number} tol
+ * @returns {{ spline: BSpline | null, error: string | null }}
+ */
+function fitArc(support, data, start, end, tol) {
+  const { root } = rootOf(data);
+  /** @type {number[]} */
+  let psi;
+  if (root.kind === 'spline') psi = trackBreakpoints(root, start, end);
+  else {
+    const count = Math.max(1, Math.ceil((end - start) / HERMITE_STEP_MAX));
+    psi = Array.from({ length: count + 1 }, (_, i) => (i === count ? end : start + ((end - start) * i) / count));
+  }
+  const rhoMin = support.minRho(start, end).value;
+  if (!(rhoMin > 0)) return { spline: null, error: 'A hull arc is not strictly convex' };
+  for (let round = 0; round <= SPLIT_ROUNDS; round++) {
+    const spline = hermiteSpline(support, psi, false);
+    const check = checkSpline(spline, support, start, rhoMin, tol);
+    if (!check.failed.includes(true)) {
+      spline.maxDeviation = check.maxDeviation;
+      return { spline, error: null };
+    }
+    /** @type {number[]} */
+    const refined = [];
+    for (let i = 0; i < psi.length - 1; i++) {
+      refined.push(psi[i]);
+      if (check.failed[i]) refined.push((psi[i] + psi[i + 1]) / 2);
+    }
+    refined.push(psi[psi.length - 1]);
+    psi = refined;
+  }
+  return { spline: null, error: `No convex B-spline within ${tol} m of a hull arc after ${SPLIT_ROUNDS} halvings` };
+}
+
+/**
+ * Exact straight cubic from P to Q along the common tangent at the
+ * crossing angle ψ: knot interval Δu = 2L/(ρa + ρb), inner control points
+ * P + (Δu/3)·ρa·t and Q − (Δu/3)·ρb·t, so the derivative matches the arcs
+ * on both sides (C1 in u).
+ * @param {number[]} P end of the arc before (x, y)
+ * @param {number[]} Q start of the arc after
+ * @param {number} psi crossing angle (rad)
+ * @param {number} rhoA radius of curvature at P
+ * @param {number} rhoB radius of curvature at Q
+ * @returns {BSpline}
+ */
+function tangentLine(P, Q, psi, rhoA, rhoB) {
+  const L = Math.hypot(Q[0] - P[0], Q[1] - P[1]);
+  const du = (2 * L) / (rhoA + rhoB);
+  const tx = -Math.sin(psi);
+  const ty = Math.cos(psi);
+  const points = Float64Array.from([
+    P[0], P[1],
+    P[0] + (du / 3) * rhoA * tx, P[1] + (du / 3) * rhoA * ty,
+    Q[0] - (du / 3) * rhoB * tx, Q[1] - (du / 3) * rhoB * ty,
+    Q[0], Q[1],
+  ]);
+  return { degree: 3, knots: Float64Array.from([0, 0, 0, 0, du, du, du, du]), points, closed: false, maxDeviation: 0 };
+}
+
+/**
+ * Closed cubic B-spline of the convex hull of several tracks (flanges and
+ * boss discs) within tol/2 of the hull, starting at psi0: Hermite pieces on
+ * each hull arc and an exact straight cubic on each common tangent, joined
+ * C1 in u (triple interior knots). A hull made by one track over the whole
+ * turn gives { spline: null, single: its index }: the caller reuses that
+ * track's own curve. Never throws.
+ * @param {SupportData[]} dataList
+ * @param {number} psi0 start angle (rad), inside an arc of the first track
+ * @param {number} tol (m)
+ * @returns {{ spline: BSpline | null, single: number | null, error: string | null }}
+ */
+export function fitHull(dataList, psi0, tol) {
+  try {
+    if (!Array.isArray(dataList) || dataList.length === 0) return { spline: null, single: null, error: 'A hull needs at least one track' };
+    if (!Number.isFinite(psi0) || !(Number.isFinite(tol) && tol > 0)) {
+      return { spline: null, single: null, error: 'A hull fit needs a finite start angle and a positive tolerance' };
+    }
+    const supports = dataList.map((d) => createSupport(d));
+    const arcs = hullArcs(supports, psi0);
+    const miss = hullMiss(supports, arcs);
+    if (miss > tol / 2) return { spline: null, single: null, error: `A hull arc of ${miss} m escaped the search grid` };
+    if (arcs.length === 1) return { spline: null, single: arcs[0].index, error: null };
+    /** @type {BSpline[]} */
+    const pieces = [];
+    const buf = new Float64Array(3);
+    for (let i = 0; i < arcs.length; i++) {
+      const arc = arcs[i];
+      const fit = fitArc(supports[arc.index], dataList[arc.index], arc.start, arc.end, tol);
+      if (!fit.spline) return { spline: null, single: null, error: fit.error };
+      pieces.push(fit.spline);
+      if (i === arcs.length - 1) break;
+      const next = arcs[i + 1];
+      const P = trackPoint(supports[arc.index], arc.end, buf);
+      const Q = trackPoint(supports[next.index], arc.end, buf);
+      if (Math.hypot(Q[0] - P[0], Q[1] - P[1]) > HULL_LINE_MIN) {
+        const rhoA = supports[arc.index].rho(arc.end);
+        const rhoB = supports[next.index].rho(arc.end);
+        pieces.push(tangentLine(P, Q, arc.end, rhoA, rhoB));
+      }
+    }
+    const spline = concat(pieces);
+    const m = spline.points.length / 2 - 1;
+    const gap = Math.hypot(spline.points[2 * m] - spline.points[0], spline.points[2 * m + 1] - spline.points[1]);
+    if (!(gap <= CLOSED_TOLERANCE)) return { spline: null, single: null, error: `The hull does not close: gap ${gap} m` };
+    spline.points[2 * m] = spline.points[0];
+    spline.points[2 * m + 1] = spline.points[1];
+    spline.closed = true;
+    return { spline, single: null, error: null };
+  } catch (err) {
+    // Any exception while reading malformed input.
+    return { spline: null, single: null, error: describeError(err) };
+  }
+}

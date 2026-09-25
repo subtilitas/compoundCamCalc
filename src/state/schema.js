@@ -90,6 +90,9 @@ export const SCHEMA_VERSION = 1;
  * @property {number} leadInWrap cable wrap before the active track at brace (rad)
  * @property {number} residualWrap string wrap left at full draw (rad)
  * @property {number} minBendRadius smallest allowed track radius of curvature (m)
+ * @property {number} flangeThickness thickness of the flange plates 1, 3 and 5 (m)
+ * @property {number} grooveClearance groove plates 2 and 4 are the cord
+ *   diameter plus this clearance thick (m)
  */
 
 /**
@@ -127,16 +130,16 @@ const MM = 1e-3;
  * @type {Readonly<Record<string, FieldSpec>>}
  */
 export const FIELDS = Object.freeze({
-  'geometry.ata': { label: 'Axle-to-axle length', quantity: 'length', unit: 'in', min: 26 * INCH, max: 42 * INCH },
-  'geometry.braceHeight': { label: 'Brace height', quantity: 'length', unit: 'in', min: 4 * INCH, max: 10 * INCH },
-  'geometry.drawLength': { label: 'Draw length', quantity: 'length', unit: 'in', min: 20 * INCH, max: 34 * INCH },
-  'geometry.limbLength': { label: 'Limb lever length', quantity: 'length', unit: 'in', min: 4 * INCH, max: 20 * INCH },
+  'geometry.ata': { label: 'Axle-to-axle length', quantity: 'length', unit: 'in', min: 8 * INCH, max: 48 * INCH },
+  'geometry.braceHeight': { label: 'Brace height', quantity: 'length', unit: 'in', min: 1.5 * INCH, max: 10 * INCH },
+  'geometry.drawLength': { label: 'Draw length', quantity: 'length', unit: 'in', min: 6 * INCH, max: 34 * INCH },
+  'geometry.limbLength': { label: 'Limb lever length', quantity: 'length', unit: 'in', min: 2 * INCH, max: 20 * INCH },
   'geometry.limbAngleBrace': { label: 'Limb lever angle at brace', quantity: 'angle', unit: 'deg', min: 0, max: 90 * DEG },
-  'curve.params.peak': { label: 'Peak draw force', quantity: 'force', unit: 'N', min: 50, max: 900 },
+  'curve.params.peak': { label: 'Peak draw force', quantity: 'force', unit: 'N', min: 5, max: 900 },
   'curve.params.letOff': { label: 'Let-off', quantity: 'ratio', unit: '%', min: 0, max: 0.95 },
   'curve.params.riseFraction': { label: 'Rise to peak', quantity: 'ratio', unit: '%', min: 0.1, max: 0.6 },
   'curve.params.valleyWidth': { label: 'Valley width', quantity: 'length', unit: 'in', min: 0.1 * INCH, max: 6 * INCH },
-  'limb.stiffness': { label: 'Limb stiffness', quantity: 'stiffness', unit: 'N/mm', min: 1e3, max: 1e6 },
+  'limb.stiffness': { label: 'Limb stiffness', quantity: 'stiffness', unit: 'N/mm', min: 100, max: 1e6 },
   'limb.preloadTravel': { label: 'Limb preload travel', quantity: 'length', unit: 'mm', min: 0, max: 400 * MM },
   'limb.travel': { label: 'Limb travel', quantity: 'length', unit: 'mm', min: 1 * MM, max: 200 * MM },
   'limb.maxRotation': { label: 'Maximum limb rotation', quantity: 'angle', unit: 'deg', min: 1 * DEG, max: 60 * DEG },
@@ -155,6 +158,8 @@ export const FIELDS = Object.freeze({
   'body.leadInWrap': { label: 'Lead-in wrap', quantity: 'angle', unit: 'deg', min: 0, max: 180 * DEG },
   'body.residualWrap': { label: 'Residual wrap', quantity: 'angle', unit: 'deg', min: 0, max: 180 * DEG },
   'body.minBendRadius': { label: 'Minimum bend radius', quantity: 'length', unit: 'mm', min: 0.5 * MM, max: 50 * MM },
+  'body.flangeThickness': { label: 'Flange plate thickness', quantity: 'length', unit: 'mm', min: 0.5 * MM, max: 20 * MM },
+  'body.grooveClearance': { label: 'Groove clearance', quantity: 'length', unit: 'mm', min: 0, max: 5 * MM },
 });
 
 /**
@@ -172,8 +177,8 @@ export const ENUMS = Object.freeze({
   'stringTrack.shape': { label: 'String track shape', values: ['eccentric', 'ellipse'] },
 });
 
-/** Minimum power stroke x_f − x_b required by validation: 5 in. */
-export const MIN_POWER_STROKE = 5 * INCH;
+/** Minimum power stroke x_f − x_b required by validation: 2 in. */
+export const MIN_POWER_STROKE = 2 * INCH;
 /** Tolerance for the brace and full-draw point positions and the minimum gap, in m. */
 const POSITION_TOLERANCE = 1e-9;
 
@@ -258,7 +263,7 @@ export function drawLengthMessage(braceHeight, drawLength) {
   const { xBrace, xFull } = drawRange(braceHeight, drawLength);
   if (xFull - xBrace > MIN_POWER_STROKE) return null;
   const min = braceHeight / INCH + 1.75 + MIN_POWER_STROKE / INCH;
-  return `Draw length must be more than ${plain(min)} in: brace height + 1.75 in + 5 in of power stroke`;
+  return `Draw length must be more than ${plain(min)} in: brace height + 1.75 in + ${plain(MIN_POWER_STROKE / INCH)} in of power stroke`;
 }
 
 /**
@@ -405,6 +410,9 @@ export function migrate(data) {
   const state = fillDefaults(defaultState(), data);
   if (Array.isArray(state.curve?.points)) {
     state.curve.points = state.curve.points.map((/** @type {any} */ p) => (isObject(p) ? { x: p.x, F: p.F } : p));
+  }
+  if (Array.isArray(state.limb?.table)) {
+    state.limb.table = state.limb.table.map((/** @type {any} */ r) => (isObject(r) ? { travel: r.travel, force: r.force } : r));
   }
   return { state, errors: [] };
 }

@@ -16,6 +16,7 @@ import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
 import { AMO_OFFSET, INCH } from '../core/units.js';
 import { writeCsv } from './csv.js';
 import { writeDxf } from './dxf.js';
+import { writeStep } from './step.js';
 import { buildExportModel } from './model.js';
 import { writeZip } from './zip.js';
 
@@ -66,6 +67,76 @@ const PLAN_LAYERS = Object.freeze({ BRACE: 3, FULL: 1, TEXT: 7 });
  * @returns {DxfLayer[]}
  */
 const layerList = (table) => Object.entries(table).map(([name, color]) => ({ name, color }));
+
+/**
+ * Thickness of each plate (m), plates 1 to 5: flanges t_f, groove plates
+ * the cord diameter plus the clearance.
+ * @param {ProjectState} state
+ * @returns {number[]}
+ */
+export function plateThicknesses(state) {
+  const { flangeThickness: tf, grooveClearance: c } = state.body;
+  return [tf, state.cords.stringDiameter + c, tf, state.cords.cableDiameter + c, tf];
+}
+
+/**
+ * STEP documents: one per plate on z ∈ [0, t], and the stacked cam with
+ * plate 5 at the bottom and plate 1 on top (+Z towards a viewer on the
+ * string side, as in the drawings), with both pitch lines in the
+ * mid-plane of their groove plate. Plates without an outline are left out;
+ * holes too close to the outline or another hole too.
+ * @param {ExportModel} model
+ * @param {ProjectState} state
+ * @param {{ id: string, base: string, timestamp: string, system: string }} info
+ * @returns {{ part: string, label: string, doc: import('./step.js').StepDocument }[]}
+ */
+export function stepDocuments(model, state, info) {
+  const t = plateThicknesses(state);
+  /** @type {number[]} bottom of each plate in the stack */
+  const z = [0, 0, 0, 0, 0];
+  let height = 0;
+  for (let i = 4; i >= 0; i--) {
+    z[i] = height;
+    height += t[i];
+  }
+  const common = { description: `Cam ${info.id}, millimetres, viewed from the string side`, timestamp: info.timestamp, system: info.system };
+  /** @type {{ part: string, label: string, doc: import('./step.js').StepDocument }[]} */
+  const docs = [];
+  /** @type {import('./step.js').StepSolid[]} */
+  const stack = [];
+  for (const plate of model.plates) {
+    if (!plate.outline) continue;
+    const i = plate.number - 1;
+    const holes = plate.holes.filter((_, k) => plate.holeClear[k]);
+    const name = `Plate ${plate.name}`;
+    stack.push({ name, outline: plate.outline, holes, z0: z[i], z1: z[i] + t[i] });
+    docs.push({
+      part: `step-${plate.id}`,
+      label: name,
+      doc: { ...common, product: name, fileName: `${info.base}-${plate.id}.step`, solids: [{ name, outline: plate.outline, holes, z0: 0, z1: t[i] }] },
+    });
+  }
+  /** @param {string} curveId */
+  const curve = (curveId) => /** @type {ExportCurve} */ (model.curves.find((c) => c.id === curveId));
+  const pitch = [
+    { name: 'String pitch line', c: curve('string-pitch'), z: z[1] + t[1] / 2 },
+    { name: 'Cable pitch line', c: curve('cable-pitch'), z: z[3] + t[3] / 2 },
+  ];
+  if (stack.length > 0) {
+    docs.unshift({
+      part: 'step-cam',
+      label: 'All plates, stacked',
+      doc: {
+        ...common,
+        product: `Cam ${info.id}`,
+        fileName: `${info.base}-cam.step`,
+        solids: stack,
+        curves: pitch.map((p) => ({ name: p.name, circle: p.c.circle, spline: p.c.spline, z: p.z })),
+      },
+    });
+  }
+  return docs;
+}
 
 /**
  * Design id of the inputs a result was solved for: the first 6 hex digits
@@ -323,6 +394,14 @@ function exportChecked(result, state, options) {
   if (csv.text === null) return { set: null, error: `Force table: ${csv.error}` };
   files.push({ part: 'force-curve', name: `${base}-force-curve.csv`, label: 'Force table (CSV)', mime: 'text/csv;charset=utf-8', text: csv.text });
 
+  const timestamp = `${iso}T${[date.getHours(), date.getMinutes(), date.getSeconds()].map((v) => String(v).padStart(2, '0')).join(':')}`;
+  const system = `Compound Cam Calculator ${String(version)}`;
+  for (const step of stepDocuments(model, state, { id, base, timestamp, system })) {
+    const out = writeStep(step.doc);
+    if (out.text === null) throw new Error(`${step.label}: ${out.error}`);
+    files.push({ part: step.part, name: step.doc.fileName, label: step.label, mime: 'application/step', text: out.text });
+  }
+
   const readme = [
     ...title,
     '',
@@ -333,6 +412,10 @@ function exportChecked(result, state, options) {
     'Plate files hold closed polylines and circles only: OUTLINE is the cut, BORE the axle hole, POSTS and STOP the post holes.',
     'Kerf compensation is left to the cutting software. Check the scale after import: the bore measures '
       + `${(state.body.boreDiameter * MM).toFixed(2)} mm.`,
+    `STEP files (AP214, millimetres) hold the plates as solids: flange plates ${(plateThicknesses(state)[0] * MM).toFixed(2)} mm, `
+      + `string groove plate ${(plateThicknesses(state)[1] * MM).toFixed(2)} mm, cable groove plate ${(plateThicknesses(state)[3] * MM).toFixed(2)} mm thick.`,
+    'The stacked file has plate 5 at z = 0 and plate 1 on top, and the pitch lines as wireframe in the middle of their groove plates; '
+      + 'some programs hide wireframe on import. Outlines lie within 0.01 mm of the model, without the cut offset of the DXF files.',
     ...bossNote(model),
     ...(model.warnings.length ? ['', 'Warnings:', ...model.warnings.map((w) => `  ${w}`)] : []),
     '',

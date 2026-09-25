@@ -8,7 +8,7 @@
  * @module ui/settings
  */
 
-import { AMO_OFFSET, fromSI, parseNumber, parseQuantity, toSI } from '../core/units.js';
+import { AMO_OFFSET, INCH, fromSI, parseNumber, parseQuantity, toSI } from '../core/units.js';
 import { FIELDS, MIN_POWER_STROKE } from '../state/schema.js';
 import { DEGREE, DIMS_DECIMALS, FORCE_DECIMALS, dimsText, fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
 import { h } from './dom.js';
@@ -433,7 +433,7 @@ const GEOMETRY_FIELDS = [
       const max = s.geometry.drawLength - AMO_OFFSET - MIN_POWER_STROKE;
       if (v < max) return null;
       const u = s.units.draw;
-      return `Brace height must be less than ${plain(fromSI(max, 'length', u))} ${u} for this draw length (at least 5 in of power stroke)`;
+      return `Brace height must be less than ${plain(fromSI(max, 'length', u))} ${u} for this draw length (at least ${plain(MIN_POWER_STROKE / INCH)} in of power stroke)`;
     },
   },
   {
@@ -450,7 +450,7 @@ const GEOMETRY_FIELDS = [
       const min = s.geometry.braceHeight + AMO_OFFSET + MIN_POWER_STROKE;
       if (v > min) return null;
       const u = s.units.draw;
-      return `Draw length must be more than ${plain(fromSI(min, 'length', u))} ${u}: brace height + 1.75 in + 5 in of power stroke`;
+      return `Draw length must be more than ${plain(fromSI(min, 'length', u))} ${u}: brace height + 1.75 in + ${plain(MIN_POWER_STROKE / INCH)} in of power stroke`;
     },
   },
   {
@@ -538,6 +538,23 @@ const FORCE_FIELDS = [
     },
   },
 ];
+
+/**
+ * Slider step that divides a range into count steps with both ends
+ * reachable. The browser divides the range by the decimal step string: a
+ * step even 1e-16 too long leaves the last step out (201.8 instead of
+ * 202.3 lbf). The step keeps 12 significant digits, rounded down unless
+ * the division is exact, so count steps always fit.
+ * @param {number} range max − min
+ * @param {number} count
+ */
+export function sliderStep(range, count) {
+  const exact = range / count;
+  const p = Number(exact.toPrecision(12));
+  if (p <= exact) return p;
+  const ulp = 10 ** (Math.floor(Math.log10(exact)) - 11);
+  return Number((p - ulp).toPrecision(12));
+}
 
 /**
  * Steps and decimals of dimension and angle fields. Travel and track fields
@@ -731,6 +748,29 @@ const BODY_FIELDS = [
     get: (s) => s.body.minBendRadius,
     action: (v) => ({ type: 'setBody', body: { minBendRadius: v } }),
     ...FINE,
+  },
+  {
+    id: 'flange-thickness',
+    label: 'Flange plate thickness (plates 1, 3, 5)',
+    path: 'body.flangeThickness',
+    kind: 'dims',
+    get: (s) => s.body.flangeThickness,
+    action: (v) => ({ type: 'setBody', body: { flangeThickness: v } }),
+    ...FINE,
+  },
+  {
+    id: 'groove-clearance',
+    label: 'Groove clearance (plates 2, 4)',
+    path: 'body.grooveClearance',
+    kind: 'dims',
+    get: (s) => s.body.grooveClearance,
+    action: (v) => ({ type: 'setBody', body: { grooveClearance: v } }),
+    ...FINE,
+    note: (s) => {
+      const c = s.body.grooveClearance;
+      return `Groove plates are the cord diameter plus the clearance thick: string ${dimsText(s.cords.stringDiameter + c, s.units)}, `
+        + `cable ${dimsText(s.cords.cableDiameter + c, s.units)}. Used by the STEP export only.`;
+    },
   },
   {
     id: 'lead-in',
@@ -985,7 +1025,7 @@ export function createSettings(panel, store) {
         const count = Math.max(1, Math.round((max - min) / def.sliderStep[u]));
         slider.min = String(min);
         slider.max = String(max);
-        slider.step = String((max - min) / count);
+        slider.step = String(sliderStep(max - min, count));
         slider.value = String(value);
         slider.setAttribute('aria-valuetext', withUnit(text, u));
       }

@@ -6,6 +6,30 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- File menu in the page header: Save, Save as…, Open… (with Rename and
+  Delete), Open sample…, Reset to default, Save to file (.json) and Open
+  from file…; named designs in the browser (`src/state/library.js`), an
+  unsaved-changes marker, and `store.replace` that switches designs and
+  clears the undo history.
+- Sample designs (`src/state/samples.js`): target and hunting compound
+  bows, a crossbow and a mini bow for FDM printing, each solving without
+  diagnostics.
+- STEP export (`src/export/step.js`, AP214, millimetres): a stacked file of
+  all five plates with the pitch lines as wireframe and one file per
+  plate; outlines on the exact tracks within 0.005 mm, the middle flange
+  and plates with a boss from a hull fit with exact straight tangents
+  (`fitHull`); a Part 21 checker and an import test in OpenCascade
+  (occt-import-js), also run on the CI samples by
+  `scripts/validate-step.js`.
+- Plate thickness settings: flange thickness (default 2 mm) and groove
+  clearance (default 0.5 mm).
+- Wider input ranges for crossbows and small bows: axle-to-axle length 8
+  to 48 in, brace height from 1.5 in, draw length from 6 in, limb lever
+  from 2 in, peak force from 5 N, limb stiffness from 0.1 N/mm, power
+  stroke from 2 in.
+- Range sliders reach both bounds for any range: the step keeps 12
+  significant digits, rounded down.
+
 - Project plan (`docs/PLAN.md`).
 - Build and test tooling: Vite, Vitest with V8 coverage, ESLint, TypeScript
   check of JSDoc types, Playwright with axe accessibility checks.

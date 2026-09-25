@@ -66,14 +66,14 @@ describe('default preset', () => {
 
 describe('validate', () => {
   it('reports ranges in plain words with units', () => {
-    expect(messagesAt(modified((s) => (s.geometry.braceHeight = 3 * INCH)), 'geometry.braceHeight')).toEqual([
-      'Brace height must be between 4 and 10 in',
+    expect(messagesAt(modified((s) => (s.geometry.braceHeight = 1 * INCH)), 'geometry.braceHeight')).toEqual([
+      'Brace height must be between 1.5 and 10 in',
     ]);
     expect(messagesAt(modified((s) => (s.geometry.ata = 50 * INCH)), 'geometry.ata')).toEqual([
-      'Axle-to-axle length must be between 26 and 42 in',
+      'Axle-to-axle length must be between 8 and 48 in',
     ]);
     expect(messagesAt(modified((s) => (s.curve.params.peak = 1000)), 'curve.params.peak')).toEqual([
-      'Peak draw force must be between 50 and 900 N',
+      'Peak draw force must be between 5 and 900 N',
     ]);
     expect(messagesAt(modified((s) => (s.curve.params.letOff = 0.99)), 'curve.params.letOff')).toEqual([
       'Let-off must be between 0 and 95 %',
@@ -82,7 +82,7 @@ describe('validate', () => {
       'String diameter must be between 0.5 and 6 mm',
     ]);
     expect(messagesAt(modified((s) => (s.limb.stiffness = 10)), 'limb.stiffness')).toEqual([
-      'Limb stiffness must be between 1 and 1000 N/mm',
+      'Limb stiffness must be between 0.1 and 1000 N/mm',
     ]);
     expect(messagesAt(modified((s) => (s.body.leadInWrap = 4)), 'body.leadInWrap')).toEqual([
       'Lead-in wrap must be between 0 and 180 deg',
@@ -104,10 +104,10 @@ describe('validate', () => {
   it('checks the draw length against the brace height', () => {
     const s = modified((st) => {
       st.geometry.braceHeight = 9 * INCH;
-      st.geometry.drawLength = 15.5 * INCH;
+      st.geometry.drawLength = 12.5 * INCH;
     });
     expect(messagesAt(s, 'geometry.drawLength')).toContain(
-      'Draw length must be more than 15.75 in: brace height + 1.75 in + 5 in of power stroke',
+      'Draw length must be more than 12.75 in: brace height + 1.75 in + 2 in of power stroke',
     );
     expect(drawLengthMessage(6.5 * INCH, 29 * INCH)).toBeNull();
   });
@@ -218,7 +218,7 @@ describe('JSON codec', () => {
   it('returns the default preset for invalid values', () => {
     const r = fromJSON(toJSON(modified((s) => (s.geometry.braceHeight = 1))));
     expect(r.state).toEqual(defaultState());
-    expect(r.errors[0].message).toBe('Brace height must be between 4 and 10 in');
+    expect(r.errors[0].message).toBe('Brace height must be between 1.5 and 10 in');
   });
 
   it('never throws on arbitrary input', () => {

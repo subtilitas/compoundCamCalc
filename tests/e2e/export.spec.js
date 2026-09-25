@@ -30,7 +30,7 @@ test.describe('export', () => {
     await page.goto('./');
     await solved(page);
     await expect(page.getByTestId('export-status')).toHaveText(/^Exports the current cam, design [0-9a-f]{6}$/);
-    await expect(page.getByTestId('export-note')).toHaveText('DXF files are in millimetres at 1:1. After import, the axle bore measures 8.00 mm.');
+    await expect(page.getByTestId('export-note')).toHaveText('DXF and STEP files are in millimetres at 1:1. After import, the axle bore measures 8.00 mm.');
     const plate = await save(page, 'export-plate1-string-flange');
     expect(plate.name).toMatch(/^cam-\d{8}-[0-9a-f]{6}-plate1-string-flange\.dxf$/);
     const dxf = plate.bytes.toString('latin1');
@@ -39,6 +39,11 @@ test.describe('export', () => {
     await expect(page.getByTestId('export-status')).toHaveText(`Saved ${plate.name}`);
     const ref = await save(page, 'export-reference');
     expect(ref.bytes.toString('latin1')).toContain('SPLINE');
+    const step = await save(page, 'export-step-cam');
+    expect(step.name).toMatch(/^cam-\d{8}-[0-9a-f]{6}-cam\.step$/);
+    const stepText = step.bytes.toString('latin1');
+    expect(stepText.startsWith('ISO-10303-21;')).toBe(true);
+    expect(stepText.match(/MANIFOLD_SOLID_BREP/g)).toHaveLength(5);
     const csv = await save(page, 'export-force-curve');
     const lines = csv.bytes.toString('latin1').trim().split('\r\n');
     expect(lines[0]).toMatch(/^Draw length AMO \(in\),/);

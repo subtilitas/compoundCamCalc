@@ -82,6 +82,8 @@ export function defaultState() {
       leadInWrap: 30 * DEG,
       residualWrap: 30 * DEG,
       minBendRadius: 0.005,
+      flangeThickness: 0.002,
+      grooveClearance: 0.0005,
     },
   };
 }

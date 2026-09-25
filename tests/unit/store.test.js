@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MIN_GAP, pointMetrics } from '../../src/core/curve.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
+import { SAMPLES } from '../../src/state/samples.js';
 import { HISTORY_LIMIT, createStore, reduce } from '../../src/state/store.js';
 
 /** @typedef {import('../../src/state/schema.js').ProjectState} ProjectState */
@@ -16,6 +17,43 @@ function withForce(state, index, F) {
   points[index].F = F;
   return points;
 }
+
+describe('replace', () => {
+  it('switches the state, clears the history and any gesture, and is not undoable', () => {
+    const store = createStore(defaultState());
+    store.dispatch({ type: 'setGeometry', geometry: { ata: 34 * INCH } });
+    store.beginTransaction();
+    store.dispatch({ type: 'setGeometry', geometry: { ata: 35 * INCH } });
+    /** @type {{ replaced: boolean }[]} */
+    const seen = [];
+    store.subscribe((_s, _p, info) => seen.push(info));
+    const other = SAMPLES[2].state();
+    expect(store.replace(other)).toEqual([]);
+    expect(store.getState()).toBe(other);
+    expect(store.inTransaction()).toBe(false);
+    expect(store.canUndo()).toBe(false);
+    expect(store.canRedo()).toBe(false);
+    expect(store.undo()).toBe(false);
+    expect(seen).toEqual([{ replaced: true }]);
+    // An equal state still notifies, so views reset for the new design.
+    store.replace(defaultState());
+    store.replace(defaultState());
+    expect(seen).toHaveLength(3);
+    store.dispatch({ type: 'setGeometry', geometry: { ata: 30 * INCH } });
+    expect(seen.at(-1)).toEqual({ replaced: false });
+  });
+
+  it('refuses an invalid state and keeps everything', () => {
+    const store = createStore(defaultState());
+    store.dispatch({ type: 'setGeometry', geometry: { ata: 34 * INCH } });
+    const before = store.getState();
+    const bad = defaultState();
+    bad.geometry.ata = 0.01;
+    expect(store.replace(bad).length).toBeGreaterThan(0);
+    expect(store.getState()).toBe(before);
+    expect(store.canUndo()).toBe(true);
+  });
+});
 
 describe('createStore', () => {
   it('starts with the initial state', () => {
@@ -43,8 +81,8 @@ describe('createStore', () => {
   it('rejects invalid changes and keeps the state', () => {
     const store = createStore(defaultState());
     const before = store.getState();
-    const errors = store.dispatch({ type: 'setGeometry', geometry: { braceHeight: 2 * INCH } });
-    expect(errors.map((e) => e.message)).toContain('Brace height must be between 4 and 10 in');
+    const errors = store.dispatch({ type: 'setGeometry', geometry: { braceHeight: 1 * INCH } });
+    expect(errors.map((e) => e.message)).toContain('Brace height must be between 1.5 and 10 in');
     expect(store.getState()).toBe(before);
     expect(store.dispatch({ type: 'setCurveParams', params: { peak: 2000 } })).toHaveLength(1);
     expect(store.dispatch({ type: 'setUnits', units: { force: /** @type {any} */ ('kg') } })).toHaveLength(1);
@@ -303,7 +341,7 @@ describe('geometry actions', () => {
 
   it('rejects a draw length too short for the brace height', () => {
     const store = createStore(defaultState());
-    const errors = store.dispatch({ type: 'setGeometry', geometry: { drawLength: 13 * INCH } });
+    const errors = store.dispatch({ type: 'setGeometry', geometry: { drawLength: 10 * INCH } });
     expect(errors.length).toBeGreaterThan(0);
     expect(store.getState().geometry.drawLength).toBeCloseTo(29 * INCH, 15);
   });

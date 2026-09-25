@@ -35,6 +35,17 @@ const GROUPS = Object.freeze([
     ],
   },
   { title: 'Drawings (DXF)', parts: [['reference', 'Reference drawing'], ['string-plan', 'String plan']] },
+  {
+    title: 'Solids (STEP)',
+    parts: [
+      ['step-cam', 'All plates, stacked'],
+      ['step-plate1-string-flange', '1 Flange, string side'],
+      ['step-plate2-string-groove', '2 String groove'],
+      ['step-plate3-middle-flange', '3 Middle flange'],
+      ['step-plate4-cable-groove', '4 Cable groove'],
+      ['step-plate5-cable-flange', '5 Flange, cable side'],
+    ],
+  },
   { title: 'Data (CSV)', parts: [['force-curve', 'Force table']] },
 ]);
 
@@ -229,9 +240,9 @@ export function createExportPanel(container, { version, date = () => new Date() 
         id = designId(next.lastGood.state);
         current = id === designId(next.now);
         const bore = next.lastGood.state.body.boreDiameter * 1000;
-        note.textContent = `DXF files are in millimetres at 1:1. After import, the axle bore measures ${bore.toFixed(2)} mm.`;
+        note.textContent = `DXF and STEP files are in millimetres at 1:1. After import, the axle bore measures ${bore.toFixed(2)} mm.`;
       } else {
-        note.textContent = 'DXF files are in millimetres at 1:1.';
+        note.textContent = 'DXF and STEP files are in millimetres at 1:1.';
       }
       say(exportStatus({ hasCam: has, busy: next.busy, pending: next.pending ?? false, current, id }));
       if (failed !== null && next.lastGood?.result !== failed) {
