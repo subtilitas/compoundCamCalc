@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FT_LBF, INCH, LBF } from '../../src/core/units.js';
 import {
-  METRIC_KEYS, STALE_CAPTION, diagnosticItems, fitTolerance, metricItems, statusText,
+  METRIC_KEYS, OUTDATED_CAPTION, STALE_CAPTION, diagnosticItems, resultsCaption, fitTolerance, metricItems, statusText,
 } from '../../src/ui/results.js';
 
 /** @typedef {import('../../src/core/solve.js').SolveResult} SolveResult */
@@ -190,5 +190,17 @@ describe('diagnosticItems', () => {
       { code: 'limb-rotation', message: 'Limb turns too far', suggestion: 'Raise the preload' },
     ]);
     expect(diagnosticItems(null)).toEqual([]);
+  });
+});
+
+describe('resultsCaption', () => {
+  it('prefers the outdated caption while a newer solve runs', () => {
+    const r = fake();
+    const state = /** @type {any} */ ({});
+    expect(resultsCaption({ status: 'busy', result: r, state, stale: true, outdated: true })).toBe(OUTDATED_CAPTION);
+    expect(resultsCaption({ status: 'infeasible', result: r, state, stale: true })).toBe(STALE_CAPTION);
+    expect(resultsCaption({ status: 'busy', result: r, state, stale: false, outdated: true })).toBe(OUTDATED_CAPTION);
+    expect(resultsCaption({ status: 'ok', result: r, state, stale: false })).toBe('');
+    expect(resultsCaption({ status: 'error', result: null, state, stale: true, outdated: true })).toBe('');
   });
 });

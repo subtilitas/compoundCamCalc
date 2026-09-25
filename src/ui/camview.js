@@ -366,15 +366,17 @@ export function createCamView(container) {
   let dims = 'mm';
   /** @type {{ pointerId: number, x: number, y: number, view: ViewBox, k: number } | null} */
   let pan = null;
+  /** A cam is drawn; without one the view cannot zoom or pan. */
+  let drawn = false;
 
   const zoom = () => base.size / view.size;
 
   function applyView() {
     setAttrs(root, { viewBox: `${view.x} ${view.y} ${view.size} ${view.size}` });
     const z = zoom();
-    zoomIn.disabled = z >= MAX_ZOOM - 1e-9;
-    zoomOut.disabled = z <= 1 + 1e-9;
-    fit.disabled = zoomOut.disabled && view.x === base.x && view.y === base.y;
+    zoomIn.disabled = !drawn || z >= MAX_ZOOM - 1e-9;
+    zoomOut.disabled = !drawn || z <= 1 + 1e-9;
+    fit.disabled = !drawn || (zoomOut.disabled && view.x === base.x && view.y === base.y);
     root.classList.toggle('cam-zoomed', z > 1 + 1e-9);
     root.style.touchAction = z > 1 + 1e-9 ? 'none' : 'auto';
     drawScale();
@@ -429,7 +431,7 @@ export function createCamView(container) {
   fit.addEventListener('click', () => press(fit, fitView));
 
   root.addEventListener('keydown', (e) => {
-    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    if (!drawn || e.altKey || e.ctrlKey || e.metaKey) return;
     const step = e.shiftKey ? PAN_STEP_LARGE : PAN_STEP;
     /** @type {Record<string, [number, number]>} */
     const arrows = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
@@ -467,7 +469,7 @@ export function createCamView(container) {
     'wheel',
     (e) => {
       // Only Ctrl or Cmd with the wheel zooms, so the page scrolls otherwise.
-      if (!e.ctrlKey && !e.metaKey) return;
+      if (!drawn || (!e.ctrlKey && !e.metaKey)) return;
       const factor = e.deltaY < 0 ? ZOOM_STEP ** 0.5 : e.deltaY > 0 ? ZOOM_STEP ** -0.5 : 1;
       const { fx, fy } = locate(e.clientX, e.clientY);
       // At a zoom limit the gesture still must not zoom the page.
@@ -583,13 +585,17 @@ export function createCamView(container) {
       drawing.replaceChildren();
       caption.textContent = error ? ERROR_TEXT : SOLVING_TEXT;
       caption.hidden = false;
+      drawn = false;
+      view = base;
       applyView();
       return;
     }
     const bore = state.body.boreDiameter / 2;
     const boreRadius = Number.isFinite(bore) && bore > 0 ? bore : 0;
     const nextBase = viewBoxFor(outlineBounds(result, boreRadius), FIT_PADDING);
-    const zoomed = zoom() > 1 + 1e-9 || view.x !== base.x || view.y !== base.y;
+    // The first cam after an empty view is fitted.
+    const zoomed = drawn && (zoom() > 1 + 1e-9 || view.x !== base.x || view.y !== base.y);
+    drawn = true;
     if (zoomed) {
       // Keep the zoom and the centre of the view while the cam changes.
       const z = zoom();

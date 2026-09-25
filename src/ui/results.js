@@ -57,6 +57,18 @@ export const STALE_CAPTION = 'These values belong to the latest attempt, which f
 export const OUTDATED_CAPTION = 'These values belong to the previous inputs; solving the current inputs.';
 
 /**
+ * Caption above the metrics, or '' for none. The caption speaks about
+ * values, so it needs a result; while a newer solve runs, every shown value
+ * belongs to older inputs, which takes precedence over the stale text.
+ * @param {ResultsView} view
+ */
+export function resultsCaption(view) {
+  if (!view.result) return '';
+  if (view.outdated) return OUTDATED_CAPTION;
+  return view.stale ? STALE_CAPTION : '';
+}
+
+/**
  * Status line text.
  * @param {ResultsStatus} status
  * @param {number} count number of diagnostics of the result
@@ -267,12 +279,10 @@ export function createResults(container) {
       const text = statusText(view.status, count, view.stale);
       // Writing the same text again makes some screen readers repeat it.
       if (status.textContent !== text) status.textContent = text;
-      const outdated = view.outdated === true;
-      container.classList.toggle('results-stale', view.stale || outdated);
-      // The caption speaks about values, so it needs a result to show.
-      const captionText = view.stale ? STALE_CAPTION : OUTDATED_CAPTION;
-      if (caption.textContent !== captionText) caption.textContent = captionText;
-      caption.hidden = !(view.stale || outdated) || !result;
+      container.classList.toggle('results-stale', view.stale || view.outdated === true);
+      const captionText = resultsCaption(view);
+      if (captionText && caption.textContent !== captionText) caption.textContent = captionText;
+      caption.hidden = !captionText;
 
       const items = metricItems(result, view.state.units);
       let fitShown = false;

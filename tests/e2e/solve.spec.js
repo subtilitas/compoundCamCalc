@@ -198,6 +198,28 @@ test.describe('solver in the page', () => {
     await expect(view).toHaveAttribute('viewBox', /** @type {string} */ (fitted));
   });
 
+  test('the cam view cannot zoom before a cam is drawn, and the first cam is fitted', async ({ page }) => {
+    // Hold the worker script back, so no result arrives until it is released.
+    /** @type {(() => Promise<void>)[]} */
+    const held = [];
+    await page.route(/solver\.worker/, (route) => {
+      held.push(() => route.continue());
+    });
+    await page.goto('./');
+    await expect(page.getByTestId('camview-caption')).toHaveText('Solving…');
+    await expect(page.getByTestId('camview-zoom-in')).toBeDisabled();
+    const view = page.getByTestId('cam-view');
+    await view.focus();
+    await page.keyboard.press('+');
+    await expect(page.getByTestId('camview-zoom-out')).toBeDisabled();
+    await expect.poll(() => held.length).toBeGreaterThan(0);
+    for (const release of held) await release();
+    await solved(page);
+    // Fitted: nothing to zoom out of.
+    await expect(page.getByTestId('camview-zoom-out')).toBeDisabled();
+    await expect(page.getByTestId('camview-zoom-in')).toBeEnabled();
+  });
+
   test('the zoomed cam view pans with the arrow keys', async ({ page }) => {
     await page.goto('./');
     await solved(page);
