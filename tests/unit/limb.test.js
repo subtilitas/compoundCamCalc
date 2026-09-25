@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   INVERSE_TOLERANCE, createLimb, limbEnergies, limbFromState, linearLimb, stiffnessForTravel, tableLimb,
@@ -141,6 +142,9 @@ describe('table limb', () => {
     expect(tableLimb({ rotation: [0.1, 0.2], moment: [5], alpha0: 0 }).error).toMatch(/2 rows/);
     expect(tableLimb({ rotation: [0.1, 0.1], moment: [5, 6], alpha0: 0 }).error).toMatch(/row 2/);
     expect(tableLimb({ rotation: [0.1, 0.2], moment: [5, -6], alpha0: 0 }).error).toMatch(/row 2/);
+    // Zero rotation is the unstrung limb: its moment is 0.
+    expect(tableLimb({ rotation: [0, 0.5], moment: [100, 200], alpha0: 0 }).error).toMatch(/unstrung/);
+    expect(tableLimb({ rotation: [0, 0.5], moment: [0, 200], alpha0: 0 }).error).toBeNull();
     expect(tableLimb({ rotation: [0.1, 0.2], moment: [5, 6], alpha0: NaN }).error).toMatch(/preload/);
     const flat = tableLimb({ rotation: [0, 1], moment: [0, 0], alpha0: 0 }).limb;
     expect(createLimb(/** @type {TableLimbData} */ (flat)).inverse(1)).toBeNaN();
@@ -183,6 +187,41 @@ describe('limbFromState', () => {
     expect(limbFromState(state.limb, 0).error).toMatch(/lever length/);
     expect(limbFromState({ ...state.limb, stiffness: -1 }, R).error).toMatch(/stiffness/);
     expect(limbFromState({ ...state.limb, preloadTravel: -0.01 }, R).error).toMatch(/preload/);
+    expect(limbFromState({ ...state.limb, mode: 'stiffness', stiffness: Infinity }, R).error).toMatch(/stiffness/);
+    expect(limbFromState(state.limb, Infinity).error).toMatch(/lever length/);
+  });
+
+  it('every limb it accepts has a finite, non-negative brace moment and energy (property test)', () => {
+    const num = fc.oneof(fc.double(), fc.double({ min: -0.5, max: 0.5, noNaN: true }));
+    const row = fc.record({ travel: num, force: num });
+    fc.assert(
+      fc.property(
+        fc.constantFrom('stiffness', 'travel', 'table'),
+        num, num, num, fc.array(row, { maxLength: 6 }), num, num,
+        (mode, stiffness, preloadTravel, travel, table, limbLength, drawEnergy) => {
+          const state = /** @type {any} */ ({ mode, stiffness: stiffness * 1e5, preloadTravel, travel, table, maxRotation: 1 });
+          const { limb, error } = limbFromState(state, limbLength, { drawEnergy: drawEnergy * 1e3 });
+          if (!limb) {
+            expect(typeof error).toBe('string');
+            return;
+          }
+          const made = createLimb(limb);
+          expect(Number.isFinite(made.moment(0)) && made.moment(0) >= 0).toBe(true);
+          expect(Number.isFinite(made.energy(0)) && made.energy(0) >= 0).toBe(true);
+        },
+      ),
+      { numRuns: 500 },
+    );
+  });
+
+  it('rejects table rows with a negative travel from brace or a negative force', () => {
+    const base = { ...state.limb, mode: /** @type {const} */ ('table'), preloadTravel: 0.03 };
+    const negativeTravel = limbFromState({ ...base, table: [{ travel: -0.01, force: 100 }, { travel: 0.05, force: 400 }] }, R);
+    expect(negativeTravel.error).toMatch(/row 1/);
+    const negativeForce = limbFromState({ ...base, table: [{ travel: 0.01, force: 100 }, { travel: 0.05, force: -1 }] }, R);
+    expect(negativeForce.error).toMatch(/row 2/);
+    const nonFinite = limbFromState({ ...base, table: [{ travel: 0.01, force: 100 }, { travel: NaN, force: 400 }] }, R);
+    expect(nonFinite.error).toMatch(/row 2/);
   });
 
   it('rejects a negative preload in table mode, even when every row stays above zero rotation', () => {

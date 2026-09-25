@@ -639,6 +639,10 @@ describe('forward model: diagnostics', () => {
     const cases = [
       /** @type {any} */ (undefined),
       input({ geometry: { ...geometry, ata: NaN } }),
+      // Shifting brace height and draw length together keeps the stroke but
+      // leaves the physical domain.
+      input({ geometry: { ...geometry, braceHeight: geometry.braceHeight - 0.2, drawLength: geometry.drawLength - 0.2 } }),
+      input({ geometry: { ...geometry, braceHeight: -0.5, drawLength: -0.1 } }),
       input({ cableTrack: /** @type {any} */ ({ kind: 'square' }) }),
       input({ stringTrack: ellipse({ a: 0.04, b: 0 }) }),
       input({ x: [geometry.braceHeight - 0.01, 0.3] }),

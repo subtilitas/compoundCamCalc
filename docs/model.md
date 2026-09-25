@@ -283,11 +283,13 @@ limb.
   E1 = ½·k·(s + s_0)² with the arc travel s = R_L·α.
 - Tabulated limb: moments M(q_i) against the rotation from unstrung, fitted
   by the C2 shape-preserving quintic of `src/core/interp.js`; E1 is its exact
-  integral. The point (0, 0) is added when the table starts after q = 0.
+  integral. The point (0, 0) is added when the table starts after q = 0; a
+  row at q = 0 must have M = 0, because q = 0 is the unstrung limb.
   Outside the table the moment continues linearly with the end slope. When
   the last row falls, that line reaches M = 0 at q_peak, where E1 is
   largest. The project table (axle travel from brace, force at the axle)
-  converts with q = (travel + s_0)/R_L and M = force·R_L.
+  converts with q = (travel + s_0)/R_L and M = force·R_L; travel and force
+  are at least 0.
 - Travel mode: the stiffness that stores the draw energy W over the axle
   travel s_f from brace to full draw is k = W / ((s_f + s_0)² − s_0²).
 - E1', E1'' and the inverse E1⁻¹ (Newton inside a bracket, residual below
@@ -306,7 +308,7 @@ each run of affected samples.
 
 | Code | Condition |
 |---|---|
-| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, unknown limb kind, limb data with a non-positive stiffness or a negative preload rotation, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not a non-empty array, not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace, or any exception while reading the input |
+| `invalid-input` | non-finite or out-of-domain geometry (ATA, brace height, draw length and limb lever length must be positive), unknown track kind, unknown limb kind, limb data with a non-positive stiffness or a negative preload rotation, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not a non-empty array, not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace, or any exception while reading the input |
 | `brace` | the string cannot leave its track at ψ = 0 towards the nock, the anchor lies inside the cable track, or det = 0 at brace |
 | `no-convergence` | a sample does not close within 30 iterations, or a contact is lost; later samples are NaN |
 | `slack-string` | T_s ≤ 0 |

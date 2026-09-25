@@ -100,6 +100,10 @@ export function tableLimb({ rotation, moment, alpha0 }) {
     }
     points.push({ x: q, F: m });
   }
+  // q = 0 is the unstrung limb, which carries no moment.
+  if (points[0].x === 0 && points[0].F !== 0) {
+    return { limb: null, error: 'The limb moment at zero rotation (unstrung) must be 0' };
+  }
   if (points[0].x > 0) points.unshift({ x: 0, F: 0 });
   if (!(Number.isFinite(alpha0) && alpha0 >= 0)) return { limb: null, error: 'The limb preload must be a finite number of at least 0' };
   return { limb: { kind: 'table', curve: buildCurveData(points), alpha0 }, error: null };
@@ -116,13 +120,22 @@ export function tableLimb({ rotation, moment, alpha0 }) {
  * @returns {{ limb: LimbData | null, error: string | null }}
  */
 export function limbFromState(limb, limbLength, options = {}) {
-  if (!(limbLength > 0)) return { limb: null, error: 'The limb lever length must be positive' };
+  if (!(limbLength > 0 && Number.isFinite(limbLength))) {
+    return { limb: null, error: 'The limb lever length must be a finite positive number' };
+  }
   const preloadTravel = limb.preloadTravel;
   if (!(preloadTravel >= 0 && Number.isFinite(preloadTravel))) {
     return { limb: null, error: 'The limb preload travel must be at least 0' };
   }
   if (limb.mode === 'table') {
     const rows = Array.isArray(limb.table) ? limb.table : [];
+    // Rows give travel from brace and force at the axle; both are at least 0.
+    for (let i = 0; i < rows.length; i++) {
+      const { travel, force } = rows[i] ?? {};
+      if (!(Number.isFinite(travel) && travel >= 0 && Number.isFinite(force) && force >= 0)) {
+        return { limb: null, error: `Limb table row ${i + 1} must have a travel from brace and a force of at least 0` };
+      }
+    }
     return tableLimb({
       rotation: rows.map((r) => (r.travel + preloadTravel) / limbLength),
       moment: rows.map((r) => r.force * limbLength),
@@ -136,10 +149,15 @@ export function limbFromState(limb, limbLength, options = {}) {
       return { limb: null, error: 'The limb travel mode needs a positive draw energy and limb travel' };
     }
   }
-  if (!(stiffness > 0 && preloadTravel >= 0)) {
-    return { limb: null, error: 'Limb stiffness must be positive and the preload travel at least 0' };
+  if (!(stiffness > 0 && Number.isFinite(stiffness))) {
+    return { limb: null, error: 'Limb stiffness must be a finite positive number' };
   }
-  return { limb: linearLimb({ stiffness, preloadTravel, limbLength }), error: null };
+  const data = linearLimb({ stiffness, preloadTravel, limbLength });
+  // k·R_L² or s_0/R_L can leave the floating-point range for extreme values.
+  if (!(data.torsionalStiffness > 0 && Number.isFinite(data.torsionalStiffness) && Number.isFinite(data.alpha0))) {
+    return { limb: null, error: 'The limb stiffness and lever length give a torsional stiffness outside the numeric range' };
+  }
+  return { limb: data, error: null };
 }
 
 /**

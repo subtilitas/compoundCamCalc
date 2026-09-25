@@ -49,8 +49,8 @@ export function bowGeometry(geometry, stringSupport) {
   const g = geometry ?? /** @type {Geometry} */ ({});
   const values = [g.ata, g.braceHeight, g.drawLength, g.limbLength, g.limbAngleBrace];
   if (!values.every(Number.isFinite)) return { bow: null, error: 'Every geometry value must be a finite number' };
-  if (!(g.ata > 0 && g.limbLength > 0)) {
-    return { bow: null, error: 'Axle-to-axle length and limb lever length must be positive' };
+  if (!(g.ata > 0 && g.limbLength > 0 && g.braceHeight > 0 && g.drawLength > 0)) {
+    return { bow: null, error: 'Axle-to-axle length, brace height, draw length and limb lever length must be positive' };
   }
   const { xBrace, xFull } = drawRange(g.braceHeight, g.drawLength);
   if (!(xFull > xBrace)) return { bow: null, error: 'Full draw must lie behind brace height' };
