@@ -159,7 +159,9 @@ the largest grid value, including the cell beyond the window end when that
 value sits at an end; f ≤ 0 everywhere means that B lies inside the track
 (status `inside`). Serialized track data is checked when it is loaded:
 finite values, increasing spline knots, C2 continuity of the spline
-coefficients, and spline integrals recomputed from the coefficients. A point on the track has no free span: a largest f below
+coefficients, and spline integrals recomputed from the coefficients. An
+ellipse stored with a < b is turned into the form a ≥ b (axis angle + 90°),
+which the curvature minimum b²/a assumes. A point on the track has no free span: a largest f below
 256·ε·max(|B|, |p|) or a free span below √(256·ε)·max(|B|, |p|) (ε the
 machine epsilon, 2.2e-16) also gives `inside`, so rounding noise never makes a
 tangent from a point on the track. The golden-section search stops at an interval of 1e-12
@@ -294,7 +296,10 @@ limb.
   are at least 0. Serialized table data is rebuilt from its knots and
   values, so these invariants hold for every table limb. The draw energy
   E1(α_f) − E1(0) is computed directly (½·k_t·α_f·(α_f + 2·α_0) for the
-  linear limb), not as a difference of the preload-scale totals.
+  linear limb), not as a difference of the preload-scale totals. A table
+  limb integrates M from α_0 piece by piece (end line, table, end line);
+  beyond the table the piece length is α itself, so a preload far larger
+  than α_f keeps the draw energy.
 - Travel mode: the stiffness that stores the draw energy W over the axle
   travel s_f from brace to full draw is k = W / ((s_f + s_0)² − s_0²).
 - E1', E1'' and the inverse E1⁻¹ (Newton inside a bracket, residual below

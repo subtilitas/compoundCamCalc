@@ -493,12 +493,11 @@ function splineMethods(d) {
       };
       if (!periodic) {
         scan(lo, hi, 0);
-      } else if (hi - lo >= period) {
-        scan(x0, knots[n], 0);
       } else {
+        // At most one period from lo, so the returned ψ lies in [lo, hi].
         const shift = wraps(lo) * period;
         const a = lo - shift;
-        const b = hi - shift;
+        const b = Math.min(hi, lo + period) - shift;
         scan(a, Math.min(b, knots[n]), shift);
         if (b > knots[n]) scan(x0, b - period, shift + period);
       }
@@ -549,12 +548,30 @@ function coreMethods(data) {
 }
 
 /**
+ * Support data with every ellipse stored as a ≥ b, the form that
+ * `ellipse()` builds; serialized data may carry the axes the other way.
+ * @param {SupportData} data
+ * @returns {SupportData}
+ */
+function canonical(data) {
+  if (data?.kind === 'ellipse' && data.b > data.a) {
+    return { ...data, a: data.b, b: data.a, axisAngle: data.axisAngle + Math.PI / 2 };
+  }
+  if (data?.kind === 'offset' && data.base) {
+    const base = canonical(data.base);
+    return base === data.base ? data : { ...data, base };
+  }
+  return data;
+}
+
+/**
  * Attach evaluation methods to support data. Throws RangeError for an
  * unknown kind and for an ellipse without finite, positive semi-axes.
  * @param {SupportData} data
  * @returns {Support}
  */
 export function createSupport(data) {
+  data = canonical(data);
   const core = coreMethods(data);
   const buf = new Float64Array(3);
   const { evaluate } = core;

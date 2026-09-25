@@ -262,6 +262,24 @@ describe('minRho', () => {
     expect(o.minRho(0, 1).value).toBeCloseTo(0.03 ** 2 / 0.05 - 0.001, 15);
   });
 
+  it('stores serialized ellipse data with a < b the way ellipse() does', () => {
+    // Minor semi-axis 15 mm, major 20 mm: ρ_min = 0.015²/0.02 = 11.25 mm,
+    // which an offset of −11.5 mm turns negative.
+    const raw = { kind: 'ellipse', a: 0.015, b: 0.02, axisAngle: 0, offset: 0, offsetAngle: 0 };
+    const s = createSupport(/** @type {any} */ ({ kind: 'offset', base: raw, delta: -0.0115 }));
+    const m = s.minRho(-4, 4);
+    expect(m.value).toBeCloseTo(0.015 ** 2 / 0.02 - 0.0115, 15);
+    expect(m.value).toBeLessThan(0);
+    expect(s.rho(m.psi)).toBeCloseTo(m.value, 15);
+    const direct = createSupport(/** @type {any} */ (raw));
+    expect([/** @type {any} */ (direct).a, /** @type {any} */ (direct).b]).toEqual([0.02, 0.015]);
+    const built = createSupport(ellipse(raw));
+    for (const psi of [-2, 0, 0.7, 3]) {
+      expect(direct.p(psi)).toBe(built.p(psi));
+      expect(direct.P(psi)).toBe(built.P(psi));
+    }
+  });
+
   it('matches dense sampling on random splines and never exceeds a sampled value', () => {
     fc.assert(
       fc.property(
@@ -273,9 +291,20 @@ describe('minRho', () => {
           const knots = vals.map((_, i) => i * 0.7);
           const values = periodic ? [...vals.slice(0, -1), vals[0]] : vals;
           const s = createSupport(splineSupport(knots, values, { periodic }));
-          const m = s.minRho(lo, lo + width);
+          const hi = lo + width;
+          const m = s.minRho(lo, hi);
+          expect(m.psi).toBeGreaterThanOrEqual(lo - 1e-12);
+          expect(m.psi).toBeLessThanOrEqual(hi + 1e-12);
+          // ρ' jumps at the knots, so the knots are sampled too; between them
+          // ρ is a smooth cubic and a spacing of width/4000 misses little.
+          const psis = Array.from({ length: 4001 }, (_, j) => lo + (width * j) / 4000);
+          const period = knots[knots.length - 1];
+          for (const t of knots) {
+            if (!periodic) psis.push(t);
+            else for (let k = Math.floor((lo - t) / period); t + k * period <= hi; k++) psis.push(t + k * period);
+          }
           let sampled = Infinity;
-          for (let j = 0; j <= 4000; j++) sampled = Math.min(sampled, s.rho(lo + (width * j) / 4000));
+          for (const t of psis) if (t >= lo && t <= hi) sampled = Math.min(sampled, s.rho(t));
           expect(m.value).toBeLessThanOrEqual(sampled + 1e-12);
           expect(sampled - m.value).toBeLessThan(1e-6 + 1e-3 * Math.abs(m.value));
           expect(Math.abs(s.rho(m.psi) - m.value)).toBeLessThan(1e-9);

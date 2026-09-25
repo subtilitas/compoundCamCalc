@@ -225,14 +225,36 @@ function tableMethods(d) {
     if (q > qn) return total + (q - qn) * (values[n] + 0.5 * slopes[n] * (q - qn));
     return curve.integral(q0, q);
   };
+  /**
+   * Integral of an end line of the moment from s to s + len; the line
+   * passes through (knot, value) with the given slope.
+   * @param {number} value
+   * @param {number} slope
+   * @param {number} knot
+   * @param {number} s
+   * @param {number} len
+   */
+  const line = (value, slope, knot, s, len) => len * (value + slope * (s - knot + 0.5 * len));
+  /**
+   * Integral of M from q to qn for q < qn.
+   * @param {number} q
+   */
+  const toEnd = (q) => (q >= q0 ? curve.integral(q, qn) : line(values[0], slopes[0], q0, q, q0 - q) + total);
   return {
     energy: (alpha) => W(alpha + a0),
+    // E1(α) − E1(0) as the integral of M from brace, piece by piece; no piece
+    // subtracts two totals, and beyond the table the length is α itself, so a
+    // preload far larger than α keeps its draw energy. a0 ≥ q0 = 0 always.
     energyChange(alpha) {
       const q = alpha + a0;
       if (Number.isNaN(q)) return NaN;
-      // Inside the table the integral from brace is exact without a difference.
-      if (a0 >= q0 && q <= qn && q >= q0) return curve.integral(a0, q);
-      return W(q) - W(a0);
+      if (a0 >= qn) {
+        if (q >= qn) return line(values[n], slopes[n], qn, a0, alpha);
+        return -(toEnd(q) + line(values[n], slopes[n], qn, qn, a0 - qn));
+      }
+      if (q > qn) return curve.integral(a0, qn) + line(values[n], slopes[n], qn, qn, q - qn);
+      if (q >= q0) return curve.integral(a0, q);
+      return -(curve.integral(q0, a0) + line(values[0], slopes[0], q0, q, q0 - q));
     },
     moment: (alpha) => M(alpha + a0),
     stiffness(alpha) {

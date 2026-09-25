@@ -45,6 +45,24 @@ describe('linear limb', () => {
     expect(limbEnergies(huge, alphaFull).drawEnergy).toBeCloseTo(alphaFull * (alphaFull + 2e16), -1);
     const table = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.2, 0.5], moment: [0, 100, 300], alpha0: 0.1 }).limb));
     expect(table.energyChange(0.2)).toBeCloseTo(table.energy(0.2) - table.energy(0), 12);
+    // Brace beyond the table: the end line from α_0 over the length α.
+    const beyond = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 1], moment: [0, 1], alpha0: 1e16 }).limb));
+    const m0 = beyond.moment(0);
+    expect(beyond.energyChange(0.1)).toBeCloseTo(0.1 * (m0 + 0.5 * 0.1 * beyond.stiffness(0)), -1);
+    expect(limbEnergies(beyond, 0.1).drawEnergy).toBeGreaterThan(1e15);
+  });
+
+  it('integrates the table energy from brace on every side of the table', () => {
+    // Knots 0, 0.2, 0.5; brace inside (α_0 = 0.1) and beyond (α_0 = 0.8).
+    const rows = { rotation: [0, 0.2, 0.5], moment: [0, 100, 300] };
+    for (const alpha0 of [0.1, 0.8]) {
+      const limb = createLimb(/** @type {TableLimbData} */ (tableLimb({ ...rows, alpha0 }).limb));
+      // q = α + α_0 left of the table, inside it, and right of it.
+      for (const alpha of [-1.5, -0.3, -0.05, 0, 0.05, 0.3, 1.5]) {
+        expect(limb.energyChange(alpha)).toBeCloseTo(limb.energy(alpha) - limb.energy(0), 10);
+      }
+      expect(limb.energyChange(NaN)).toBeNaN();
+    }
   });
 
   it('reports draw, total and preload energy separately', () => {
