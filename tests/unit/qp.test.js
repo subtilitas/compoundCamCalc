@@ -109,6 +109,20 @@ function bruteForce(qp) {
 }
 
 /**
+ * Pseudo-random numbers in [0, 1) from a 32-bit seed (mulberry32).
+ * @param {number} seed
+ */
+function mulberry32(seed) {
+  let state = seed | 0;
+  return () => {
+    state = (state + 0x6d2b79f5) | 0;
+    let t = Math.imul(state ^ (state >>> 15), 1 | state);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
  * Small QPs with integer data: G = RᵀR + I, and rows that repeat, scale or
  * negate earlier rows, so dependent constraints, opposite inequalities and
  * degenerate vertices are common. With `feasible` the right-hand sides
@@ -357,33 +371,87 @@ describe('solveQP', () => {
       expect(r.active).toEqual([0, 2]);
     }
     // An exact combination keeps holding: row 2 = row 0 + row 1 with rows
-    // of size 3e7. Rounding in the large rows leaves y off by 3.4e-7, so
-    // row 2 misses by 1.4e-6: outside 1e-10 of its own size (8), within
-    // 1e-10 of the sizes of the rows it combines (6e7 each).
-    const K = 3e7;
+    // (K, c), (−K, d) and (0, c + d) through (1, 1). Rounding in the large
+    // rows can move y, and row 2 may then miss by up to 1e-10 of its size
+    // (2·(c + d)) plus the sizes of the rows it combines (2K each). With
+    // K = 3e8, c = 2 and d = 5 it misses by 4.7e-6, far outside 1e-10 of
+    // its own size (14).
+    for (const [K, c, d] of [[3e7, 1, 3], [3e8, 2, 5]]) {
+      const qp = {
+        n: 2,
+        G: Float64Array.from([1, 0, 0, 1]),
+        a: Float64Array.from([0, 0]),
+        C: Float64Array.from([K, c, -K, d, 0, c + d]),
+        b: Float64Array.from([K + c, -K + d, c + d]),
+        meq: 3,
+      };
+      const r = solveQP(qp);
+      expect(r.status).toBe('optimal');
+      expect(r.active).toEqual([0, 1]);
+      expect(r.lambda[2]).toBe(0);
+      expect(Math.abs(r.x[0] - 1)).toBeLessThan(1e-12);
+      expect(Math.abs(r.x[1] - 1)).toBeLessThan(1e-6);
+      expect(Math.abs((c + d) * r.x[1] - (c + d))).toBeLessThan(1e-10 * (2 * (c + d) + 2 * 2 * K));
+    }
+  });
+
+  it('refines x onto two nearly parallel active equalities until a third one holds', () => {
+    // Rows 0 and 1 differ in direction by 1.2e-7; all three rows pass
+    // within 1.5e-10 through (−1.5813459, −1.0077546) (exact rational
+    // arithmetic on the data). Row 2 is a combination of rows 0 and 1 with
+    // coefficients of 3.2e6, so the redundancy bound allows it a miss of
+    // about 3e-3. Refinement until the residuals of rows 0 and 1 stop
+    // falling keeps its miss below 5e-10; two passes leave it at 7.6e-4.
     const qp = {
       n: 2,
-      G: Float64Array.from([1, 0, 0, 1]),
-      a: Float64Array.from([0, 0]),
-      C: Float64Array.from([K, 1, -K, 3, 0, 4]),
-      b: Float64Array.from([K + 1, -K + 3, 4]),
+      G: Float64Array.from([2.8668424624090343, -0.1600815413444857, -0.1600815413444857, 0.4853614010152335]),
+      a: Float64Array.from([0.8591557270847261, 4.5987512450665236]),
+      C: Float64Array.from([
+        -1.0668529076501727, 2.4320737556554377, -1.0668529672161084, 2.4320746957752117, 0.20765428338199854, 2.4191581439226866,
+      ]),
+      b: Float64Array.from([-0.7638699534244793, -0.7638708066401263, -2.7662909195946184]),
       meq: 3,
     };
     const r = solveQP(qp);
     expect(r.status).toBe('optimal');
     expect(r.active).toEqual([0, 1]);
-    expect(r.lambda[2]).toBe(0);
-    expect(Math.abs(r.x[0] - 1)).toBeLessThan(1e-12);
-    expect(Math.abs(r.x[1] - 1)).toBeLessThan(1e-6);
-    const miss = Math.abs(4 * r.x[1] - 4);
-    expect(miss).toBeGreaterThan(1e-10 * 8);
-    expect(miss).toBeLessThan(1e-10 * 2 * 2 * K);
+    for (let i = 0; i < 3; i++) {
+      const slack = qp.C[2 * i] * r.x[0] + qp.C[2 * i + 1] * r.x[1] - qp.b[i];
+      expect(Math.abs(slack)).toBeLessThan(5e-10);
+    }
+    expect(Math.abs(r.x[0] + 1.5813459)).toBeLessThan(1e-6);
+    expect(Math.abs(r.x[1] + 1.0077546)).toBeLessThan(1e-6);
   });
 
   it('treats a constraint as dependent once n constraints are active', () => {
+    // 3·x + y = 4 and 3.00000005·x + 0.99999995·y = 4 meet only at (1, 1),
+    // where x + y ≥ 2.001 fails: infeasible. The normals of the equalities
+    // differ in direction by 2e-8, so M is nearly singular. z of the
+    // inequality is 0 in exact arithmetic; rounding leaves |z|_G = 0.25
+    // against 2.3e7 for the terms that cancel, 1.1e-8 of them and above the
+    // relative dependence test (1e-8). Only the rule for n active
+    // constraints treats the inequality as dependent; without it the solver
+    // steps along z, adds the inequality as a third active constraint and
+    // returns 'optimal' with x 1.5e-3 off (1, 1).
+    const nearly = {
+      n: 2,
+      G: Float64Array.from([2, 1, 1, 2]),
+      a: Float64Array.from([0, 0]),
+      C: Float64Array.from([3, 1, 3.00000005, 0.99999995, 1, 1]),
+      b: Float64Array.from([4, 4, 2.001]),
+      meq: 2,
+    };
+    const rn = solveQP(nearly);
+    expect(rn.status).toBe('infeasible');
+    expect(rn.active).toEqual([0, 1]);
+    expect(rn.lambda[2]).toBe(0);
+  });
+
+  it('reports a third normal that combines the two active ones as infeasible', () => {
     // Equality 0 with inequality 1 needs x ≥ −0.166, with inequality 2
     // x ≤ −0.954: infeasible. The third normal is a combination of the two
-    // active ones, and rounding leaves z of about 1e-12.
+    // active ones, and rounding leaves z of about 1e-12, which both the
+    // rule for n active constraints and the relative dependence test catch.
     const qp = {
       n: 2,
       G: Float64Array.from([9.35, -15.005, -15.005, 25.1001]),
@@ -531,6 +599,102 @@ describe('solveQP', () => {
       { numRuns: 300 },
     );
   });
+
+  // 0.5 s alone and 1 s in the coverage run; the time limit is 30 s.
+  it('fails only on nearly parallel rows, within the measured rates, on 20,000 random problems', () => {
+    // 1 to 5 unknowns, 0 to 11 rows: random rows, multiples and
+    // combinations of earlier rows, and rows that change each coefficient
+    // of an earlier row by up to 5e-7 of its size (nearly parallel, 1e-9 to
+    // 1e-6 apart). 60 % of the problems pass through a known point
+    // (feasible), the others have arbitrary right-hand sides. Measured with
+    // seed 7: 257 of 4294 feasible problems with nearly parallel rows are
+    // reported infeasible (6.0 %; 8.3 % with two refinement passes), and 2
+    // optimal results miss a redundant equality by more than 1e-8 of its
+    // size, by up to 1.3e-4 (26 and 2.4e-3 with two passes).
+    const rnd = mulberry32(7);
+    const tally = { nearFeasible: 0, nearInfeasible: 0, otherFeasible: 0, otherFailed: 0, missed: 0, worstMiss: 0 };
+    for (let it = 0; it < 20000; it++) {
+      const n = 1 + Math.floor(rnd() * 5);
+      const m = Math.floor(rnd() * 12);
+      const R = Array.from({ length: n * n }, () => rnd() * 4 - 2);
+      const G = new Float64Array(n * n);
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          let v = i === j ? 0.05 + rnd() * 0.1 : 0;
+          for (let k = 0; k < n; k++) v += R[k * n + i] * R[k * n + j];
+          G[i * n + j] = v;
+        }
+      }
+      for (let i = 0; i < n; i++) for (let j = 0; j < i; j++) G[i * n + j] = G[j * n + i];
+      const a = Float64Array.from({ length: n }, () => rnd() * 10 - 5);
+      const x0 = Array.from({ length: n }, () => rnd() * 4 - 2);
+      const feasible = rnd() < 0.6;
+      const meq = Math.min(m, Math.floor(rnd() * Math.min(n + 2, 4)));
+      const C = new Float64Array(m * n);
+      const b = new Float64Array(m);
+      let near = false;
+      for (let t = 0; t < m; t++) {
+        const kind = rnd();
+        /** @type {number[]} */
+        let c;
+        const row = (/** @type {number} */ k) => Array.from(C.subarray(k * n, (k + 1) * n));
+        if (t > 0 && kind < 0.2) {
+          const source = Math.floor(rnd() * t);
+          const f = [1, -1, 2, -0.5, 3.7][Math.floor(rnd() * 5)];
+          c = row(source).map((v) => f * v);
+        } else if (t > 1 && kind < 0.3) {
+          const r1 = row(Math.floor(rnd() * t));
+          const r2 = row(Math.floor(rnd() * t));
+          const f1 = rnd() * 2 - 1;
+          const f2 = rnd() * 2 - 1;
+          c = r1.map((v, j) => f1 * v + f2 * r2[j]);
+        } else if (t > 0 && kind < 0.38) {
+          c = row(Math.floor(rnd() * t)).map((v) => v * (1 + (rnd() - 0.5) * 1e-6));
+          near = true;
+        } else {
+          c = Array.from({ length: n }, () => rnd() * 6 - 3);
+        }
+        C.set(c, t * n);
+        const through = c.reduce((sum, v, j) => sum + v * x0[j], 0);
+        b[t] = feasible ? through - (t < meq ? 0 : rnd() < 0.3 ? 0 : rnd() * 2) : rnd() * 10 - 5;
+      }
+      const r = solveQP({ n, G, a, C, b, meq });
+      expect(r.active.length).toBeLessThanOrEqual(n);
+      if (feasible && near) {
+        tally.nearFeasible++;
+        if (r.status !== 'optimal') tally.nearInfeasible++;
+      } else if (feasible && r.status !== 'optimal') {
+        tally.otherFailed++;
+      }
+      if (feasible && !near) tally.otherFeasible++;
+      if (r.status !== 'optimal') continue;
+      // Largest violation relative to max(row scale, size of the terms).
+      let miss = 0;
+      for (let i = 0; i < m; i++) {
+        let slack = -b[i];
+        let terms = Math.abs(b[i]);
+        let scale = Math.abs(b[i]);
+        for (let j = 0; j < n; j++) {
+          slack += C[i * n + j] * r.x[j];
+          terms += Math.abs(C[i * n + j] * r.x[j]);
+          scale = Math.max(scale, Math.abs(C[i * n + j]));
+        }
+        const relative = slack / Math.max(terms, scale);
+        miss = Math.max(miss, i < meq ? Math.abs(relative) : -relative);
+      }
+      if (miss > 1e-8) {
+        if (!near) tally.otherFailed++;
+        tally.missed++;
+        tally.worstMiss = Math.max(tally.worstMiss, miss);
+      }
+    }
+    expect(tally.otherFeasible).toBeGreaterThan(7000);
+    expect(tally.otherFailed).toBe(0);
+    expect(tally.nearFeasible).toBeGreaterThan(4000);
+    expect(tally.nearInfeasible / tally.nearFeasible).toBeLessThan(0.07);
+    expect(tally.missed).toBeLessThanOrEqual(5);
+    expect(tally.worstMiss).toBeLessThan(2e-2);
+  }, 30_000);
 
   it('matches a brute-force solution on small feasible problems with dependent rows', () => {
     fc.assert(

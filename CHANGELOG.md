@@ -90,11 +90,14 @@ All notable changes are listed here. Versions follow semantic versioning.
   solver treats a constraint as dependent when n constraints are active or
   its step is at rounding level, skips dependent equalities that hold and
   checks them again at the end, refines x onto the active constraints
-  after each step, reports `infeasible` when rounding leaves an active
-  constraint or a skipped equality outside the tolerance, and returns
-  `invalid` for mismatched sizes or non-finite data; the fit programmes of
-  600 random near-default states end with the constraints met to 1e-10 of
-  the row scale. The fit returns `invalid` for non-finite or out-of-range
+  after each step until the residuals stop falling (at most 8 passes),
+  reports `infeasible` when rounding leaves an active constraint or a
+  skipped equality outside the tolerance, and returns `invalid` for
+  mismatched sizes or non-finite data; the fit programmes of 600 random
+  near-default states end with the constraints met to 1e-10 of the row
+  scale. With two rows 1e-8 to 1e-6 apart, 4 % to 13 % of feasible random
+  problems come back `infeasible`, and 44 of 64,054 come back `optimal`
+  with a redundant equality off by up to 1.1e-2 of its size. The fit returns `invalid` for non-finite or out-of-range
   input, including points to pass through outside the fitted range or
   with non-finite values, instead of throwing. A fitted cam whose
   force stays within 3 % of the peak (at least 2 N) and whose draw energy
@@ -112,14 +115,16 @@ All notable changes are listed here. Versions follow semantic versioning.
   names the largest lead-in wrap k·5° down to 0° that closes the track.
   Otherwise it names a string track 5 mm to 20 mm larger, or half the
   minimum bend radius when it sets the limit, only when a coarse trial
-  solve with that value reports no diagnostic; on 77 edits of point 2 of
+  solve with that value reports no diagnostic; on 76 edits of point 2 of
   the default it names a radius in 30, each of which solves without
-  diagnostics, and lists the changes tried in the other 47.
+  diagnostics, and lists the changes tried in the other 46. The trials
+  run in a full solve only; a coarse solve names the force curve.
 - Solver entry point (`src/core/solve.js`): project state to cable track,
-  outlines, achieved force curve, tensions and metrics in 18 ms (coarse)
-  and 26 ms to 29 ms (full) for the default preset, within the budgets of
-  30 ms and 200 ms, with 19 diagnostic codes whose messages carry numbers
-  and units and whose suggestions name the input to change; never throws.
+  outlines, achieved force curve, tensions and metrics in 24 ms to 27 ms
+  (coarse) and 30 ms to 35 ms (full) for the default preset, within the
+  budgets of 30 ms and 200 ms, with 19 diagnostic codes whose messages
+  carry numbers and units and whose suggestions name the input to change;
+  never throws.
   The result type names each outline, and a result without a cable track
   has the string outlines only; `brace` holds the brace conditions and the
   ends of the brace blend as ψ_c0, ψ_1 (rad) and x_1 (m). Without the fit
@@ -133,7 +138,8 @@ All notable changes are listed here. Versions follow semantic versioning.
   peak. `cable-radius` leaves out the brace blend, gives a negative radius
   as the angle over which the track bends the wrong way, and names the
   draw position and curve points of the largest force difference of the
-  fitted cam. `cable-clearance` gives the largest bore radius plus wall
+  fitted cam; a difference between points 2 and 3 names a later point 3,
+  for a parametric curve a larger rise to peak. `cable-clearance` gives the largest bore radius plus wall
   that clears the lever arm. The first and last curve point are placed
   exactly at brace and full draw, so points within the 1e-9 m validation
   tolerance give the result of the exact state. The cable-brace mark and

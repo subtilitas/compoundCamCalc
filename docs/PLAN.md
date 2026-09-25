@@ -275,10 +275,15 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   dual active-set QP of Goldfarb and Idnani. The QP treats a constraint as
   dependent when n constraints are active or when its step is at rounding
   level, skips dependent equalities that hold and checks them again at the
-  end, refines x onto the active constraints after each added constraint,
-  reports `infeasible` when rounding leaves an active constraint or a
-  skipped equality outside the tolerance, and returns `invalid` for
-  mismatched sizes or non-finite data; the fit returns `invalid` for
+  end, refines x onto the active constraints after each added constraint
+  until the residuals stop falling (at most 8 passes), reports `infeasible`
+  when rounding leaves an active constraint or a skipped equality outside
+  the tolerance, and returns `invalid` for mismatched sizes or non-finite
+  data. It is reliable when the active normals differ in direction by well
+  over 1e-6, as in the fit programmes; with two rows 1e-8 to 1e-6 apart it
+  reports 4 % to 13 % of feasible random problems `infeasible` and returns
+  a few `optimal` results with a redundant equality off by up to 1.1e-2 of
+  its size (`docs/model.md`). The fit returns `invalid` for
   out-of-range input, including points to pass through outside the fitted
   range or with non-finite values, instead of throwing.
 - Equalities at every curve point whose ideal lever arm meets p_min:
@@ -325,7 +330,9 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   wrap (5° steps, down to 0°) that closes the track. Otherwise it names a
   string track 5 mm to 20 mm larger, or half the minimum bend radius, only
   when a coarse trial solve with that change reports no diagnostic, and
-  otherwise lists what was tried (`docs/model.md`).
+  otherwise lists what was tried (`docs/model.md`). The trials run in a
+  full solve; a coarse solve, which runs while an input is dragged, names
+  the force curve.
 - Posts (string post, cable post), cable stop post and timing marks (string
   exit at brace, cable exit at brace, full-draw index) are placed in the cam
   frame.
@@ -353,13 +360,19 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   thread: the coverage run adds V8 block counters to the test process,
   which slow the solve about 4 times, and the budget applies to the code as
   the app runs it. Measured medians with Node 22 on a 4-core 2.1 GHz Xeon:
-  18 ms coarse and 26 ms to 29 ms full alone; 20 ms to 30 ms and 26 ms to
-  34 ms in the coverage run with the rest of the suite in parallel; 42 ms
-  to 47 ms and 57 ms to 74 ms with every core also loaded by another
-  process. The first call, before the JavaScript engine has optimised the
-  code, takes 165 ms to 300 ms. A `closing-blend` that no lead-in wrap
-  closes adds up to five coarse trial solves: 90 ms median and at most
-  420 ms on 77 edits of point 2 of the default.
+  24 ms to 27 ms coarse and 30 ms to 35 ms full alone; 26 ms to 28 ms and
+  33 ms to 39 ms in the coverage run with the rest of the suite in
+  parallel; 32 ms to 49 ms and 56 ms to 63 ms with every core also loaded
+  by another process. The first call, before the JavaScript engine has
+  optimised the code, takes 200 ms to 250 ms alone and up to 480 ms on a
+  loaded machine. A `closing-blend` that no lead-in wrap closes adds up to
+  five coarse trial solves to a full solve: 107 ms to 112 ms median and at
+  most 490 ms on 76 edits of point 2 of the default. A coarse solve runs
+  no trials: on these edits it takes 82 ms to 85 ms median and at most
+  127 ms. The performance test holds the coarse solve with point 2 at
+  10 in and 50 N below 10 times the coarse budget: 78 ms to 89 ms alone
+  and up to 138 ms on a loaded machine. Its five trial solves take about
+  350 ms in a full solve.
 - Exported curves deviate from the model curve by at most the export
   tolerance (default 0.01 mm) along the normal.
 
@@ -596,27 +609,27 @@ at 75 % (the model gives 77.5 mm), about 100 mm at 80 % and about 140 mm at
   string groove and hub the achieved let-off follows the limb force at the
   axle at full draw: 10 N/mm with 60 mm preload (1142 N) reaches 61.5 % for
   a 75 % target; 2.6 N/mm with 192 mm (699 N) and 4 N/mm with 84 mm
-  (694 N) reach 76.2 % and 76.3 % for an 80 % target; 1.8 N/mm with 200 mm
+  (694 N) reach 76.1 % and 76.3 % for an 80 % target; 1.8 N/mm with 200 mm
   (543 N) reaches 80.8 %.
 - A lower let-off also relaxes the limit.
 
 Let-off 80 % builds with zero diagnostics and at least 90 J of draw energy,
 but not with the margins of 75 %:
 
-- Default limb, groove and hub: 76.2 % achieved, 15.5 N from the target.
+- Default limb, groove and hub: 76.1 % achieved, 15.5 N from the target.
 - Default hub, limb 2.1 N/mm with 191 mm preload, groove radius 44.3 mm,
-  offset 24.2 mm towards −117.4°, rise 47.2 %: 79.5 %, 91.2 J, 4.4 N
-  (tolerance 8.0 N), 91 mm axle travel, 122 mm cam. The nine edits above
-  build (largest 6.7 N), but 28 of the 45 edits do (largest cam 177 mm);
-  tuned for the 45 edits as well, 33 of 45 (2.07 N/mm, 93 mm axle travel,
-  127 mm cam).
+  offset 24.2 mm towards −117.4°, rise 47.2 %: 79.6 %, 91.2 J, 4.4 N
+  (tolerance 8.0 N), 92 mm axle travel, 124 mm cam. Eight of the nine
+  edits above build (largest 6.7 N; rise 44 % reports `closing-blend`),
+  and 29 of the 45 edits do (largest cam 135 mm); tuned for the 45 edits
+  as well, 33 of 45 (2.08 N/mm, 93 mm axle travel, 127 mm cam).
 - Default hub with the cam at most 105 mm and the axle travel at most
   85 mm: at best 6.9 N (86 % of the tolerance), and up to 93 % of the
   tolerance on the nine edits, with a 48 mm groove radius and a 73.8 mm
   string lever arm at full draw.
 - Bore 6.35 mm and wall 2 mm (p_min 6.43 mm), limb 2.575 N/mm with 191 mm
   preload, groove radius 43.1 mm, offset 22 mm towards −120.75°, valley
-  1.18 in: 79.6 %, 91.9 J, 3.85 N, 77.6 mm axle travel, 95 mm cam; the nine
+  1.18 in: 79.6 %, 91.8 J, 3.86 N, 77.6 mm axle travel, 95 mm cam; the nine
   edits build (largest 6.9 N) and 38 of the 45 edits do. This needs a
   smaller axle and bushing than the default hub.
 

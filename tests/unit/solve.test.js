@@ -523,17 +523,50 @@ describe('solve: diagnostics', () => {
     expect(/** @type {any} */ (r.metrics).minRho).toBeGreaterThanOrEqual(defaultState().body.minBendRadius - 1e-6);
   });
 
+  // Eight full solves: 0.6 s alone and 2 s in the coverage run; the time
+  // limit is 30 s.
   it('cable-radius: names where the fitted cam misses the target, not the brace blend', () => {
     // Rise 30 %: the fitted cam is 43.5 N below the target at 13.2 in,
     // between points 2 and 3; the ideal track bends the wrong way there
     // over a fraction of a degree with a radius of about -1.4e6 mm.
     const s = reduce(defaultState(), { type: 'setCurveParams', params: { riseFraction: 0.3 } });
     const r = solve(s);
-    const d = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'cable-radius'));
+    /** @param {SolveResult} q */
+    const radius = (q) => q.diagnostics.find((e) => e.code === 'cable-radius');
+    const d = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (radius(r));
     expect(d.message).toMatch(/bends the wrong way over \d+\.\d° between 13\.\d in and 13\.\d in/);
     expect(d.message).not.toMatch(/-\d{4,}/);
     expect(d.message).toMatch(/the largest difference, below the target, lies at 13\.\d in, between points 2 and 3$/);
-    expect(d.suggestion).toBe('Move point 2 so that the force rises more evenly from brace to point 3');
+    // The force rises 165 N from point 2 to point 3 over 3.7 in: a later
+    // point 3 spreads the rise. A parametric curve names the rise to peak.
+    expect(d.suggestion).toBe(
+      'Increase the rise to peak, so that point 3 (the peak start) comes later and the force rises more evenly from point 2 to point 3',
+    );
+    expect(r.fit.maxForceDifference).toBeGreaterThan(43);
+    // Applied: rise 40 % leaves 10.6 N, rise 44 % builds without diagnostics.
+    const rise40 = solve(reduce(s, { type: 'setCurveParams', params: { riseFraction: 0.4 } }));
+    expect(rise40.fit.maxForceDifference).toBeLessThan(0.3 * r.fit.maxForceDifference);
+    const rise44 = solve(reduce(s, { type: 'setCurveParams', params: { riseFraction: 0.44 } }));
+    expect(rise44.status).toBe('ok');
+    expect(rise44.diagnostics).toEqual([]);
+    // The same points as a custom curve name point 3. Moving it 1.5 in
+    // later clears cable-radius: the difference falls to 6.6 N, within the
+    // 8.0 N tolerance (the closing blend then fails). Point 2 lower raises
+    // the difference: 60 N at 10 N lower.
+    const custom = structuredClone(s);
+    custom.curve.mode = 'custom';
+    const rc = solve(custom);
+    expect(radius(rc)?.suggestion).toBe('Move point 3 later, so that the force rises more evenly from point 2 to point 3');
+    const later = structuredClone(custom);
+    later.curve.points[2].x += 1.5 * INCH;
+    expect(validate(later)).toEqual([]);
+    const rl = solve(later);
+    expect(codes(rl)).not.toContain('cable-radius');
+    expect(rl.fit.maxForceDifference).toBeLessThan(0.2 * rc.fit.maxForceDifference);
+    expect(rl.fit.withinTolerance).toBe(true);
+    const lower = structuredClone(custom);
+    lower.curve.points[1].F -= 10;
+    expect(solve(lower).fit.maxForceDifference).toBeGreaterThan(rc.fit.maxForceDifference);
     // Valley 1 in at peak 285 N and rise 43 %: the miss lies on the drop
     // between points 5 and 6; moving point 5 0.5 in earlier halves it.
     const drop = reduce(defaultState(), { type: 'setCurveParams', params: { peak: 285, riseFraction: 0.43, valleyWidth: INCH } });
@@ -547,7 +580,7 @@ describe('solve: diagnostics', () => {
     const rm = solve(moved);
     expect(codes(rm)).not.toContain('cable-radius');
     expect(rm.fit.maxForceDifference).toBeLessThan(0.6 * rd.fit.maxForceDifference);
-  });
+  }, 30_000);
 
   it('cable-clearance: a let-off that needs a cable lever arm inside the bore wall', () => {
     const { d } = expectCode(modified((s) => (s.curve.params.letOff = 0.9), { regenerate: true }), 'cable-clearance');
@@ -801,8 +834,8 @@ describe('solve: lead-in and closing blend', () => {
   });
 
   // The tests of the closing-blend trials run up to five trial solves per
-  // solve, and solve the trial states again; the coverage run slows them
-  // about 4 times.
+  // full solve, and solve the trial states again; the coverage run slows
+  // them about 4 times.
   const TRIALS_TIMEOUT = 30_000;
 
   it('closing-blend: a 20 mm bend radius with a lead-in of 5° or 10° is reported with the other diagnostics', () => {
@@ -811,7 +844,7 @@ describe('solve: lead-in and closing blend', () => {
         st.body.minBendRadius = 0.02;
         st.body.leadInWrap = lead * DEG;
       });
-      const r = solve(s, { resolution: 'coarse' });
+      const r = solve(s);
       expect(codes(r)).toEqual(['closing-blend', 'cable-radius', 'cable-clearance']);
       const d = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'closing-blend'));
       // No larger string track passes; half the bend radius does.
@@ -839,14 +872,18 @@ describe('solve: lead-in and closing blend', () => {
   });
 
   it('closing-blend: names the smallest larger string track with which a trial solve passes every check', () => {
-    // Point 2 at 12 in with 120 N: 50 mm fails, 55 mm passes.
+    // Point 2 at 12 in with 120 N: 50 mm fails, 55 mm passes. Only the full
+    // solve runs the trials; the coarse solve, which runs while an input is
+    // dragged, keeps the plain suggestion.
     const s = pointTwo(12, 120);
-    for (const resolution of /** @type {const} */ (['coarse', 'full'])) {
-      const r = solve(s, { resolution });
-      expect(codes(r)).toEqual(['closing-blend']);
-      expect(r.diagnostics[0].suggestion).toBe('Increase the string track radius to 55.0 mm; the cam then closes the track and passes every check');
-      expect(r.timings.trials).toBeGreaterThan(0);
-    }
+    const r = solve(s);
+    expect(codes(r)).toEqual(['closing-blend']);
+    expect(r.diagnostics[0].suggestion).toBe('Increase the string track radius to 55.0 mm; the cam then closes the track and passes every check');
+    expect(r.timings.trials).toBeGreaterThan(0);
+    const coarse = solve(s, { resolution: 'coarse' });
+    expect(codes(coarse)).toEqual(['closing-blend']);
+    expect(coarse.diagnostics[0].suggestion).toBe('Change the force curve');
+    expect(coarse.timings.trials).toBe(0);
     for (const [radius, status] of /** @type {const} */ ([[0.05, 'infeasible'], [0.055, 'ok']])) {
       const t = structuredClone(s);
       t.stringTrack.radius = radius;
@@ -857,7 +894,7 @@ describe('solve: lead-in and closing blend', () => {
     const e = pointTwo(11, 100, (st) => {
       st.stringTrack = { ...st.stringTrack, shape: 'ellipse', semiMajor: 0.045, semiMinor: 0.035, offset: 0.015, phase: -1.8 };
     });
-    const re = solve(e, { resolution: 'coarse' });
+    const re = solve(e);
     expect(codes(re)).toContain('closing-blend');
     expect(re.diagnostics[0].suggestion).toBe(
       'Increase both semi-axes of the string track by 15.0 mm, to 60.0 mm and 50.0 mm; the cam then closes the track and passes every check',
@@ -872,16 +909,22 @@ describe('solve: lead-in and closing blend', () => {
   it('closing-blend: lists the changes tried when none passes every check', () => {
     // Point 2 at 10 in with 50 N: every larger string track adds cable-radius.
     const s = pointTwo(10, 50);
-    const r = solve(s, { resolution: 'coarse' });
+    const r = solve(s);
     expect(codes(r)).toEqual(['closing-blend']);
     expect(r.diagnostics[0].suggestion).toBe(
       'Change the force curve: a lead-in wrap down to 0°, a string track radius up to 20.0 mm larger and a minimum bend radius of 2.5 mm ' +
         'do not give a closed track that passes every check',
     );
+    expect(r.timings.trials).toBeGreaterThan(0);
+    // The trials are coarse solves, compared here with the coarse solve of
+    // the state, which runs no trials of its own.
+    const coarse = solve(s, { resolution: 'coarse' });
+    expect(coarse.timings.trials).toBe(0);
+    expect(coarse.diagnostics[0].suggestion).toBe('Change the force curve');
     for (const dr of STRING_TRACK_TRIALS) {
       const t = solve(/** @type {ProjectState} */ (largerStringTrack(s, dr)), { resolution: 'coarse' });
       expect(t.status).toBe('infeasible');
-      expect(t.fit.maxForceDifference).toBeGreaterThan(r.fit.maxForceDifference);
+      expect(t.fit.maxForceDifference).toBeGreaterThan(coarse.fit.maxForceDifference);
     }
   }, TRIALS_TIMEOUT);
 

@@ -25,22 +25,40 @@
  *   redundant: it stays inactive with multiplier 0. A nearly dependent
  *   equality drifts when a later inequality moves x, so it is checked
  *   again at the end (see below).
- * - After each added constraint, two passes of iterative refinement move x
- *   back onto the active constraints: x by W·M⁻¹·e and the multipliers by
- *   M⁻¹·e for the residuals e, so G·x + a = N·u still holds. A pass that
- *   would turn an inequality multiplier negative is skipped.
+ * - After each added constraint, iterative refinement moves x back onto
+ *   the active constraints. A pass moves x by W·M⁻¹·e and the multipliers
+ *   by M⁻¹·e for the residuals e, so G·x + a = N·u still holds. Passes
+ *   repeat while the largest active residual, relative to the size t_i of
+ *   its row (below), falls or stays above 4 machine epsilons (8.9e-16), at
+ *   most 8 passes. A pass that would turn an inequality multiplier negative
+ *   is skipped and ends the refinement.
  * - The result is optimal only when every active constraint holds within
  *   the tolerance times its size t_i = max(s_i, Σ|c_ij·x_j| + |b_i|), and
  *   every redundant equality within the tolerance times t_p + Σ|r_k|·t_k
  *   over the rows of its combination. Otherwise the status is
  *   'infeasible'. An active constraint outside the bound means that
  *   rounding has moved x off it: the programme cannot be solved in double
- *   precision, for example with normals that differ by 1e-7 of their size
- *   and a solution 1e7 times the row scale away. A redundant equality
- *   outside the bound was only nearly dependent. Example: x = 0 and
- *   x + 1e-9·y = 0 with y ≥ 100. At the unconstrained minimum y = 0.1 the
- *   second equality misses by 1e-10 and counts as redundant; y ≥ 100 then
- *   moves its miss to 1e-7, and the programme is infeasible.
+ *   precision. A redundant equality outside the bound was only nearly
+ *   dependent. Example: x = 0 and x + 1e-9·y = 0 with y ≥ 100. At the
+ *   unconstrained minimum y = 0.1 the second equality misses by 1e-10 and
+ *   counts as redundant; y ≥ 100 then moves its miss to 1e-7, and the
+ *   programme is infeasible.
+ *
+ * Reliability. The solver is reliable when the active normals differ in
+ * direction by well over 1e-6 (sine of the angle between them). In the fit
+ * programmes that core/solve.js builds for 600 random near-default states
+ * the smallest sine between two active normals is 0.028, and the active
+ * residuals end within 6.5e-16 of their size. For
+ * two normals 1e-8 to 1e-6 apart, M is nearly singular, a refinement pass
+ * removes only part of the residual, and x is uncertain along the nearly
+ * shared direction. Two failures remain there (400,000 random problems
+ * with up to 5 unknowns and 11 constraints, docs/model.md):
+ * - A feasible programme is reported 'infeasible': 4.0 % of those with
+ *   rows 1e-7 to 1e-6 apart, 13 % with rows 1e-8 to 1e-7 apart.
+ * - A redundant equality comes back 'optimal' off by more than 1e-8 of its
+ *   size, in 44 of 64,054 feasible problems, by up to 1.1e-2. Its
+ *   combination coefficients reach 4e5 to 7e7, and the bound
+ *   tolerance·(t_p + Σ|r_k|·t_k) grows with them.
  *
  * Sizes: tens of unknowns, hundreds of constraints.
  * @module core/qp
@@ -53,6 +71,15 @@ import { cholesky, choleskySolve } from './linalg.js';
  * combination of the active ones.
  */
 const DEPENDENCE = 1e-8;
+
+/** Largest number of refinement passes after an added constraint. */
+const REFINE_PASSES = 8;
+
+/**
+ * Active residual, relative to the size of its row, at rounding level:
+ * 4 machine epsilons, 8.9e-16.
+ */
+const ROUNDING = 4 * Number.EPSILON;
 
 /**
  * @typedef {object} QuadraticProgram
@@ -217,23 +244,6 @@ export function solveQP(qp, options = {}) {
     Mchol = cholesky(M, q);
     return Mchol !== null;
   };
-  // Iterative refinement with the residuals e_k = b⁺_k − n⁺_kᵀ·x of the
-  // active constraints (Mchol is set: at least one constraint is active).
-  // A pass that would turn an inequality multiplier negative is skipped, so
-  // G·x + a = N·u and u ≥ 0 keep holding.
-  const refine = () => {
-    const q = active.length;
-    const e = new Float64Array(q);
-    for (let k = 0; k < q; k++) e[k] = -sign[k] * slack(active[k]);
-    choleskySolve(/** @type {Float64Array} */ (Mchol), q, e);
-    for (let k = 0; k < q; k++) if (active[k] >= meq && u[k] + e[k] < 0) return;
-    for (let k = 0; k < q; k++) {
-      const wk = W[k];
-      for (let j = 0; j < n; j++) x[j] += e[k] * wk[j];
-      u[k] += e[k];
-    }
-  };
-
   /**
    * Size of row i at x: max(scale, |b_i| + Σ|c_ij·x_j|).
    * @param {number} i
@@ -242,6 +252,43 @@ export function solveQP(qp, options = {}) {
     let terms = Math.abs(b[i]);
     for (let j = 0; j < n; j++) terms += Math.abs(C[i * n + j] * x[j]);
     return Math.max(scale[i], terms);
+  };
+  /** Largest |slack| of the active constraints relative to their size. */
+  const activeResidual = () => {
+    let worst = 0;
+    for (const i of active) worst = Math.max(worst, Math.abs(slack(i)) / size(i));
+    return worst;
+  };
+  // One pass of iterative refinement with the residuals
+  // e_k = b⁺_k − n⁺_kᵀ·x of the active constraints (Mchol is set: at least
+  // one constraint is active). A pass that would turn an inequality
+  // multiplier negative is skipped and returns false, so G·x + a = N·u and
+  // u ≥ 0 keep holding.
+  const refine = () => {
+    const q = active.length;
+    const e = new Float64Array(q);
+    for (let k = 0; k < q; k++) e[k] = -sign[k] * slack(active[k]);
+    choleskySolve(/** @type {Float64Array} */ (Mchol), q, e);
+    for (let k = 0; k < q; k++) if (active[k] >= meq && u[k] + e[k] < 0) return false;
+    for (let k = 0; k < q; k++) {
+      const wk = W[k];
+      for (let j = 0; j < n; j++) x[j] += e[k] * wk[j];
+      u[k] += e[k];
+    }
+    return true;
+  };
+  // Passes repeat while the largest active residual falls or stays above
+  // rounding level, at most REFINE_PASSES. Nearly parallel active normals
+  // make M ill-conditioned: each pass then removes only part of the
+  // residual, and the residual can rise for a pass before it falls again.
+  const refineActive = () => {
+    let before = activeResidual();
+    for (let pass = 0; pass < REFINE_PASSES; pass++) {
+      if (!refine()) return;
+      const after = activeResidual();
+      if (!(after < before) && after <= ROUNDING) return;
+      before = after;
+    }
   };
   // The active constraints hold within the tolerance times their size, and
   // each redundant equality within the tolerance times its size plus the
@@ -377,8 +424,7 @@ export function solveQP(qp, options = {}) {
         W.push(Float64Array.from(gn, (v) => v * dir));
         u.push(uPlus);
         if (!refactor()) return done('infeasible');
-        refine();
-        refine();
+        refineActive();
         break;
       }
       // Partial step: drop constraint `drop` (its multiplier is now 0) and

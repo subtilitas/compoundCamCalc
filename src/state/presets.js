@@ -29,7 +29,7 @@ const DEG = Math.PI / 180;
  * and is not checked against measured limbs. The string groove (radius
  * 45 mm, offset 22 mm towards −122°) has a small lever arm around the peak
  * and a large one at full draw. Let-off 80 % builds with a softer limb
- * (2.1 N/mm, 91 mm axle travel) and a 122 mm cam, but fewer edits around it
+ * (2.1 N/mm, 92 mm axle travel) and a 124 mm cam, but fewer edits around it
  * meet the fit tolerance (docs/PLAN.md). Returns a new object on every call.
  * @returns {ProjectState}
  */

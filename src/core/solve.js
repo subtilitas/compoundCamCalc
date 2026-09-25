@@ -196,7 +196,8 @@ export const RESOLUTIONS = Object.freeze({
  *   ideal cable track on its angle range: smallest ρ and p, largest p (m),
  *   ∫ max(0, ρ_lim − ρ) dψ (m·rad), start and end angle (rad)
  * @property {{ total: number, inverse: number, fit: number, outline: number, forward: number, trials: number }} timings
- *   (ms); trials: the trial solves of a closing-blend suggestion
+ *   (ms); trials: the trial solves of a closing-blend suggestion, which
+ *   run in a full solve only (0 in a coarse solve)
  */
 
 const now = () => globalThis.performance?.now?.() ?? Date.now();
@@ -698,7 +699,10 @@ function solveState(state, resolution, maxIterations, trials) {
     const verdict = `${forceOk ? 'within' : 'more than'} the ${fmt.forceFine(tolerance)} tolerance` +
       (energyOk ? '' : `, and a draw energy difference above the ${fmt.energy(energyTolerance)} tolerance`);
     const miss = best.maxAt >= 0
-      ? largestDifference(points, forward.x[best.maxAt], forward.F[best.maxAt] - res.target.F[best.maxAt], targetMetrics.xPeak, fmt)
+      ? largestDifference(
+        points, forward.x[best.maxAt], forward.F[best.maxAt] - res.target.F[best.maxAt], targetMetrics.xPeak,
+        state.curve.mode === 'parametric', fmt,
+      )
       : null;
     for (const d of violations) {
       d.message += `. The fitted cam meets the limits; its force curve differs from the target by up to ${fmt.forceFine(maxDiff)}, ` +
@@ -717,10 +721,11 @@ function solveState(state, resolution, maxIterations, trials) {
     }
   }
   diags.push(...violations);
-  // A closing blend that no lead-in wrap closes: trial solves (coarse,
-  // without trials of their own) look for a change that passes every
-  // check.
-  if (trials && closing && !closing.closedByLeadIn) {
+  // A closing blend that no lead-in wrap closes: in a full solve, trial
+  // solves (coarse, without trials of their own) look for a change that
+  // passes every check. A coarse solve runs while an input is dragged and
+  // keeps the plain suggestion.
+  if (trials && resolution === 'full' && closing && !closing.closedByLeadIn) {
     const tTrials = now();
     closing.diagnostic.suggestion = changeSuggestion(
       state, closing.tooSharp, fmt, (s) => guardedSolve(s, 'coarse', maxIterations, false).status === 'ok',
@@ -1037,6 +1042,17 @@ function checkIdeal(s, i1, state, ctx, limbData, targetMetrics, fmt, diags) {
 const EVEN_RISE = 'Move point 2 so that the force rises more evenly from brace to point 3';
 
 /**
+ * Suggestion of a fitted cam that misses the target between points 2 and
+ * 3, where the force rises steeply towards the peak: a later point 3
+ * spreads the rise. A custom curve moves the point, a parametric curve
+ * the rise to peak, which places point 3 at the peak start.
+ */
+const LATER_PEAK = {
+  custom: 'Move point 3 later, so that the force rises more evenly from point 2 to point 3',
+  parametric: 'Increase the rise to peak, so that point 3 (the peak start) comes later and the force rises more evenly from point 2 to point 3',
+};
+
+/**
  * Radius of curvature and lever arm of the ideal cable track on a 0.1°
  * grid (at least 200 intervals): at most one diagnostic per code, naming the
  * worst range. Returns the diagnostics without adding them (the result of
@@ -1188,16 +1204,18 @@ function checkCableTrack(track, psiToX, blendEnd, rhoLimit, pMin, state, samples
  * Where the achieved force of a fitted cam differs most from the target:
  * the draw position, the side of the target and the curve points on either
  * side, and the suggestion for a cable track that bends too sharply there.
- * Before point 3 the force rise from brace sets the track; after the peak
- * the drop towards the holding weight, and with it the let-off, does.
+ * Before point 2 the force rise from brace sets the track, between points
+ * 2 and 3 the rise towards the peak; after the peak the drop towards the
+ * holding weight, and with it the let-off, does.
  * @param {ReadonlyArray<{ x: number, F: number }>} points
  * @param {number} x draw position of the largest difference (m)
  * @param {number} difference achieved minus target force there (N)
  * @param {number} xPeak peak position of the target (m)
+ * @param {boolean} parametric the curve follows the parametric generator
  * @param {ReturnType<typeof formatter>} fmt
  * @returns {{ text: string, suggestion: string }}
  */
-function largestDifference(points, x, difference, xPeak, fmt) {
+function largestDifference(points, x, difference, xPeak, parametric, fmt) {
   const last = points.length - 1;
   let k = 0;
   while (k < last - 1 && points[k + 1].x <= x) k++;
@@ -1214,8 +1232,10 @@ function largestDifference(points, x, difference, xPeak, fmt) {
     }
   }
   let suggestion;
-  if (x < points[Math.min(2, last)].x) {
+  if (x < points[Math.min(1, last)].x) {
     suggestion = EVEN_RISE;
+  } else if (x < points[Math.min(2, last)].x) {
+    suggestion = parametric ? LATER_PEAK.parametric : LATER_PEAK.custom;
   } else if (drop >= 0) {
     suggestion = `Make the force drop between points ${drop + 1} and ${drop + 2} more gradual: move them apart, or reduce the let-off`;
   } else {
