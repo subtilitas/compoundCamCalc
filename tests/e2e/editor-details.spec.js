@@ -262,7 +262,11 @@ test.describe('glossary', () => {
     const size = page.viewportSize();
     if (!b || !size) throw new Error('info button is not visible');
     // Viewport ends 4 px below the button; the width, and so the layout, stays.
-    await page.setViewportSize({ width: size.width, height: Math.ceil(b.y + b.height + 4) });
+    const height = Math.ceil(b.y + b.height + 4);
+    await page.setViewportSize({ width: size.width, height });
+    // The page can report the old height for a frame after the resize; the
+    // popover is placed from the height at the click.
+    await page.waitForFunction((h) => document.documentElement.clientHeight === h, height);
     await button.click();
     const pop = page.getByTestId('stats').getByTestId('glossary-peak');
     await expect(pop).toBeVisible();
