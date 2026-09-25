@@ -196,9 +196,29 @@ describe('brace conditions', () => {
     expect(braceConditions(ctx, brace.maxSlope * 1.001).ok).toBe(false);
     const near = braceConditions(ctx, brace.maxSlope * 0.999);
     expect(near.ok).toBe(true);
-    // The lever arm grows without bound towards the limit; it stays below the axle distance.
+    // Towards the limit K grows without bound and the lever arm tends to the
+    // axle distance D = 2·O_y from below.
     expect(near.pC).toBeGreaterThan(0.3);
     expect(near.pC).toBeLessThan(2 * b.axleY);
+    const nearer = braceConditions(ctx, brace.maxSlope * (1 - 1e-6));
+    expect(nearer.pC).toBeGreaterThan(near.pC);
+    expect(nearer.pC).toBeLessThan(2 * b.axleY);
+    expect(nearer.pC / (2 * b.axleY)).toBeGreaterThan(0.999);
+  });
+
+  it('apply at nock positions within 1e-9 m of x_b', () => {
+    // Project validation accepts the brace point within 1e-9 m.
+    const exact = inverseAt(ctx, brace, geometry.braceHeight, 0, 0, 0, 0);
+    expect(exact.ok).toBe(true);
+    for (const d of [1e-12, -1e-12, 5e-10, -5e-10, 1e-9, -1e-9]) {
+      const q = inverseAt(ctx, brace, geometry.braceHeight + d, 0, 0, 0, 0);
+      expect(q.Ts).toBe(brace.stringTension);
+      expect(q.theta).toBe(0);
+      expect(q.alpha).toBe(0);
+      expect(Math.abs(q.pC / exact.pC - 1)).toBeLessThan(1e-8);
+    }
+    // Beyond it the force sets the string tension: F = 0 gives none.
+    expect(inverseAt(ctx, brace, geometry.braceHeight + 2e-9, 0, 0, 0, 0).Ts).toBe(0);
   });
 });
 
@@ -264,6 +284,18 @@ describe('inverse model: statics and kinematics', () => {
       expect(Math.abs((s.Ts[i] * s.sA[i] + s.Tc[i] * s.cA[i]) / s.moment[i] - 1)).toBeLessThan(1e-12);
       expect(Math.abs(s.Tc[i] / f.Tc[i] - 1)).toBeLessThan(1e-8);
     }
+  });
+
+  it('gives B·t = √(D² − p_c²), the free cable span of the forward model plus p_c\'(ψ_c)', () => {
+    const truth = createSupport(twinCam.cableTrack);
+    let worst = 0;
+    for (let i = 0; i < s.n; i++) {
+      const D = 2 * s.axleY[i];
+      expect(s.anchorReach[i]).toBeCloseTo(Math.sqrt(D * D - s.pC[i] ** 2), 15);
+      worst = Math.max(worst, Math.abs(s.anchorReach[i] - truth.dp(s.psiC[i]) - f.spanC[i]));
+    }
+    console.info(`B·t − p_c'(ψ_c) against the free cable span of the forward model: within ${worst.toExponential(2)} m`);
+    expect(worst).toBeLessThan(1e-8);
   });
 
   it('meets the kinematic check p_c = c_a·dα/dθ with α and θ differentiated along the draw', () => {

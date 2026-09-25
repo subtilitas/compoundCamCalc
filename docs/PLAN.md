@@ -245,6 +245,8 @@ The solver never throws on user input and never clamps silently. It returns
 - T_c > 0 along the path, equivalently E1'(α) > s_a·T_s and dθ/dx > 0.
 - F > 0 on (x_b, x_f].
 - Brace: 0 < T_s0 < M_b / s_a0.
+- The cable contact at point 2 lies after its brace position, so the brace
+  blend exists.
 - ρ ≥ max(ρ_min, d/2 + margin) on both tracks (groove bottom stays convex).
 - Clearance: |X| ≥ r_bore + wall + d/2; groove bottom stays outside the bore
   wall.
@@ -282,7 +284,10 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   (8.0 N at 267 N, at least 2 N) of the target everywhere, with the draw
   energy within 0.5 %, meets the target; the violations of the ideal track
   are then kept in `fit.idealIssues` and are no diagnostics. Larger
-  differences are reported as `cable-radius` or `cable-clearance`. Of 45
+  differences are reported as `cable-radius` or `cable-clearance`, with the
+  draw position of the largest difference and the curve points on either
+  side; the `cable-radius` suggestion is chosen there, and its named range
+  leaves out the brace blend, which the fit always replaces. Of 45
   edits of the default (peak 250 N to 290 N, rise 43 % to 50 %, valley
   1.0 in to 1.5 in), 41 meet 3 % of the peak and 2 meet 1.5 %; the largest
   draw energy difference is 0.14 J against a tolerance of at least 0.42 J.
@@ -299,7 +304,8 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   brace for the cable, residual wrap at full draw for the string (inputs,
   0° to 180°, default 30°), each ending at a post. The string residual wrap
   lies on the string track. The cable lead-in keeps p, p' and p''
-  continuous at ψ_c0 and settles within about 10° to a constant
+  continuous at the brace contact of the track (ψ_c0, or later when the fit
+  leaves out p(ψ_c0) = p_c0) and settles within about 10° to a constant
   ρ_0 = clamp(ρ(ψ_c0), ρ_min, p(ψ_c0)), so it cannot swing outwards
   (`docs/model.md`).
 - The remaining arc is closed by a quintic blend in ψ that matches p, p', p''

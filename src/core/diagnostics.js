@@ -6,7 +6,7 @@
  * @module core/diagnostics
  */
 
-import { AMO_OFFSET, formatQuantity, toSI } from './units.js';
+import { AMO_OFFSET, formatQuantity, fromSI, toSI } from './units.js';
 
 /**
  * @typedef {'invalid-input' | 'brace-tension' | 'slack-cable' | 'nonpositive-force' | 'cable-fold'
@@ -76,6 +76,19 @@ export function runs(n, flagged) {
  */
 export function formatter(units) {
   const drawUnit = toSI(1, 'length', units.draw);
+  /**
+   * Upper limit rounded down to the shown decimals, so the shown value keeps
+   * the limit.
+   * @param {number} v SI value
+   * @param {'force' | 'length'} quantity
+   * @param {string} unit
+   * @param {number} decimals
+   */
+  const atMost = (v, quantity, unit, decimals) => {
+    const scale = 10 ** decimals;
+    const shown = Math.floor(fromSI(v, quantity, unit) * scale + 1e-9) / scale;
+    return formatQuantity(toSI(shown, quantity, unit), quantity, unit, decimals);
+  };
   return {
     /** Nock position x as AMO draw length. @param {number} x (m) */
     draw: (/** @type {number} */ x) => formatQuantity(x + AMO_OFFSET, 'length', units.draw, units.draw === 'mm' ? 0 : 1),
@@ -83,6 +96,10 @@ export function formatter(units) {
     size: (/** @type {number} */ v) => formatQuantity(v, 'length', units.dims, units.dims === 'in' ? 3 : 1),
     /** @param {number} v (N) */
     force: (/** @type {number} */ v) => formatQuantity(v, 'force', units.force, 0),
+    /** Upper force limit, rounded down. @param {number} v (N) */
+    forceAtMost: (/** @type {number} */ v) => atMost(v, 'force', units.force, 0),
+    /** Upper size limit, rounded down. @param {number} v (m) */
+    sizeAtMost: (/** @type {number} */ v) => atMost(v, 'length', units.dims, units.dims === 'in' ? 3 : 1),
     /** Force with one decimal, for differences and tolerances. @param {number} v (N) */
     forceFine: (/** @type {number} */ v) => formatQuantity(v, 'force', units.force, 1),
     /** @param {number} v (J) */

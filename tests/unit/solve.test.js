@@ -294,6 +294,29 @@ describe('solve: diagnostics', () => {
     expect(none.d.suggestion).toMatch(/preload travel above 0 mm/);
   });
 
+  it('brace-tension: the suggested force of point 2 gives 80 % of the limit slope and removes the diagnostic', () => {
+    // The end slope of the curve is affine in the force of point 2 and
+    // clamped at 0, not proportional to it: at 30 mm preload travel the
+    // force scaled by 0.8·T_limit/T_s0, 35 N, gives a curve that does not
+    // rise at brace, and 62 N gives 0.77 of the limit slope.
+    for (const preload of [0.03, 0.05]) {
+      const s = modified((st) => {
+        st.limb.preloadTravel = preload;
+        st.curve.mode = 'custom';
+      });
+      const { d, r } = expectCode(s, 'brace-tension');
+      const F2 = Number(/** @type {RegExpMatchArray} */ (d.suggestion.match(/point 2 to at most (\d+) N/))[1]);
+      const fixed = structuredClone(s);
+      fixed.curve.points[1].F = F2;
+      const after = solve(fixed, { resolution: 'coarse' });
+      expect(codes(after)).not.toContain('brace-tension');
+      const b = /** @type {any} */ (after.brace);
+      const ratio = b.slope / /** @type {any} */ (r.brace).maxSlope;
+      expect(ratio).toBeGreaterThan(0.75);
+      expect(ratio).toBeLessThanOrEqual(0.8);
+    }
+  });
+
   it('brace-tension: names the preload travel up to 400 mm and otherwise the stiffness, each giving 80 % of the limit', () => {
     /**
      * Default limb (2.6 N/mm, 192 mm preload) with point 2 moved.
@@ -396,6 +419,48 @@ describe('solve: diagnostics', () => {
     expect(fold.psiRange).not.toBeNull();
   });
 
+  it('cable-fold: a contact at point 2 behind its brace position, where no brace blend exists', () => {
+    // Point 2 at 162 N: the cable contact at point 2 lies 0.4° behind ψ_c0.
+    const s = modified((st) => {
+      st.curve.mode = 'custom';
+      st.curve.points[1].F = 162;
+    });
+    const { r, d } = expectCode(s, 'cable-fold');
+    expect(codes(r)).not.toContain('no-convergence');
+    expect(d.xRange).toEqual([s.curve.points[0].x, s.curve.points[1].x]);
+    expect(d.message).toMatch(/at point 2 \(12\.1 in\) it lies \d+\.\d° behind its brace position/);
+    expect(d.suggestion).toBe('Lower the force of point 2 or move it later, so that the force rises more evenly from brace to point 3');
+    // Either direction of the suggestion clears the fold.
+    /** @type {((st: ProjectState) => void)[]} */
+    const changes = [(st) => (st.curve.points[1].F = 150), (st) => (st.curve.points[1].x += 2 * INCH)];
+    for (const change of changes) {
+      const t = structuredClone(s);
+      change(t);
+      expect(validate(t)).toEqual([]);
+      expect(codes(solve(t, { resolution: 'coarse' }))).not.toContain('cable-fold');
+    }
+  });
+
+  it('cable-fold: names the let-off only for a fold where the force falls after the peak', () => {
+    /** @param {(st: ProjectState) => void} change */
+    const folds = (change) => {
+      const s = modified((st) => {
+        st.curve.mode = 'custom';
+        change(st);
+      });
+      expect(validate(s)).toEqual([]);
+      return solve(s, { resolution: 'coarse' }).diagnostics.filter((q) => q.code === 'cable-fold');
+    };
+    // Point 2 at 10 in and 80 N: folds on the rise, from point 2 on.
+    const rise = folds((st) => (st.curve.points[1] = { x: 10 * INCH - AMO_OFFSET, F: 80 }));
+    expect(rise.length).toBeGreaterThan(0);
+    for (const d of rise) expect(d.suggestion).toMatch(/^Lower the force of point 2 or move it later/);
+    // Point 5 at 21.3 in and 67 N: the force falls 200 N within 0.2 in of the plateau end.
+    const drop = folds((st) => (st.curve.points[4] = { x: 21.3 * INCH - AMO_OFFSET, F: 67 }));
+    expect(drop.length).toBe(1);
+    expect(drop[0].suggestion).toBe('Spread the force drop in this range over a longer draw (move the points apart), or reduce the let-off');
+  });
+
   it('target-shape and nonpositive-force: a brace curvature that bends a long, shallow first segment below zero', () => {
     // A string groove with 46 mm offset on a 50 mm radius gives a brace
     // curvature F''(x_b) that no monotone first segment can follow: point 2
@@ -441,19 +506,82 @@ describe('solve: diagnostics', () => {
   });
 
   it('cable-radius: a let-off the cam cannot follow within the tolerance', () => {
-    const { r, d } = expectCode(modified((s) => (s.curve.params.letOff = 0.78), { regenerate: true }), 'cable-radius');
-    expect(d.message).toMatch(/radius of curvature of -\d+\.\d mm \(it would bend the wrong way\)/);
+    const s = modified((st) => (st.curve.params.letOff = 0.78), { regenerate: true });
+    const { r, d } = expectCode(s, 'cable-radius');
+    // A negative radius has no size to fix: the message gives the angle
+    // over which the track bends the wrong way.
+    expect(d.message).toMatch(/at worst it bends the wrong way over \d+\.\d° between \d+\.\d in and \d+\.\d in; the radius limit is 5\.0 mm/);
+    expect(d.message).not.toMatch(/radius of curvature of -/);
     expect(d.message).toMatch(/differs from the target by up to \d+\.\d N, more than the \d+\.\d N tolerance \(peak \+/);
+    // The brace blend, which the fit always replaces, is not the named range.
+    expect(/** @type {[number, number]} */ (d.xRange)[0]).toBeGreaterThan(s.curve.points[1].x);
+    // The largest force difference of the fitted cam is at full draw, above
+    // the target, where the force stays at the holding weight: the
+    // suggestion names the drop before it and the let-off.
+    const a = /** @type {NonNullable<SolveResult['achieved']>} */ (r.achieved);
+    const t = /** @type {NonNullable<SolveResult['target']>} */ (r.target);
+    let at = 0;
+    for (let i = 0; i < a.x.length; i++) if (Math.abs(a.F[i] - t.F[i]) > Math.abs(a.F[at] - t.F[at])) at = i;
+    expect(at).toBe(a.x.length - 1);
+    expect(d.message).toMatch(/; the largest difference, above the target, lies at point 7 \(29\.0 in\)$/);
+    expect(d.suggestion).toBe('Make the force drop between points 5 and 6 more gradual: move them apart, or reduce the let-off');
+    expect(s.curve.points[5].F).toBe(s.curve.points[6].F);
     expect(r.fit.used).toBe(true);
     expect(r.fit.withinTolerance).toBe(false);
     // The fitted cam is still built and meets the radius limit.
     expect(/** @type {any} */ (r.metrics).minRho).toBeGreaterThanOrEqual(defaultState().body.minBendRadius - 1e-6);
   });
 
+  it('cable-radius: names where the fitted cam misses the target, not the brace blend', () => {
+    // Rise 30 %: the fitted cam is 43.5 N below the target at 13.2 in,
+    // between points 2 and 3; the ideal track bends the wrong way there
+    // over a fraction of a degree with a radius of about -1.4e6 mm.
+    const s = reduce(defaultState(), { type: 'setCurveParams', params: { riseFraction: 0.3 } });
+    const r = solve(s);
+    const d = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (r.diagnostics.find((q) => q.code === 'cable-radius'));
+    expect(d.message).toMatch(/bends the wrong way over \d+\.\d° between 13\.\d in and 13\.\d in/);
+    expect(d.message).not.toMatch(/-\d{4,}/);
+    expect(d.message).toMatch(/the largest difference, below the target, lies at 13\.\d in, between points 2 and 3$/);
+    expect(d.suggestion).toBe('Move point 2 so that the force rises more evenly from brace to point 3');
+    // Valley 1 in at peak 285 N and rise 43 %: the miss lies on the drop
+    // between points 5 and 6; moving point 5 0.5 in earlier halves it.
+    const drop = reduce(defaultState(), { type: 'setCurveParams', params: { peak: 285, riseFraction: 0.43, valleyWidth: INCH } });
+    const rd = solve(drop);
+    const dd = /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic} */ (rd.diagnostics.find((q) => q.code === 'cable-radius'));
+    expect(dd.message).toMatch(/the largest difference, below the target, lies at 27\.\d in, between points 5 and 6$/);
+    expect(dd.suggestion).toMatch(/^Make the force drop between points 5 and 6 more gradual: move them apart/);
+    const moved = structuredClone(drop);
+    moved.curve.mode = 'custom';
+    moved.curve.points[4].x -= 0.5 * INCH;
+    const rm = solve(moved);
+    expect(codes(rm)).not.toContain('cable-radius');
+    expect(rm.fit.maxForceDifference).toBeLessThan(0.6 * rd.fit.maxForceDifference);
+  });
+
   it('cable-clearance: a let-off that needs a cable lever arm inside the bore wall', () => {
     const { d } = expectCode(modified((s) => (s.curve.params.letOff = 0.9), { regenerate: true }), 'cable-clearance');
     expect(d.message).toMatch(/lever arm of \d+\.\d mm between .* in and .* in/);
     expect(d.suggestion).toMatch(/^Reduce let-off below \d+ %/);
+    // A larger string track also raises the lever arm at the peak and moves
+    // the achieved curve further from the target: it is not suggested.
+    expect(d.suggestion).not.toMatch(/string track/);
+  });
+
+  it('cable-clearance: the computed hub and let-off limits remove the diagnostic', () => {
+    // Let-off 80 %: the ideal lever arm falls to 6.3 mm at full draw.
+    const s = modified((st) => (st.curve.params.letOff = 0.8), { regenerate: true });
+    const { d } = expectCode(s, 'cable-clearance');
+    const hub = Number(/** @type {RegExpMatchArray} */ (
+      d.suggestion.match(/reduce the axle bore radius plus the minimum wall to at most (\d+\.\d) mm \(now 7\.0 mm\)$/)
+    )[1]) / 1e3;
+    expect(hub).toBeLessThan(0.0063 - s.cords.cableDiameter / 2);
+    const smaller = structuredClone(s);
+    smaller.body.minWall = hub - smaller.body.boreDiameter / 2;
+    expect(validate(smaller)).toEqual([]);
+    expect(codes(solve(smaller, { resolution: 'coarse' }))).not.toContain('cable-clearance');
+    const letOff = Number(/** @type {RegExpMatchArray} */ (d.suggestion.match(/^Reduce let-off below (\d+) %/))[1]) / 100;
+    const lower = reduce(s, { type: 'setCurveParams', params: { letOff } });
+    expect(codes(solve(lower, { resolution: 'coarse' }))).not.toContain('cable-clearance');
   });
 
   it('cable-wrap and closing-blend: a lead-in wrap that leaves too little of the turn', () => {
@@ -504,6 +632,60 @@ describe('solve: diagnostics', () => {
     expect(d.xRange?.[1]).toBe(defaultState().curve.points.at(-1)?.x);
     // The string track outlines are still there.
     expect(r.outlines.stringPitch.x.length).toBe(361);
+  });
+});
+
+describe('solve: curve end points within the validation tolerance', () => {
+  // Validation accepts the first and last point within 1e-9 m of brace and
+  // full draw; the solver places them exactly there.
+  const exact = solve(defaultState(), { resolution: 'coarse' });
+  /** @param {SolveResult} r */
+  const withoutTimings = (r) => ({ ...r, timings: null });
+
+  it.each([1e-12, -1e-12, 5e-10, -5e-10, 1e-9, -1e-9])('gives the result of the exact state with point 1 moved by %s m', (d) => {
+    const s = modified((st) => (st.curve.points[0].x += d));
+    expect(validate(s)).toEqual([]);
+    const r = solve(s, { resolution: 'coarse' });
+    expect(r.ideal?.pC[0]).toBeGreaterThan(0.04);
+    expect(withoutTimings(r)).toEqual(withoutTimings(exact));
+  });
+
+  it('gives the result of the exact state with the last point moved by 1e-9 m', () => {
+    const s = modified((st) => (/** @type {{ x: number }} */ (st.curve.points.at(-1)).x -= 1e-9));
+    expect(validate(s)).toEqual([]);
+    expect(withoutTimings(solve(s, { resolution: 'coarse' }))).toEqual(withoutTimings(exact));
+  });
+});
+
+describe('solve: brace contact of a fitted cam', () => {
+  it('places the cable-brace mark and the lead-in at the brace contact of the built cam', () => {
+    // A 10 mm wall needs a lever arm of 15.25 mm; point 2 at 60 N gives
+    // p_c0 = 8.4 mm, so the fit leaves out p(ψ_c0) = p_c0 and the brace
+    // contact of the built cam lies 0.47° after ψ_c0.
+    const state = modified((s) => {
+      s.body.minWall = 0.01;
+      s.curve.mode = 'custom';
+      s.curve.points[1].F = 60;
+    });
+    const r = solve(state);
+    const a = /** @type {NonNullable<SolveResult['achieved']>} */ (r.achieved);
+    const ideal = /** @type {NonNullable<SolveResult['ideal']>} */ (r.ideal);
+    expect((a.psiC[0] - ideal.psiC[0]) / DEG).toBeGreaterThan(0.4);
+    const mark = /** @type {import('../../src/core/outline.js').Mark} */ (r.marks.find((m) => m.id === 'cable-brace'));
+    expect(mark.psi).toBe(a.psiC[0]);
+    // The cable line from the mark runs to the anchor.
+    const bow = /** @type {import('../../src/core/geometry.js').BowGeometry} */ (
+      bowGeometry(state.geometry, createSupport(/** @type {any} */ (r.tracks.stringPitch))).bow
+    );
+    const O0 = axle(bow, 0);
+    const Xc = camToWorld(O0, 0, mark);
+    const tc = { x: -Math.sin(mark.psi), y: Math.cos(mark.psi) };
+    expect(Math.abs((O0.x - Xc.x) * tc.y - (-O0.y - Xc.y) * tc.x)).toBeLessThan(1e-9);
+    // The lead-in wraps the input angle beyond that contact.
+    const cable = /** @type {NonNullable<SolveResult['tracks']['cable']>} */ (r.tracks.cable);
+    expect(Math.abs(cable.psiBrace - a.psiC[0])).toBeLessThan(1e-9);
+    expect(cable.psiStart).toBeCloseTo(cable.psiBrace - state.body.leadInWrap, 12);
+    expect(r.posts.find((p) => p.id === 'cable-post')?.psi).toBe(cable.psiStart);
   });
 });
 
@@ -638,5 +820,11 @@ describe('solve: robustness', () => {
     expect(metric.stiffness(10000)).toMatch(/lbf\/in$/);
     expect(metric.percent(0.8)).toBe('80 %');
     expect(metric.angle(Math.PI)).toBe('180.0°');
+    // Upper limits round down, so the shown value keeps the limit.
+    expect(fmt.forceAtMost(62.99)).toBe('62 N');
+    expect(fmt.sizeAtMost(0.00489)).toBe('4.8 mm');
+    expect(fmt.sizeAtMost(0.0048)).toBe('4.8 mm');
+    expect(metric.sizeAtMost(0.1239 * INCH)).toBe('0.123 in');
+    expect(metric.forceAtMost(10.9 * 4.4482216152605)).toBe('10 lbf');
   });
 });

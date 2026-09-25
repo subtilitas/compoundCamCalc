@@ -210,8 +210,8 @@ export function minimumOn(f, a, b, count) {
  * @property {boolean} ok the closing blend exists and keeps ρ ≥ rhoMin
  * @property {SplineData} support periodic pitch-line spline over
  *   [psiStart, psiStart + 2π]
- * @property {number} psiStart cable termination ψ_c0 − lead-in (rad)
- * @property {number} psiBrace ψ_c0 (rad)
+ * @property {number} psiStart cable termination: psiBrace − lead-in (rad)
+ * @property {number} psiBrace start of the active track, the brace contact (rad)
  * @property {number} psiFull ψ_cf (rad)
  * @property {number} blendLength remaining arc closed by the blend (rad)
  * @property {number} blendMinRho smallest ρ on the closing blend (m)
@@ -251,7 +251,7 @@ function pieceKnots(piece, step) {
  * p ≥ pMin; otherwise the constrained fit (core/fit) of a clamped spline to
  * the quintic, with p, p', p'' prescribed at both joins and the two limits
  * as constraints.
- * @param {Piecewise} active track over [ψ_c0, ψ_cf]
+ * @param {Piecewise} active track from the brace contact to ψ_cf
  * @param {{ leadIn: number, rhoMin: number, pMin?: number, step: number }} options lead-in
  *   wrap (rad), smallest allowed radius of curvature of the pitch line (m),
  *   smallest lever arm on the blend (m, default 0), knot spacing of the

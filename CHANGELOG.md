@@ -79,8 +79,10 @@ All notable changes are listed here. Versions follow semantic versioning.
   cable lever arm in closed form; brace conditions with the analytic
   F''(x_b); brace blend of the cable track over the first curve segment
   that keeps the target state at point 2; cable samples near a uniform
-  0.25° grid. Round trip forward → inverse recovers an eccentric cable
-  track to 1e-12 m and the concentric case to 6e-13 m.
+  0.25° grid. Nock positions within 1e-9 m of brace take the brace values;
+  each sample carries B·t = √(D² − p_c²) as `anchorReach`. Round trip
+  forward → inverse recovers an eccentric cable track to 1e-12 m and the
+  concentric case to 6e-13 m.
 - Constrained fit of the cable track (`src/core/fit.js`): C2 spline by
   least squares with the limits on radius of curvature and lever arm and
   with the target force and energy at the curve points, solved by a dense
@@ -114,7 +116,18 @@ All notable changes are listed here. Versions follow semantic versioning.
   codes whose messages carry numbers and units and whose suggestions name
   the input to change; never throws. `brace-tension` and `slack-cable` name
   the limb preload travel while it stays within its range of 0 mm to
-  400 mm, otherwise the stiffness.
+  400 mm, otherwise the stiffness. `brace-tension` gives the force of
+  point 2 that makes the end slope of the curve 80 % of the limit.
+  `cable-fold` also reports a cable contact at point 2 behind its brace
+  position and names the let-off only where the force falls after the
+  peak. `cable-radius` leaves out the brace blend, gives a negative radius
+  as the angle over which the track bends the wrong way, and names the
+  draw position and curve points of the largest force difference of the
+  fitted cam. `cable-clearance` gives the largest bore radius plus wall
+  that clears the lever arm. The first and last curve point are placed
+  exactly at brace and full draw, so points within the 1e-9 m validation
+  tolerance give the result of the exact state. The cable-brace mark and
+  the lead-in start at the brace contact of the built cam.
 - Default preset tuned so the solver builds its cam without diagnostics:
   let-off 75 %, limb 2.6 N/mm with 192 mm preload travel, eccentric string
   groove of radius 45 mm with 22 mm offset towards −122°, parametric

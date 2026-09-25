@@ -361,8 +361,9 @@ is solved on its own; the previous sample only supplies a warm start.
 3. Cam rotation from the string closure g_s(x, θ, α(x)) = L_s/2 by Newton
    in θ with ∂g_s/∂θ = −p_s, the stopping rules of the forward model and a
    warm start from the previous sample plus θ'·Δx.
-4. String tension T_s = F / (2·sin φ); at x_b the brace value
-   T_s0 = F'(x_b)·l_0/2.
+4. String tension T_s = F / (2·sin φ); within 1e-9 m of x_b (the
+   tolerance of the brace point in validation) the brace value
+   T_s0 = F'(x_b)·l_0/2 and θ = α = 0.
 5. Cable lever arm from the cam balance T_s·p_s = T_c·p_c and the limb
    balance E1'(α) = T_s·s_a + T_c·c_a:
 
@@ -396,8 +397,9 @@ At brace F = 0 and sin φ = 0. The slope of the target sets the brace string
 tension, T_s0 = F'(x_b)·l_0/2, and with it p_c0 = p_s0·c_a0·T_s0 /
 (M_b − T_s0·s_a0), M_b = E1'(0). A cam exists only for
 0 < T_s0 < M_b/s_a0 (s_a0 = R_L·cos β_b), that is
-0 < F'(x_b) < 2·M_b/(s_a0·l_0); p_c0 grows without bound towards the upper
-limit.
+0 < F'(x_b) < 2·M_b/(s_a0·l_0). Towards the upper limit K grows without
+bound, p_c0 = K·D/√(D² + K²) tends to the axle distance D = 2·O_y from below
+and c_a0 tends to 0.
 
 The second derivative of the force at brace follows from the second-order
 expansion of the string closure G = (x − O_x)·cos φ − O_y·sin φ − p_s(φ + θ)
@@ -445,7 +447,8 @@ segment [x_b, x_1] (x_1: point 2 of the curve) by a brace blend on
 and among these the one with the smallest ∫ (p''')² dψ. The last condition
 is the cable closure between brace and x_1: the reduced cable length is
 B·t + P(ψ_c) with B·t = √(D² − p_c²) for the tangent line through the
-anchor. With it the cam reaches the target state (θ_1, α_1) at x_1, so the
+anchor (the sample field `anchorReach`; the free span is B·t − p_c'(ψ_c)).
+With it the cam reaches the target state (θ_1, α_1) at x_1, so the
 achieved curve equals the target from x_1 on and has the target's work
 W(x_1); on [x_b, x_1] it follows the cam, with F, F' and F'' of the target
 at both ends.
@@ -454,13 +457,15 @@ at both ends.
 
 The inverse model runs on the draw grid x − x_b = s² (100 samples for a
 coarse solve, 600 for a full solve) plus every curve point. From x_1 to x_f
-the contact angle ψ_c(x) must increase. Cable samples near a uniform grid
-of 0.5° (coarse) or 0.25° (full) come from the Illinois variant of regula
-falsi in x inside the bracket of two grid samples, stopped within 0.1 % of
-the step; the pair (ψ_c(x), p_c(x)) at the found x is an exact point of the
-ideal track, so the search tolerance adds no error. An open C2 cubic
-spline through these points, clamped with the slopes of the quartic
-through the five end points, is the ideal track on [ψ_1, ψ_cf].
+the contact angle ψ_c(x) must increase, and the brace blend needs
+ψ_1 > ψ_c0; inside [x_b, x_1] the blend replaces the samples, so ψ_c may
+fall there. Cable samples near a uniform grid of 0.5° (coarse) or 0.25°
+(full) come from the Illinois variant of regula falsi in x inside the
+bracket of two grid samples, stopped within 0.1 % of the step; the pair
+(ψ_c(x), p_c(x)) at the found x is an exact point of the ideal track, so
+the search tolerance adds no error. An open C2 cubic spline through these
+points, clamped with the slopes of the quartic through the five end
+points, is the ideal track on [ψ_1, ψ_cf].
 
 ## Constrained fit
 
@@ -563,12 +568,19 @@ the tolerance covers this rounding. On 45 edits of the default (peak
 energy of the fitted cam differs from the target by at most 0.14 J, below
 the energy tolerance of at least 0.42 J. A larger difference is reported
 as `cable-radius` or `cable-clearance`, with the largest force
-difference, the tolerance and the differences in peak (N), let-off
-(percentage points) and draw energy (J).
+difference, the tolerance, the differences in peak (N), let-off
+(percentage points) and draw energy (J), and the draw position of the
+largest difference with the curve points on either side.
 
 ## Closed cam outline
 
-`src/core/outline.js` closes the active cable track [ψ_c0, ψ_cf]:
+`src/core/outline.js` closes the active cable track [ψ_c0, ψ_cf]. A fit
+without the brace value p(ψ_c0) = p_c0 (p_c0 below p_min, or no solution
+with it) has its brace contact, the tangent point from the anchor at
+θ = 0, after ψ_c0: 0.47° for a 10 mm wall and point 2 at 60 N. The solver
+then starts the active track at that contact, so ψ_c0 below stands for
+the brace contact of the built cam and the cable wraps exactly the lead-in
+wrap at brace.
 
 - Lead-in on [ψ_c0 − lead-in wrap, ψ_c0]. Its radius of curvature settles
   to ρ_0 = clamp(ρ(ψ_c0), ρ_lim, p(ψ_c0)). With u = ψ_c0 − ψ and
@@ -591,8 +603,8 @@ difference, the tolerance and the differences in peak (N), let-off
   of that radius makes the cam 205 mm to 451 mm across, and the closing
   blend fails. With the bound the same states give 114 mm to 144 mm and
   close. The cable contact never runs on the lead-in (the smallest contact
-  angle of the forward model is ψ_c0), so the lead-in changes the cable
-  length, not the force curve.
+  angle of the forward model is the brace contact), so the lead-in changes
+  the cable length, not the force curve.
 - The lead-in settles over λ instead of starting at ρ_0 because the
   periodic spline cannot follow a jump of p'': at a knot it dips about 13 %
   of the jump, (2 − √3)/2, below ρ_0. For ρ(ψ_c0) = 390 mm and
@@ -636,9 +648,9 @@ wrap.
   peg radius (distance of a point from a convex region: the largest
   C·n(ψ) − p(ψ) over ψ).
 - Timing marks: the string exit at brace (ψ = 0 on the string track), the
-  cable exit at brace (ψ_c0) and the full-draw index (the string exit at
-  full draw), each as the pitch point and the outward normal in the cam
-  frame.
+  cable exit at brace (the brace contact of the forward model of the built
+  cam) and the full-draw index (the string exit at full draw), each as the
+  pitch point and the outward normal in the cam frame.
 - Sampled outlines: pitch, groove bottom and flange of both tracks, 360
   (coarse) or 720 (full) intervals over one turn, last point equal to the
   first.
@@ -651,9 +663,11 @@ wrap.
 `solve(state, { resolution })` in `src/core/solve.js` builds everything from
 the project state and returns plain data (structured-cloneable):
 
-1. Validation (`invalid-input` on failure), string pitch line, bow
-   geometry, limb; in the travel mode the stiffness follows from the draw
-   energy of the rebuilt target, iterated three times.
+1. Validation (`invalid-input` on failure); the first and last curve
+   point are placed exactly at x_b and x_f (validation accepts them within
+   1e-9 m); string pitch line, bow geometry, limb; in the travel mode the
+   stiffness follows from the draw energy of the rebuilt target, iterated
+   three times.
 2. Brace conditions and the rebuilt target.
 3. Inverse model on the draw grid; checks of the ideal state.
 4. Ideal cable track (samples, spline, brace blend); ρ and p checks; the
@@ -681,19 +695,19 @@ use the display units of the project; draw positions are AMO draw lengths.
 | Code | Condition | Suggestion names |
 |---|---|---|
 | `invalid-input` | the state fails validation, or the limb or the bow at brace cannot be built | the marked input fields |
-| `brace-tension` | T_s0 = F'(x_b)·l_0/2 outside (0, M_b/s_a0), or no limb moment at brace | the force of point 2 (largest value computed) and, in the stiffness mode, the preload travel when it stays within its range (at most 400 mm), otherwise the stiffness; each computed so that T_s0 is 80 % of M_b/s_a0 (M_b = k·R_L·s_0 grows in proportion to k and s_0, T_s0 does not depend on the limb) |
+| `brace-tension` | T_s0 = F'(x_b)·l_0/2 outside (0, M_b/s_a0), or no limb moment at brace | the force of point 2 (largest value, rounded down; found by bisection on the natural end slope of the curve, which is affine in that force and clamped at 0) and, in the stiffness mode, the preload travel when it stays within its range (at most 400 mm), otherwise the stiffness; each computed so that T_s0 is 80 % of M_b/s_a0 (M_b = k·R_L·s_0 grows in proportion to k and s_0, T_s0 does not depend on the limb) |
 | `cable-lever` | limb lever at 90° at brace: c_a = 0 | the limb lever angle |
 | `slack-cable` | T_c ≤ 0 of the target after point 2: E1'(α) ≤ s_a·T_s, equivalently dθ/dx ≤ 0 | the preload travel that gives 25 % more limb moment when it stays within its range, otherwise the stiffness, or a later peak |
 | `nonpositive-force` | F ≤ 0 after brace | the force of point 2 or of the points in the range |
-| `cable-fold` | the ideal contact angle does not increase after point 2 | spreading the force change, or less let-off |
+| `cable-fold` | the ideal contact angle does not increase after point 2, or the contact at point 2 lies at or behind ψ_c0 (no brace blend joins them) | a lower or later point 2 for a fold at point 2 before the peak; less let-off only where the target force falls after the peak; otherwise spreading the force change |
 | `limb-rotation` | α_f above the maximum limb rotation | the stiffness (computed) or the limb travel, or the maximum rotation |
 | `limb-energy` | a tabulated limb cannot store the work of the target | a longer limb table or a lower peak |
 | `target-shape` | the rebuilt target is not monotone on its first segment: no monotone setting of the free values at knots 0 and 1 exists (for example a string groove with 46 mm offset on a 50 mm radius, and point 2 at 7 N, 11.8 in from brace, as a local maximum: the first segment dips below 0 N) | point 2 |
 | `string-radius` | ρ of the string pitch line below ρ_lim | the string track radius (computed increase) or the ellipse axes |
 | `string-clearance` | the string groove bottom closer to the axle than bore/2 + wall | the radius or the offset (computed) |
 | `string-wrap` | full-draw contact angle plus residual wrap ≥ 360° | the string track radius (computed) or the residual wrap |
-| `cable-radius` | ρ of the ideal cable track below ρ_lim and the fitted cam outside the tolerance | a more gradual force change in the range |
-| `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in too close to the bore | the let-off (computed limit), the force at the position, the string track radius (computed) or the bore and wall |
+| `cable-radius` | ρ of the ideal cable track below ρ_lim and the fitted cam outside the tolerance; the named range leaves out the brace blend unless it is the only one, and a negative ρ is given as the angle over which the track bends the wrong way | chosen at the largest force difference of the fitted cam: point 2 before point 3; after the peak a more gradual drop over the nearest falling interval at or before it, or less let-off; otherwise a more gradual change between the curve points on either side |
+| `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in too close to the bore | the let-off (computed limit) at full draw or the force at the position, and the bore radius plus wall (at most the lowest lever arm / 1.03 minus the cable radius, rounded down, when at least 1.5 mm); a larger string track also raises the lever arm at the peak and is not suggested |
 | `cable-wrap` | active cable range plus lead-in wrap ≥ 360° | the lead-in wrap (computed) or the string track radius |
 | `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the string track radius, and the minimum bend radius when it sets ρ_lim |
 | `no-convergence` | a closure, the resampling, the constrained fit or the forward model of the final cam fails, or an internal error | the input to change |
@@ -776,6 +790,10 @@ Measured values are the largest errors over the tested samples.
 | Default preset: zero diagnostics; force within the fit tolerance; outlines closed and nested (groove bottom inside the pitch line and the flange, outside the bore and its wall); posts and marks at the achieved contacts | 8.0 N | 3.71 N |
 | Edits of the default preset (peak 250, 260, 275, 285 N; rise 44 %, 48 %, 50 %; valley 0.9 in, 1.5 in): zero diagnostics | 3 % of the peak | 6.0 N at peak 250 N (7.5 N) |
 | Solve: one test per diagnostic code; 100 random states (fast-check) never throw and return plain data | | passes |
+| Solve with the first curve point moved by ±1e-12 m, ±5e-10 m and ±1e-9 m, or the last by 1e-9 m (all accepted by validation): the result of the exact state; inverse samples within 1e-9 m of x_b take the brace values | | identical |
+| Inverse B·t = √(D² − p_c²) minus p_c'(ψ_c) against the free cable span of the forward model, twin cam | 1e-8 m | 4.8e-12 m |
+| Fitted cam without the brace value (10 mm wall, point 2 at 60 N): cable-brace mark at the brace contact of the forward model, 0.47° after ψ_c0, on the cable line to the anchor; lead-in from that contact | 1e-9 m, 1e-9 rad | passes |
+| Suggestions applied: the brace-tension force of point 2 at 30 mm and 50 mm preload travel (slope 0.77 and 0.80 of the limit), the cable-clearance hub and let-off limits at let-off 80 %, a lower or 2 in later point 2 for a cable contact behind brace at point 2, point 5 moved 0.5 in earlier for a `cable-radius` miss between points 5 and 6 | | passes |
 | Solve of the default preset: coarse and full | 30 ms and 200 ms, tested with a factor 5 margin | about 17 ms and 25 ms after warm-up |
 
 Realistic twin cam of the tests: default geometry (ATA 33 in, brace height

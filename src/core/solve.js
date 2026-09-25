@@ -5,7 +5,8 @@
  * cloning to and from a worker. Never throws.
  *
  * Steps:
- * 1. Validate the state; build the string pitch line, the bow geometry and
+ * 1. Validate the state and place the first and last curve point exactly at
+ *    brace and full draw; build the string pitch line, the bow geometry and
  *    the limb ('travel' mode: stiffness from the draw energy of the target).
  * 2. Brace conditions from the natural end slope F'(x_b) of the target;
  *    rebuild the target with the brace second derivative F''(x_b).
@@ -16,12 +17,13 @@
  *    [ψ_c0, ψ(x_1)] (core/inverse).
  * 5. Radius of curvature and clearance of the ideal track; when violated,
  *    the constrained fit (core/fit) replaces it.
- * 6. Closed outline, offsets, posts and marks (core/outline).
+ * 6. Closed outline from the brace contact of the track, offsets, posts and
+ *    marks (core/outline).
  * 7. Forward model of the final cam: achieved curve, loads and metrics.
  * @module core/solve
  */
 
-import { curveMetrics } from './curve.js';
+import { MIN_FORCE, curveMetrics, drawRange } from './curve.js';
 import { CODES, diagnostic, formatter, runs } from './diagnostics.js';
 import { fitCableTrack } from './fit.js';
 import { COARSE_SAMPLES, FULL_SAMPLES, drawGrid, solveForward } from './forward.js';
@@ -61,6 +63,12 @@ export const FIT_FORCE_TOLERANCE = 0.03;
 export const FIT_FORCE_FLOOR = 2;
 /** Relative draw energy tolerance of a fitted cam. */
 export const FIT_ENERGY_TOLERANCE = 0.005;
+/**
+ * Distance of the brace contact of a cable track after ψ_c0 above which the
+ * lead-in starts at that contact (rad). A track with p(ψ_c0) = p_c0 has its
+ * contact within 1e-15 rad of ψ_c0.
+ */
+const BRACE_CONTACT_TOLERANCE = 1e-9;
 
 /**
  * Sample counts and spacings per resolution.
@@ -119,8 +127,9 @@ export const RESOLUTIONS = Object.freeze({
  *   cable: { psiStart: number, psiBrace: number, psiFull: number, blendLength: number, leadInRho: number,
  *     blendMinRho: number } | null,
  *   string: { psiFull: number, psiEnd: number } | null }} tracks pitch lines
- *   as support data; cable: termination ψ_c0 − lead-in, brace and full-draw
- *   contact angles, arc of the closing blend (rad), radius of curvature
+ *   as support data; cable: termination (brace contact − lead-in), brace
+ *   contact of the built cam (ψ_c0 when the track keeps p(ψ_c0) = p_c0) and
+ *   full-draw contact angle, arc of the closing blend (rad), radius of curvature
  *   ρ_0 the lead-in settles to and smallest ρ of the closing blend (m);
  *   string: full-draw contact angle and termination (rad)
  * @property {Record<string, Outline>} outlines sampled closed outlines
@@ -230,7 +239,12 @@ function solveState(state, resolution, maxIterations) {
   }
   const fmt = formatter(state.units);
   const { geometry, cords, body } = state;
-  const points = state.curve.points;
+  // Validation accepts the first and last curve point within 1e-9 m of brace
+  // and full draw; the solver places them exactly there, so the first grid
+  // sample is the brace sample of the inverse model.
+  const range = drawRange(geometry.braceHeight, geometry.drawLength);
+  const last = state.curve.points.length - 1;
+  const points = state.curve.points.map((q, i) => ({ x: i === 0 ? range.xBrace : i === last ? range.xFull : q.x, F: q.F }));
   const tInverse = now();
 
   // String track and target.
@@ -342,25 +356,24 @@ function solveState(state, resolution, maxIterations) {
   let ideal = null;
   /** @type {{ psi: Float64Array, x: Float64Array } | null} */
   let psiToX = null;
+  let blendEnd = samples.psiC[0];
   if (monotone) {
     const resampled = resampleCable(ctx, brace, target, samples, settings.step, i1);
     if (resampled) {
       const spline = cableSpline(resampled.psi, resampled.p);
       const s = createSupport(spline);
       const psi1 = resampled.psi[0];
-      const p1 = resampled.p[0];
-      const D0 = 2 * ctx.bow.braceAxleY;
-      const D1 = 2 * samples.axleY[i1];
       const blend = braceBlend({
         psi0: samples.psiC[0],
         p0: samples.pC[0],
         psi1,
-        p1,
+        p1: resampled.p[0],
         d1: s.dp(psi1),
         s1: s.d2p(psi1),
-        integral: Math.sqrt(D0 * D0 - samples.pC[0] ** 2) - Math.sqrt(D1 * D1 - p1 * p1),
+        integral: samples.anchorReach[0] - samples.anchorReach[i1],
       });
       if (blend) {
+        blendEnd = psi1;
         ideal = createPiecewise([
           { ...blend, end: psi1 },
           { kind: 'spline', start: psi1, end: resampled.psi[resampled.psi.length - 1], data: spline },
@@ -390,7 +403,7 @@ function solveState(state, resolution, maxIterations) {
   const tFit = now();
   const psiC0 = samples.psiC[0];
   const psiCF = samples.psiC[n - 1];
-  const violations = ideal ? checkCableTrack(ideal, psiToX, rhoLimitCable, pMin, state, samples, x1, fmt) : [];
+  const violations = ideal ? checkCableTrack(ideal, psiToX, blendEnd, rhoLimitCable, pMin, state, samples, fmt) : [];
   if (ideal) res.idealTrack = trackSummary(ideal, rhoLimitCable);
   /** @type {{ active: import('./outline.js').Piecewise, pointsMatched: number, rms: number, maxDeviation: number }[]} */
   const candidates = [];
@@ -399,14 +412,12 @@ function solveState(state, resolution, maxIterations) {
   } else {
     const data = fitData(ideal, samples, i1);
     const end = Math.max(psiCF, psiC0 + 10 * DEG);
-    const D0 = 2 * ctx.bow.braceAxleY;
     const startValue = samples.pC[0] >= pMin ? samples.pC[0] : undefined;
     const through = startValue === undefined ? [] : points.slice(1).flatMap((q) => {
       const i = grid.indexOf(q.x);
       const p = samples.pC[i];
-      const D = 2 * samples.axleY[i];
       const ok = p >= pMin && samples.Tc[i] > 0 && samples.psiC[i] > psiC0 && samples.psiC[i] <= end;
-      return ok ? [{ psi: samples.psiC[i], p, integral: Math.sqrt(D0 * D0 - samples.pC[0] ** 2) - Math.sqrt(D * D - p * p) }] : [];
+      return ok ? [{ psi: samples.psiC[i], p, integral: samples.anchorReach[0] - samples.anchorReach[i] }] : [];
     });
     const base = { psi: data.psi, p: data.p, start: psiC0, end, rhoMin: rhoLimitCable, pMin };
     /** @param {import('./fit.js').FitResult} f @param {number} matched */
@@ -452,11 +463,21 @@ function solveState(state, resolution, maxIterations) {
   // Closed outline and forward model of each candidate; the candidate whose
   // achieved curve is closest to the target (largest force difference) wins,
   // a closable one before one whose closing blend fails.
-  /** @type {{ candidate: (typeof candidates)[number], closed: import('./outline.js').ClosedCable, forward: import('./forward.js').ForwardResult, maxDiff: number } | null} */
+  /**
+   * @type {{ candidate: (typeof candidates)[number], active: import('./outline.js').Piecewise,
+   *   closed: import('./outline.js').ClosedCable, forward: import('./forward.js').ForwardResult, maxDiff: number,
+   *   maxAt: number } | null}
+   */
   let best = null;
+  const D0 = 2 * ctx.bow.braceAxleY;
   for (const candidate of candidates) {
     const tOutline = now();
-    const { active } = candidate;
+    // A fit without the brace value p(ψ_c0) = p_c0 has its brace contact
+    // after ψ_c0; the lead-in then starts at that contact.
+    const psiBrace = braceContact(candidate.active, D0);
+    const active = psiBrace > candidate.active.start + BRACE_CONTACT_TOLERANCE && psiBrace < candidate.active.end
+      ? trimTrack(candidate.active, psiBrace)
+      : candidate.active;
     const wrap = active.end - active.start + body.leadInWrap;
     if (wrap >= 2 * Math.PI) {
       const reduce = wrap - 2 * Math.PI + 5 * DEG;
@@ -488,12 +509,21 @@ function solveState(state, resolution, maxIterations) {
     });
     res.timings.forward += now() - tForward;
     let maxDiff = 0;
+    let maxAt = -1;
     for (let i = 0; i < forward.n; i++) {
       const d = Math.abs(forward.F[i] - res.target.F[i]);
-      maxDiff = Number.isFinite(d) ? Math.max(maxDiff, d) : Infinity;
+      if (!Number.isFinite(d)) {
+        maxDiff = Infinity;
+        maxAt = -1;
+        break;
+      }
+      if (d > maxDiff) {
+        maxDiff = d;
+        maxAt = i;
+      }
     }
     if (!best || (closed.ok && !best.closed.ok) || (closed.ok === best.closed.ok && maxDiff < best.maxDiff)) {
-      best = { candidate, closed, forward, maxDiff };
+      best = { candidate, active, closed, forward, maxDiff, maxAt };
     }
   }
   if (!best) {
@@ -501,7 +531,7 @@ function solveState(state, resolution, maxIterations) {
     return res;
   }
   const { closed, forward } = best;
-  if (!closed.ok) diags.push(closingDiagnostic(closed, best.candidate.active, state, rhoLimitCable, pMin, settings.step, fmt));
+  if (!closed.ok) diags.push(closingDiagnostic(closed, best.active, state, rhoLimitCable, pMin, settings.step, fmt));
   if (res.fit.used) {
     res.fit.pointsMatched = best.candidate.pointsMatched;
     res.fit.rms = best.candidate.rms;
@@ -544,6 +574,7 @@ function solveState(state, resolution, maxIterations) {
   const thetaFull = forward.theta[forward.n - 1];
   const psiCFAchieved = Number.isFinite(forward.psiC[forward.n - 1]) ? forward.psiC[forward.n - 1] : closed.psiFull;
   const psiSFAchieved = Number.isFinite(forward.psiS[forward.n - 1]) ? forward.psiS[forward.n - 1] : psiSFull;
+  const psiCBAchieved = Number.isFinite(forward.psiC[0]) ? forward.psiC[0] : closed.psiBrace;
   res.posts = [
     terminationPost(stringSupport, stringEnd, postRadius, cords.stringDiameter, 'string-post'),
     terminationPost(cableSupport, closed.psiStart, postRadius, cords.cableDiameter, 'cable-post'),
@@ -551,7 +582,7 @@ function solveState(state, resolution, maxIterations) {
   ];
   res.marks = [
     trackMark(stringSupport, 0, 'string-brace'),
-    trackMark(cableSupport, closed.psiBrace, 'cable-brace'),
+    trackMark(cableSupport, psiCBAchieved, 'cable-brace'),
     trackMark(stringSupport, psiSFAchieved, 'full-draw'),
   ];
   res.timings.outline += now() - tOutline2;
@@ -592,10 +623,17 @@ function solveState(state, resolution, maxIterations) {
     res.fit.withinTolerance = forceOk && energyOk;
     const verdict = `${forceOk ? 'within' : 'more than'} the ${fmt.forceFine(tolerance)} tolerance` +
       (energyOk ? '' : `, and a draw energy difference above the ${fmt.energy(energyTolerance)} tolerance`);
+    const miss = best.maxAt >= 0
+      ? largestDifference(points, forward.x[best.maxAt], forward.F[best.maxAt] - res.target.F[best.maxAt], targetMetrics.xPeak, fmt)
+      : null;
     for (const d of violations) {
       d.message += `. The fitted cam meets the limits; its force curve differs from the target by up to ${fmt.forceFine(maxDiff)}, ` +
         `${verdict} (peak ${signed(fmt.forceFine(res.fit.peakDifference), res.fit.peakDifference)}, ` +
-        `let-off ${signedPoints(res.fit.letOffDifference)}, draw energy ${signed(fmt.energy(res.fit.energyDifference), res.fit.energyDifference)})`;
+        `let-off ${signedPoints(res.fit.letOffDifference)}, draw energy ${signed(fmt.energy(res.fit.energyDifference), res.fit.energyDifference)})` +
+        (miss ? miss.text : '');
+      // The fitted cam is the built result, so the suggestion addresses the
+      // part of the curve where its force misses the target.
+      if (d.code === 'cable-radius' && miss) d.suggestion = miss.suggestion;
     }
     // A fitted cam that follows the target within the tolerance meets it:
     // the ideal track's violations stay in the fit record only.
@@ -606,6 +644,41 @@ function solveState(state, resolution, maxIterations) {
   }
   diags.push(...violations);
   return res;
+}
+
+/**
+ * Contact angle of the power cable on a cable track at brace: the tangent
+ * from the anchor, which lies at (0, −D) in the cam frame at θ = 0, so the
+ * root of f(ψ) = −D·sin ψ − p(ψ) with f' = −D·cos ψ − p'(ψ). Newton from
+ * the start of the track; NaN when it does not converge.
+ * @param {import('./outline.js').Piecewise} track
+ * @param {number} D axle distance at brace 2·O_y (m)
+ * @returns {number} (rad)
+ */
+function braceContact(track, D) {
+  const buf = new Float64Array(3);
+  let psi = track.start;
+  for (let it = 0; it < 30; it++) {
+    track.evaluate(psi, buf);
+    const step = (-D * Math.sin(psi) - buf[0]) / (-D * Math.cos(psi) - buf[1]);
+    if (!Number.isFinite(step)) return NaN;
+    psi -= step;
+    if (Math.abs(step) <= 1e-15 * Math.max(1, Math.abs(psi))) return psi;
+  }
+  return NaN;
+}
+
+/**
+ * The part of a track from `psi` on. The first piece keeps its data (a
+ * spline piece takes `psi` as its start, a polynomial piece keeps its
+ * parameter origin), so p, p' and p'' are unchanged.
+ * @param {import('./outline.js').Piecewise} track
+ * @param {number} psi inside (track.start, track.end) (rad)
+ * @returns {import('./outline.js').Piecewise}
+ */
+function trimTrack(track, psi) {
+  const pieces = track.pieces.filter((q) => q.end > psi).map((q, k) => (k === 0 && q.kind === 'spline' ? { ...q, start: psi } : q));
+  return { ...createPiecewise(pieces), start: psi };
 }
 
 /**
@@ -730,8 +803,8 @@ function braceOk(brace, state, ctx, limbData, points, fmt, diags) {
     );
     return false;
   }
-  // T_s0 ≥ M_b/s_a0: suggest a first point with 80 % of the limit slope, or
-  // the limb whose brace moment makes T_s0 80 % of the limit.
+  // T_s0 ≥ M_b/s_a0: suggest the force of point 2 that gives 80 % of the
+  // limit slope, or the limb whose brace moment makes T_s0 80 % of the limit.
   const factor = (0.8 * brace.maxStringTension) / Ts0;
   const preload = state.limb.preloadTravel;
   // In the stiffness mode the brace moment k·R_L·s_0 grows in proportion to
@@ -747,16 +820,44 @@ function braceOk(brace, state, ctx, limbData, points, fmt, diags) {
       limbText = `, or increase the limb stiffness to at least ${fmt.stiffness(neededStiffness)}`;
     }
   }
+  const F2 = pointTwoForSlope(points, 0.8 * brace.maxSlope);
+  const pointText = F2 >= MIN_FORCE
+    ? `Reduce the force of point 2 to at most ${fmt.forceAtMost(F2)}`
+    : 'Move point 2 further from brace';
   diags.push(
     diagnostic(
       'brace-tension',
       `The force curve rises too steeply at brace: its slope of ${fmt.slope(brace.slope)} needs a string tension of ${fmt.force(Ts0)} ` +
         `at brace, but the limb moment holds at most ${fmt.force(brace.maxStringTension)} (slope ${fmt.slope(brace.maxSlope)})`,
-      `Reduce the force of point 2 to at most ${fmt.force(points[1].F * factor)}${limbText}`,
+      `${pointText}${limbText}`,
       { xRange: [xb, points[1].x] },
     ),
   );
   return false;
+}
+
+/**
+ * Force of point 2 at which the natural end slope F'(x_b) of the curve
+ * equals `slope`, by bisection between 0 N and the present force. The end
+ * slope is the three-point end formula of the interpolant, affine in the
+ * force of point 2 with a positive factor and clamped at 0, so it rises
+ * with that force. Returns 0 when no force below the present one gives a
+ * slope above 0 that is at most `slope`.
+ * @param {ReadonlyArray<{ x: number, F: number }>} points
+ * @param {number} slope target F'(x_b), below the present end slope (N/m)
+ * @returns {number} (N)
+ */
+function pointTwoForSlope(points, slope) {
+  const xb = points[0].x;
+  const at = (/** @type {number} */ F) => createCurve(points.map((q, i) => (i === 1 ? { x: q.x, F } : q))).derivative(xb, 1);
+  let lo = 0;
+  let hi = points[1].F;
+  for (let it = 0; it < 60 && hi - lo > 1e-6 * Math.max(1, hi); it++) {
+    const mid = 0.5 * (lo + hi);
+    if (at(mid) > slope) hi = mid;
+    else lo = mid;
+  }
+  return at(lo) > 0 ? lo : 0;
 }
 
 /**
@@ -814,13 +915,35 @@ function checkIdeal(s, i1, state, ctx, limbData, targetMetrics, fmt, diags) {
       ),
     );
   }
+  // The brace blend joins ψ_c0 to the contact at point 2 and needs
+  // ψ_c(x_1) > ψ_c0; backward motion inside [x_b, x_1] is replaced by it.
+  const evenRise = 'Lower the force of point 2 or move it later, so that the force rises more evenly from brace to point 3';
+  if (i1 > 0 && !(s.psiC[i1] > s.psiC[0])) {
+    diags.push(
+      diagnostic(
+        'cable-fold',
+        `The cable contact would move backwards on the cam between brace and point 2: at point 2 (${fmt.draw(s.x[i1])}) ` +
+          `it lies ${fmt.angle(s.psiC[0] - s.psiC[i1])} behind its brace position, so no convex cable track joins the two`,
+        evenRise,
+        { xRange: [s.x[0], s.x[i1]], psiRange: [s.psiC[i1], s.psiC[0]] },
+      ),
+    );
+  }
+  // The inverse model at x uses the target up to x only, so the let-off
+  // changes a fold only where the force falls after the peak.
   const folds = runs(n, (i) => i > i1 && s.Tc[i] > 0 && !(s.psiC[i] > s.psiC[i - 1]));
   for (const [a, b] of folds) {
+    let suggestion = 'Spread the force change in this range over a longer draw (move the points apart)';
+    if (s.x[b] > targetMetrics.xPeak && s.F[b] < s.F[a - 1]) {
+      suggestion = 'Spread the force drop in this range over a longer draw (move the points apart), or reduce the let-off';
+    } else if (a === i1 + 1 && s.x[b] < targetMetrics.xPeak) {
+      suggestion = evenRise;
+    }
     diags.push(
       diagnostic(
         'cable-fold',
         `The cable contact would move backwards on the cam ${fmt.drawRange([s.x[a], s.x[b]])}: the force changes faster than any convex cable track can follow`,
-        'Spread the force change in this range over a longer draw (move the points apart), or reduce the let-off',
+        suggestion,
         { xRange: [s.x[a], s.x[b]], psiRange: [s.psiC[b], s.psiC[a - 1]] },
       ),
     );
@@ -852,22 +975,31 @@ function checkIdeal(s, i1, state, ctx, limbData, targetMetrics, fmt, diags) {
   }
 }
 
+/** Suggestion of a cable track problem between brace and point 3. */
+const EVEN_RISE = 'Move point 2 so that the force rises more evenly from brace to point 3';
+
 /**
  * Radius of curvature and lever arm of the ideal cable track: at most one
  * diagnostic per code, naming the worst range. Returns the diagnostics
  * without adding them (the result of the fit is appended later).
+ *
+ * The brace blend on [ψ_c0, ψ_1] often bends the wrong way (ρ down to
+ * −503 mm on the default preset), and the fit replaces it; its runs of ρ
+ * below the limit are named only when no other run exists. They still count
+ * as violations, so the fit runs.
  * @param {import('./outline.js').Piecewise} track
  * @param {{ psi: Float64Array, x: Float64Array } | null} psiToX
+ * @param {number} blendEnd ψ_1, end of the brace blend (rad)
  * @param {number} rhoLimit (m)
  * @param {number} pMin (m)
  * @param {ProjectState} state
  * @param {import('./inverse.js').InverseSamples} samples
- * @param {number} x1 nock position of point 2 (m)
  * @param {ReturnType<typeof formatter>} fmt
  * @returns {SolveDiagnostic[]}
  */
-function checkCableTrack(track, psiToX, rhoLimit, pMin, state, samples, x1, fmt) {
+function checkCableTrack(track, psiToX, blendEnd, rhoLimit, pMin, state, samples, fmt) {
   const count = Math.max(200, Math.ceil((track.end - track.start) / (0.1 * DEG)));
+  const h = (track.end - track.start) / count;
   const psi = new Float64Array(count + 1);
   const rho = new Float64Array(count + 1);
   const p = new Float64Array(count + 1);
@@ -881,14 +1013,18 @@ function checkCableTrack(track, psiToX, rhoLimit, pMin, state, samples, x1, fmt)
   /** @param {number} v */
   const xAt = (v) => (psiToX ? interpolate(psiToX.psi, psiToX.x, v) : NaN);
   /**
-   * Runs of flagged grid points, the overall range and the run with the
-   * smallest value.
+   * Runs of flagged grid points, the overall range, the run with the
+   * smallest value and the angle over which that run is below 0. Runs that
+   * end at or before `from` count only when no other run exists.
    * @param {Float64Array} values
    * @param {number} limit
+   * @param {number} from (rad)
    */
-  const worstRun = (values, limit) => {
-    const all = runs(count + 1, (k) => !(values[k] >= limit));
-    if (all.length === 0) return null;
+  const worstRun = (values, limit, from) => {
+    const flagged = runs(count + 1, (k) => !(values[k] >= limit));
+    if (flagged.length === 0) return null;
+    const later = flagged.filter((r) => psi[r[1]] > from);
+    const all = later.length > 0 ? later : flagged;
     let low = Infinity;
     let at = 0;
     let worst = all[0];
@@ -901,58 +1037,70 @@ function checkCableTrack(track, psiToX, rhoLimit, pMin, state, samples, x1, fmt)
         }
       }
     }
+    let negative = 0;
+    for (let k = worst[0]; k <= worst[1]; k++) if (values[k] < 0) negative++;
     return {
       count: all.length,
       low,
       at,
+      negativeAngle: negative * h,
       xRange: /** @type {[number, number]} */ ([xAt(psi[all[0][0]]), xAt(psi[all[all.length - 1][1]])]),
       psiRange: /** @type {[number, number]} */ ([psi[all[0][0]], psi[all[all.length - 1][1]]]),
       worst: /** @type {[number, number]} */ ([xAt(psi[worst[0]]), xAt(psi[worst[1]])]),
+      inBlend: !(psi[worst[1]] > from),
     };
   };
   /** @type {SolveDiagnostic[]} */
   const out = [];
   const { body, cords } = state;
-  const bend = worstRun(rho, rhoLimit);
+  const bend = worstRun(rho, rhoLimit, blendEnd);
   if (bend) {
-    const where = bend.count > 1 ? `in ${bend.count} ranges of the draw, lowest ${fmt.drawRange(bend.worst)}` : fmt.drawRange(bend.worst);
-    const wrongWay = bend.low < 0 ? ' (it would bend the wrong way)' : '';
-    const nearBrace = bend.worst[1] <= x1 + 1e-9;
+    // A negative ρ has no size to fix; the angle over which the track bends
+    // the wrong way says how far it is from convex.
+    const worst = bend.low < 0
+      ? `bends the wrong way over ${fmt.angle(bend.negativeAngle)} ${fmt.drawRange(bend.worst)}`
+      : `reaches a radius of curvature of ${fmt.size(bend.low)} ${fmt.drawRange(bend.worst)}`;
+    const lead = bend.count > 1
+      ? `The ideal cable track falls below the radius limit in ${bend.count} ranges of the draw; at worst it ${worst}`
+      : `The ideal cable track ${worst}`;
     out.push(
       diagnostic(
         'cable-radius',
-        `The ideal cable track reaches a radius of curvature of ${fmt.size(bend.low)}${wrongWay} ${where}; ` +
-          `the limit is ${fmt.size(rhoLimit)}, the larger of the minimum bend radius and the ${fmt.size(cords.cableDiameter / 2)} cable radius plus ${fmt.size(GROOVE_MARGIN)}`,
-        nearBrace
-          ? 'Move point 2 so that the force rises more evenly from brace to point 3'
+        `${lead}; the radius limit is ${fmt.size(rhoLimit)}, the larger of the minimum bend radius and the ` +
+          `${fmt.size(cords.cableDiameter / 2)} cable radius plus ${fmt.size(GROOVE_MARGIN)}`,
+        bend.inBlend
+          ? EVEN_RISE
           : `Make the force curve change more gradually ${fmt.drawRange(bend.worst)}: move the points there apart or reduce the force change between them`,
         { xRange: bend.xRange, psiRange: bend.psiRange },
       ),
     );
   }
-  const near = worstRun(p, pMin);
+  const near = worstRun(p, pMin, -Infinity);
   if (near) {
     // The lever arm grows about in proportion to the string tension, so to
-    // the force at a fixed draw position, and to the string lever arm there.
+    // the force at a fixed draw position. A hub (bore radius plus wall) of
+    // at most the lowest lever arm minus the cable radius clears it; both
+    // keep a 3 % margin.
     const xLow = xAt(psi[near.at]);
     const F = Number.isFinite(xLow) ? interpolate(samples.x, samples.F, xLow) : NaN;
     const need = (1.03 * pMin) / near.low;
-    const pS = Number.isFinite(xLow) ? interpolate(samples.x, samples.pS, xLow) : NaN;
     let peak = 0;
     for (const v of samples.F) if (v > peak) peak = v;
     const atFull = Number.isFinite(xLow) && xLow >= samples.x[samples.n - 1] - 0.02;
     const options = [];
-    if (near.low > 0 && atFull && Number.isFinite(F)) {
-      const letOff = 1 - (F * need) / peak;
+    if (atFull) {
+      const letOff = near.low > 0 && Number.isFinite(F) ? 1 - (F * need) / peak : NaN;
       options.push(letOff > 0 ? `Reduce let-off below ${fmt.percent(Math.floor(letOff * 100) / 100)}` : 'Reduce let-off');
-    } else if (near.low > 0 && Number.isFinite(F)) {
-      options.push(`Raise the force ${fmt.drawRange([xLow, xLow])} to at least ${fmt.force(F * need)}`);
+    } else {
+      options.push(near.low > 0 && Number.isFinite(F)
+        ? `Raise the force ${fmt.drawRange([xLow, xLow])} to at least ${fmt.force(F * need)}`
+        : `Raise the force ${fmt.drawRange(near.worst)}`);
     }
-    const radius = state.stringTrack.radius + pS * (need - 1);
-    if (near.low > 0 && state.stringTrack.shape === 'eccentric' && radius <= FIELDS['stringTrack.radius'].max) {
-      options.push(`increase the string track radius by at least ${fmt.size(pS * (need - 1))}`);
+    const hub = near.low / 1.03 - cords.cableDiameter / 2;
+    const smallestHub = FIELDS['body.boreDiameter'].min / 2 + FIELDS['body.minWall'].min;
+    if (hub >= smallestHub) {
+      options.push(`reduce the axle bore radius plus the minimum wall to at most ${fmt.sizeAtMost(hub)} (now ${fmt.size(body.boreDiameter / 2 + body.minWall)})`);
     }
-    options.push(`reduce the axle bore or the minimum wall (together ${fmt.size(body.boreDiameter / 2 + body.minWall)})`);
     const text = options.join(', or ');
     out.push(
       diagnostic(
@@ -964,6 +1112,46 @@ function checkCableTrack(track, psiToX, rhoLimit, pMin, state, samples, x1, fmt)
     );
   }
   return out;
+}
+
+/**
+ * Where the achieved force of a fitted cam differs most from the target:
+ * the draw position, the side of the target and the curve points on either
+ * side, and the suggestion for a cable track that bends too sharply there.
+ * Before point 3 the force rise from brace sets the track; after the peak
+ * the drop towards the holding weight, and with it the let-off, does.
+ * @param {ReadonlyArray<{ x: number, F: number }>} points
+ * @param {number} x draw position of the largest difference (m)
+ * @param {number} difference achieved minus target force there (N)
+ * @param {number} xPeak peak position of the target (m)
+ * @param {ReturnType<typeof formatter>} fmt
+ * @returns {{ text: string, suggestion: string }}
+ */
+function largestDifference(points, x, difference, xPeak, fmt) {
+  const last = points.length - 1;
+  let k = 0;
+  while (k < last - 1 && points[k + 1].x <= x) k++;
+  const on = points.findIndex((q) => Math.abs(q.x - x) <= 1e-9);
+  const where = on >= 0 ? `at point ${on + 1} (${fmt.draw(x)})` : `at ${fmt.draw(x)}, between points ${k + 1} and ${k + 2}`;
+  const text = `; the largest difference, ${difference > 0 ? 'above' : 'below'} the target, lies ${where}`;
+  // The nearest interval at or before x, after the peak, where the force
+  // falls: the drop towards the holding weight.
+  let drop = -1;
+  for (let j = k; j >= 0 && points[j + 1].x > xPeak; j--) {
+    if (points[j + 1].F < points[j].F) {
+      drop = j;
+      break;
+    }
+  }
+  let suggestion;
+  if (x < points[Math.min(2, last)].x) {
+    suggestion = EVEN_RISE;
+  } else if (drop >= 0) {
+    suggestion = `Make the force drop between points ${drop + 1} and ${drop + 2} more gradual: move them apart, or reduce the let-off`;
+  } else {
+    suggestion = `Make the force change between points ${k + 1} and ${k + 2} more gradual: move them apart or reduce the force change between them`;
+  }
+  return { text, suggestion };
 }
 
 /**

@@ -52,6 +52,11 @@ export const MAX_ITERATIONS = 30;
 const MAX_THETA_STEP = 0.5;
 /** Largest deviation of the brace string contact from ψ = 0 (rad). */
 const BRACE_ANGLE_TOLERANCE = 1e-9;
+/**
+ * Largest distance of a nock position from x_b that counts as brace (m):
+ * the tolerance of the brace point in project validation.
+ */
+export const BRACE_POSITION_TOLERANCE = 1e-9;
 /** Deviation of a resampled cable angle from its uniform target, relative to the step. */
 const RESAMPLE_TOLERANCE = 1e-3;
 /** Iteration limit of the resampling root search. */
@@ -136,7 +141,10 @@ const RESAMPLE_ITERATIONS = 60;
  * @property {number} dAlphaDx (rad/m)
  * @property {number} axleX (m)
  * @property {number} axleY (m)
- * @property {number} spanC free cable span (m)
+ * @property {number} anchorReach B·t = √(D² − p_c²), the distance along the
+ *   cable line from the foot of the perpendicular from the axle to the anchor
+ *   (m); the reduced cable length is B·t + P(ψ_c), and the free span is
+ *   B·t − p_c'(ψ_c) once the cable track exists
  * @property {number} closure string closure residual (m)
  */
 
@@ -244,15 +252,15 @@ function emptySample() {
   return {
     ok: false, x: NaN, F: NaN, W: NaN, theta: NaN, alpha: NaN, phi: NaN, psiS: NaN, pS: NaN, sA: NaN, Ts: NaN,
     Tc: NaN, moment: NaN, pC: NaN, cA: NaN, psiC: NaN, dThetaDx: NaN, dAlphaDx: NaN, axleX: NaN, axleY: NaN,
-    spanC: NaN, closure: NaN,
+    anchorReach: NaN, closure: NaN,
   };
 }
 
 /**
  * Inverse model at one nock position. θ comes from the string closure by
- * Newton from the warm start (thetaGuess, psiGuess). At x = x_b the brace
- * values apply (T_s = T_s0, θ = α = 0). Never throws; out.ok is false when
- * the closure fails.
+ * Newton from the warm start (thetaGuess, psiGuess). Within
+ * BRACE_POSITION_TOLERANCE of x_b the brace values apply (T_s = T_s0,
+ * θ = α = 0). Never throws; out.ok is false when the closure fails.
  * @param {InverseContext} ctx
  * @param {BraceConditions} brace
  * @param {number} x nock position (m)
@@ -265,7 +273,7 @@ function emptySample() {
  */
 export function inverseAt(ctx, brace, x, F, W, thetaGuess, psiGuess, out = emptySample()) {
   const { bow, stringSupport, limb } = ctx;
-  const atBrace = x === bow.xBrace;
+  const atBrace = Math.abs(x - bow.xBrace) <= BRACE_POSITION_TOLERANCE;
   Object.assign(out, emptySample());
   out.x = x;
   out.F = F;
@@ -344,7 +352,7 @@ export function inverseAt(ctx, brace, x, F, W, thetaGuess, psiGuess, out = empty
   out.dThetaDx = (sinPhi - sA * dAlpha) / pS;
   out.axleX = ox;
   out.axleY = oy;
-  out.spanC = Math.sqrt(Math.max(0, D * D - pC * pC));
+  out.anchorReach = Math.sqrt(Math.max(0, D * D - pC * pC));
   out.closure = residual;
   out.ok = [th, Ts, pC, cA, out.Tc, out.psiC, out.dThetaDx].every(Number.isFinite);
   return out;
@@ -355,7 +363,7 @@ const scratchContact = createContact();
 /** Names of the per-sample arrays of {@link InverseSamples}. */
 export const SAMPLE_FIELDS = /** @type {const} */ ([
   'x', 'F', 'W', 'theta', 'alpha', 'phi', 'psiS', 'pS', 'sA', 'Ts', 'Tc', 'moment', 'pC', 'cA', 'psiC',
-  'dThetaDx', 'dAlphaDx', 'axleX', 'axleY', 'spanC', 'closure',
+  'dThetaDx', 'dAlphaDx', 'axleX', 'axleY', 'anchorReach', 'closure',
 ]);
 
 /**
