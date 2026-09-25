@@ -939,6 +939,47 @@ support p(ψ) = max over the exported spline of S·n(ψ) on a 0.25° grid and
 the string track from its circle, runs the forward model and compares the
 draw force with the solved one: the largest difference is below 0.5 N.
 
+## STEP solids
+
+`src/export/step.js` writes each plate as a prism: its outline and holes in
+the XY plane, extruded along +Z by the plate thickness. Flange plates are
+t_f thick, groove plates d + c (cord diameter plus groove clearance).
+
+**Outline.** The solid follows the exact track, not the DXF cut outline,
+which is offset outwards by the tolerance. A plate of one track reuses the
+export fit of that track. The middle flange and a plate with a boss use
+the hull of their tracks: h(ψ) = max_k p_k(ψ). On each arc of the hull one
+track gives h; the arcs meet at crossing angles ψ_c where two supports are
+equal, found on a 0.25° grid and refined by bisection. There the hull
+follows the common tangent from P = X_a(ψ_c) to Q = X_b(ψ_c), a straight
+segment of length L along t(ψ_c). The fit uses Hermite cubics with the
+exact point X and derivative X' = ρ·t on each arc (parameter u = ψ), and
+one straight cubic per tangent with knot interval Δu = 2L/(ρ_a + ρ_b) and
+inner control points P + (Δu/3)·ρ_a·t and Q − (Δu/3)·ρ_b·t. The derivative
+then equals ρ_a·t at P and ρ_b·t at Q on both sides of each joint, so the
+curve is C1 in u, and the segment is straight because the four control
+points are collinear. A cubic with interior knots of multiplicity 3 that is
+C1 in u loses one multiplicity exactly: the joint control point lies on
+the line of its neighbours, Q_j = (h_r·Q_{j−1} + h_l·Q_{j+1})/(h_l + h_r).
+
+**Area check.** On an arc the boundary X = p·n + p'·t has X × X' = p·ρ, so
+the hull area is A = ½ Σ_arcs ∫ p(p + p'') dψ + ½ Σ_tangents P × Q. The
+written B-spline encloses ½∮(x dy − y dx), exact with 3-point Gauss per
+span. Default preset: middle flange, cable flange and cable groove plate
+within 2e-6 m² (0.4 m × tol/2) of the exact area.
+
+**Orientation.** Profiles run counter-clockwise seen from +Z. The normal
+of a SURFACE_OF_LINEAR_EXTRUSION of a counter-clockwise curve along +Z,
+C'(u) × Z, points outwards; a CYLINDRICAL_SURFACE normal points away from
+its axis. The outline side face therefore uses its surface as it is
+(same_sense .T.), a hole face reversed (.F.). The top plane (axis +Z)
+faces up (.T.), the bottom plane down (.F.).
+
+**Topology.** With n closed profiles (outline and n − 1 holes) a solid has
+V = 2n vertices, E = 3n edges, F = n + 2 faces and L = 3n loops, and
+satisfies V − E + 2F − L = 2(1 − G) with genus G = n − 1: both sides equal
+4 − 2n.
+
 ## Validity and diagnostics of the forward model
 
 The solver never throws on user input. It returns `status`: `ok`,

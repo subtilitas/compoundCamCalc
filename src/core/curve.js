@@ -318,13 +318,23 @@ function curvePoints(input, flat, tau = 1) {
   const xTransition = xValleyStart - tau * 0.5 * (xValleyStart - xPeakEnd);
   return [
     { x: xBrace, F: 0 },
-    { x: xBrace + G.rampX * (xPeakStart - xBrace), F: G.rampF * peak },
+    { x: xBrace + rampOffset(xPeakStart - xBrace), F: G.rampF * peak },
     { x: xPeakStart, F: peak },
     { x: xPeakEnd, F: peak },
     { x: xTransition, F: hold + tau * G.transitionF * (peak - hold) },
     { x: xValleyStart, F: hold },
     { x: input.xFull, F: hold },
   ];
+}
+
+/**
+ * Offset of the ramp point from brace for a rise of length d: rampX of the
+ * rise, kept at least MIN_GAP from brace and from peak start. A short rise
+ * (a 10 % rise over a stroke under 2.5 in) would put it closer.
+ * @param {number} d rise from brace to peak start (m), at least 2·MIN_GAP
+ */
+function rampOffset(d) {
+  return Math.min(Math.max(GENERATOR_DEFAULTS.rampX * d, MIN_GAP), d - MIN_GAP);
 }
 
 /**

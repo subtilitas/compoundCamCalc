@@ -153,7 +153,7 @@ test('settings fields validate and sliders update the curve live', async ({ page
   const brace = page.getByTestId('field-brace');
   await brace.fill('12');
   await brace.press('Enter');
-  await expect(page.getByTestId('field-brace-msg')).toHaveText('Brace height must be between 4 and 10 in');
+  await expect(page.getByTestId('field-brace-msg')).toHaveText('Brace height must be between 1.5 and 10 in');
   await brace.fill('7');
   await brace.press('Enter');
   await expect(page.getByTestId('field-brace-msg')).toHaveText('');
@@ -175,13 +175,13 @@ test('settings fields validate and sliders update the curve live', async ({ page
 test('the peak slider reaches the bounds of its field in lbf', async ({ page }) => {
   await page.getByTestId('unit-force').selectOption('lbf');
   const slider = page.getByTestId('slider-peak');
-  await expect(slider).toHaveAttribute('min', '11.3');
+  await expect(slider).toHaveAttribute('min', '1.2');
   await expect(slider).toHaveAttribute('max', '202.3');
   await slider.focus();
   await page.keyboard.press('End');
   await expect(page.getByTestId('field-peak')).toHaveValue('202.3');
   await page.keyboard.press('Home');
-  await expect(page.getByTestId('field-peak')).toHaveValue('11.3');
+  await expect(page.getByTestId('field-peak')).toHaveValue('1.2');
 });
 
 test('a cancelled slider gesture ends its undo entry', async ({ page }) => {

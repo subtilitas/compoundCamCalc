@@ -35,6 +35,17 @@ const GROUPS = Object.freeze([
     ],
   },
   { title: 'Drawings (DXF)', parts: [['reference', 'Reference drawing'], ['string-plan', 'String plan']] },
+  {
+    title: 'Solids (STEP)',
+    parts: [
+      ['step-cam', 'All plates, stacked'],
+      ['step-plate1-string-flange', '1 Flange, string side'],
+      ['step-plate2-string-groove', '2 String groove'],
+      ['step-plate3-middle-flange', '3 Middle flange'],
+      ['step-plate4-cable-groove', '4 Cable groove'],
+      ['step-plate5-cable-flange', '5 Flange, cable side'],
+    ],
+  },
   { title: 'Data (CSV)', parts: [['force-curve', 'Force table']] },
 ]);
 
@@ -148,6 +159,7 @@ export function createExportPanel(container, { version, date = () => new Date() 
       return null;
     }
     cache = { key: exportKey(v.now.units, d), result: v.lastGood.result, set: out.set, date: d };
+    markMissing(out.set);
     failed = null;
     alert.replaceChildren();
     showWarnings(out.set.warnings);
@@ -165,6 +177,18 @@ export function createExportPanel(container, { version, date = () => new Date() 
       if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: IDLE_TIMEOUT });
       else run();
     }, IDLE_DELAY);
+  }
+
+  /**
+   * Buttons of files the set left out (a plate whose outline could not be
+   * fitted has no STEP file) are marked off.
+   * @param {ExportSet} set
+   */
+  function markMissing(set) {
+    for (const [part, b] of buttons) {
+      const missing = !set.files.some((f) => f.part === part);
+      setAttrs(b, { 'aria-disabled': missing ? 'true' : null, title: missing ? 'Not in this export: see the warnings' : null });
+    }
   }
 
   /** @param {string[]} list */
@@ -211,7 +235,10 @@ export function createExportPanel(container, { version, date = () => new Date() 
   for (const [part, b] of buttons) {
     b.addEventListener('click', () => run((set) => {
       const f = set.files.find((file) => file.part === part);
-      if (!f) return;
+      if (!f) {
+        say(`${b.textContent} is not in this export: see the warnings`);
+        return;
+      }
       download(f.name, f.text, f.mime);
       say(`Saved ${f.name}`);
     }));
@@ -229,9 +256,9 @@ export function createExportPanel(container, { version, date = () => new Date() 
         id = designId(next.lastGood.state);
         current = id === designId(next.now);
         const bore = next.lastGood.state.body.boreDiameter * 1000;
-        note.textContent = `DXF files are in millimetres at 1:1. After import, the axle bore measures ${bore.toFixed(2)} mm.`;
+        note.textContent = `DXF and STEP files are in millimetres at 1:1. After import, the axle bore measures ${bore.toFixed(2)} mm.`;
       } else {
-        note.textContent = 'DXF files are in millimetres at 1:1.';
+        note.textContent = 'DXF and STEP files are in millimetres at 1:1.';
       }
       say(exportStatus({ hasCam: has, busy: next.busy, pending: next.pending ?? false, current, id }));
       if (failed !== null && next.lastGood?.result !== failed) {
@@ -243,6 +270,7 @@ export function createExportPanel(container, { version, date = () => new Date() 
         return;
       }
       if (cached(next, date())) {
+        markMissing(/** @type {NonNullable<typeof cache>} */ (cache).set);
         showWarnings(/** @type {NonNullable<typeof cache>} */ (cache).set.warnings);
         return;
       }

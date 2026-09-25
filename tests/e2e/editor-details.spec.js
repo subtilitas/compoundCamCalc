@@ -204,7 +204,7 @@ test.describe('settings', () => {
     const brace = page.getByTestId('field-brace');
     await brace.fill('12');
     await brace.press('Tab');
-    await expect(page.getByTestId('field-brace-msg')).toHaveText('Brace height must be between 4 and 10 in');
+    await expect(page.getByTestId('field-brace-msg')).toHaveText('Brace height must be between 1.5 and 10 in');
     await page.getByTestId('unit-draw').selectOption('mm');
     await expect(brace).toHaveValue('165.1');
     await expect(page.getByTestId('field-brace-msg')).toHaveText('');
@@ -213,7 +213,7 @@ test.describe('settings', () => {
 
   test('the bounds printed in a range hint are accepted', async ({ page }) => {
     await page.getByTestId('unit-draw').selectOption('mm');
-    await expect(page.locator('#f-draw-range')).toHaveText('508 to 863.6 mm, step 5 mm');
+    await expect(page.locator('#f-draw-range')).toHaveText('152.4 to 863.6 mm, step 5 mm');
     const draw = page.getByTestId('field-draw');
     await draw.fill('863.6');
     await draw.press('Enter');
@@ -221,12 +221,12 @@ test.describe('settings', () => {
     await expect(draw).toHaveValue('863.6');
 
     await page.getByTestId('unit-force').selectOption('lbf');
-    await expect(page.locator('#f-peak-range')).toHaveText('11.3 to 202.3 lbf, step 0.5 lbf');
+    await expect(page.locator('#f-peak-range')).toHaveText('1.2 to 202.3 lbf, step 0.5 lbf');
     const peak = page.getByTestId('field-peak');
-    await peak.fill('11.3');
+    await peak.fill('1.2');
     await peak.press('Enter');
     await expect(page.getByTestId('field-peak-msg')).toHaveText('');
-    await expect(page.getByTestId('stat-peak')).toHaveText('11.3 lbf');
+    await expect(page.getByTestId('stat-peak')).toHaveText('1.2 lbf');
   });
 
   test('the valley width field names the width the curve reaches', async ({ page }) => {
