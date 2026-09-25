@@ -163,7 +163,8 @@ coefficients (value, first and second derivative at each join, each to
 1e-9 of the largest magnitude of that same quantity at any knot), and
 spline integrals recomputed from the coefficients. An
 ellipse stored with a < b is turned into the form a ≥ b (axis angle + 90°),
-which the curvature minimum b²/a assumes, and its axis angle is reduced
+which the curvature minimum b²/a assumes (the axis turns by 90° towards
+0), and its axis angle is reduced
 modulo π to [−π/2, π/2], which keeps the arc integral
 P = a·(E(ψ − θ) − E(−θ)) free of cancellation between large integrals. A point on the track has no free span: a largest f below
 256·ε·max(|B|, |p|) or a free span below √(256·ε)·max(|B|, |p|) (ε the
@@ -335,6 +336,8 @@ near the floating-point limits of about 1e±308.
 | Track angles (phase, axis and offset angles, spline knots) and cord terminations | −1e4 to 1e4 rad |
 | Limb preload rotation α_0 and limb table rotations | 0 to 2π rad |
 | Spacing of limb table rotations, and a first row after 0 | at least 1e-6 rad |
+| Limb table rows | 2 to 1000 |
+| Spline track intervals | at most 100000 |
 | Torsional limb stiffness k_t | 1e-6 to 1e9 N·m/rad |
 | Limb table moments | 0 to 1e7 N·m |
 | Limb preload travel, table travel, limb travel | 0 to 10 m (travel mode: at least 1e-6 m) |

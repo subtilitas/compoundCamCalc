@@ -146,7 +146,8 @@ describe('ellipse', () => {
     const d = ellipse({ a: 0.03, b: 0.04, axisAngle: 0.1 });
     expect(d.a).toBe(0.04);
     expect(d.b).toBe(0.03);
-    expect(d.axisAngle).toBeCloseTo(0.1 + Math.PI / 2, 15);
+    // Turned by 90° towards 0; the ellipse repeats every π.
+    expect(d.axisAngle).toBeCloseTo(0.1 - Math.PI / 2, 15);
     const swapped = createSupport(d);
     const plain = createSupport(ellipse({ a: 0.04, b: 0.03, axisAngle: 0.1 + Math.PI / 2 }));
     expect(swapped.p(0.9)).toBe(plain.p(0.9));
@@ -368,6 +369,16 @@ describe('serialized spline data', () => {
     expect(() => createSupport(eccentricCircle({ radius: 0 }))).not.toThrow();
     expect(() => createSupport(eccentricCircle({ radius: 0.03, phase: 2e4 }))).toThrow(/phase/);
     expect(() => createSupport(ellipse({ a: 0.05, b: 0.02, axisAngle: 1e16 }))).toThrow(/angles/);
+    // An ellipse offset angle just beyond the limit; no π of slack.
+    expect(() => createSupport(ellipse({ a: 0.05, b: 0.02, offsetAngle: 10001 }))).toThrow(/angles/);
+    expect(() => createSupport(ellipse({ a: 0.02, b: 0.05, axisAngle: 1e4 }))).not.toThrow();
+    expect(() => createSupport(ellipse({ a: 0.02, b: 0.05, axisAngle: -1e4 }))).not.toThrow();
+    const beyond = { kind: 'ellipse', a: 0.02, b: 0.05, axisAngle: 1e4 + 0.1, offset: 0, offsetAngle: 0 };
+    expect(() => createSupport(/** @type {any} */ (beyond))).toThrow(/angles/);
+    // At most 100000 intervals, checked before the knots are read.
+    const long = { kind: 'spline', knots: { length: 100002 }, coeffs: { length: 400004 }, cumulative: [], periodic: false };
+    expect(() => createSupport(/** @type {any} */ (long))).toThrow(/at most 100000 intervals/);
+    expect(() => splineSupport(/** @type {any} */ ({ length: 100002 }), /** @type {any} */ ({ length: 100002 }))).toThrow(/100000 intervals/);
     const farKnot = /** @type {any} */ (splineSupport([1e4, 1e4 + 1, 1e4 + 2], [0.03, 0.03, 0.03]));
     expect(() => createSupport(farKnot)).toThrow(/at most 10000 rad/);
   });

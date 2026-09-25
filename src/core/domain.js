@@ -25,6 +25,10 @@ export const TORSIONAL_STIFFNESS_MIN = 1e-6;
 export const TORSIONAL_STIFFNESS_MAX = 1e9;
 /** Smallest spacing of limb table rotations (rad); 1e-6 rad is 0.3 µm of axle travel on a 0.28 m lever. */
 export const ROTATION_SPACING_MIN = 1e-6;
+/** Largest number of limb table rows. */
+export const TABLE_ROWS_MAX = 1000;
+/** Largest number of spline track intervals. */
+export const SPLINE_INTERVALS_MAX = 100000;
 /** Largest limb moment in a limb table (N·m). */
 export const MOMENT_MAX = 1e7;
 /** Largest draw energy (J). */

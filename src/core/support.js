@@ -12,7 +12,7 @@
  * @module core/support
  */
 
-import { ANGLE_MAX, LENGTH_MAX, LENGTH_MIN, SECOND_DERIVATIVE_MAX, inRange } from './domain.js';
+import { ANGLE_MAX, LENGTH_MAX, LENGTH_MIN, SECOND_DERIVATIVE_MAX, SPLINE_INTERVALS_MAX, inRange } from './domain.js';
 import { ellipticE } from './elliptic.js';
 
 /**
@@ -104,7 +104,7 @@ export function eccentricCircle({ radius, offset = 0, phase = 0 }) {
  * @returns {EllipseData}
  */
 export function ellipse({ a, b, axisAngle = 0, offset = 0, offsetAngle = 0 }) {
-  if (b > a) return { kind: 'ellipse', a: b, b: a, axisAngle: axisAngle + Math.PI / 2, offset, offsetAngle };
+  if (b > a) return { kind: 'ellipse', a: b, b: a, axisAngle: quarterTurn(axisAngle), offset, offsetAngle };
   return { kind: 'ellipse', a, b, axisAngle, offset, offsetAngle };
 }
 
@@ -183,8 +183,8 @@ export function splineSupport(knots, values, options = {}) {
   if (slopes !== undefined && !(Array.isArray(slopes) && slopes.length === 2 && slopes.every(Number.isFinite))) {
     throw new RangeError('Spline end slopes must be two finite numbers');
   }
-  if (n < (periodic ? 3 : 1) || values.length !== knots.length) {
-    throw new RangeError('A spline support needs matching knots and values and enough intervals');
+  if (n < (periodic ? 3 : 1) || n > SPLINE_INTERVALS_MAX || values.length !== knots.length) {
+    throw new RangeError(`A spline support needs matching knots and values and ${periodic ? 3 : 1} to ${SPLINE_INTERVALS_MAX} intervals`);
   }
   const x = Float64Array.from(knots);
   const y = Float64Array.from(values);
@@ -312,7 +312,8 @@ function ellipseMethods(d) {
   if (!(inRange(a, LENGTH_MIN, LENGTH_MAX) && inRange(b, LENGTH_MIN, LENGTH_MAX))) {
     throw new RangeError(`An ellipse track needs semi-axes from ${LENGTH_MIN} m to ${LENGTH_MAX} m`);
   }
-  if (!inRange(e, -LENGTH_MAX, LENGTH_MAX) || ![axisAngle, offsetAngle].every((t) => inRange(t, -ANGLE_MAX - Math.PI, ANGLE_MAX + Math.PI))) {
+  // canonical() has checked the supplied angles and reduced the axis angle.
+  if (!inRange(e, -LENGTH_MAX, LENGTH_MAX) || ![axisAngle, offsetAngle].every((t) => inRange(t, -ANGLE_MAX, ANGLE_MAX))) {
     throw new RangeError(`An ellipse track needs angles of at most ${ANGLE_MAX} rad and an offset of at most ${LENGTH_MAX} m`);
   }
   // ρ(u) = a²b²/(a²cos²u + b²sin²u)^(3/2) with u = ψ − axisAngle; the offset
@@ -405,8 +406,8 @@ const SPLINE_CONTINUITY = 1e-9;
 function checkSplineData(d) {
   const { knots, coeffs, periodic } = d;
   const n = (knots?.length ?? 0) - 1;
-  if (!(n >= (periodic ? 3 : 1)) || coeffs?.length !== 4 * n || typeof periodic !== 'boolean') {
-    throw new RangeError('Spline data needs matching knots and coefficients');
+  if (!(n >= (periodic ? 3 : 1) && n <= SPLINE_INTERVALS_MAX) || coeffs?.length !== 4 * n || typeof periodic !== 'boolean') {
+    throw new RangeError(`Spline data needs matching knots and coefficients, with at most ${SPLINE_INTERVALS_MAX} intervals`);
   }
   for (let i = 0; i <= n; i++) {
     if (!inRange(knots[i], -ANGLE_MAX, ANGLE_MAX) || (i > 0 && !(knots[i] > knots[i - 1]))) {
@@ -613,6 +614,16 @@ function coreMethods(data) {
 }
 
 /**
+ * The axis angle turned by 90° towards 0, so that |result| ≤ max(|angle|,
+ * π/2); the ellipse repeats every π, so both directions describe the same
+ * track.
+ * @param {number} angle (rad)
+ */
+function quarterTurn(angle) {
+  return angle > 0 ? angle - Math.PI / 2 : angle + Math.PI / 2;
+}
+
+/**
  * Support data with every ellipse stored as a ≥ b, the form that
  * `ellipse()` builds; serialized data may carry the axes the other way.
  * @param {SupportData} data
@@ -620,13 +631,16 @@ function coreMethods(data) {
  */
 function canonical(data) {
   if (data?.kind === 'ellipse') {
+    // The supplied angles must be inside the domain before any turn is added.
+    if (!inRange(data.axisAngle, -ANGLE_MAX, ANGLE_MAX) || !inRange(data.offsetAngle, -ANGLE_MAX, ANGLE_MAX)) {
+      throw new RangeError(`An ellipse track needs angles of at most ${ANGLE_MAX} rad and an offset of at most ${LENGTH_MAX} m`);
+    }
     const swap = data.b > data.a;
-    const angle = swap ? data.axisAngle + Math.PI / 2 : data.axisAngle;
+    const angle = swap ? quarterTurn(data.axisAngle) : data.axisAngle;
     // The ellipse repeats every π in its axis angle. The reduced angle keeps
     // the arc integral P = a·(E(ψ − θ) − E(−θ)) free of the cancellation
-    // between two large integrals; angles beyond ANGLE_MAX stay as given
-    // and are rejected.
-    const reduced = Math.abs(angle) <= ANGLE_MAX + Math.PI ? angle - Math.PI * Math.round(angle / Math.PI) : angle;
+    // between two large integrals.
+    const reduced = angle - Math.PI * Math.round(angle / Math.PI);
     if (!swap && reduced === data.axisAngle) return data;
     return swap ? { ...data, a: data.b, b: data.a, axisAngle: reduced } : { ...data, axisAngle: reduced };
   }

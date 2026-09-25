@@ -24,10 +24,12 @@ import {
   MOMENT_MAX,
   ROTATION_MAX,
   ROTATION_SPACING_MIN,
+  TABLE_ROWS_MAX,
   TORSIONAL_STIFFNESS_MAX,
   TORSIONAL_STIFFNESS_MIN,
   inRange,
 } from './domain.js';
+import { describeError } from './errors.js';
 import { buildCurveData, fromCurveData } from './interp.js';
 
 /** Residual of the inverse E1⁻¹ (J). */
@@ -102,7 +104,9 @@ export function stiffnessForTravel({ drawEnergy, travel, preloadTravel }) {
  */
 export function tableLimb({ rotation, moment, alpha0 }) {
   const n = rotation?.length ?? 0;
-  if (n < 2 || moment?.length !== n) return { limb: null, error: 'The limb table needs at least 2 rows' };
+  if (!(n >= 2 && n <= TABLE_ROWS_MAX) || moment?.length !== n) {
+    return { limb: null, error: `The limb table needs at least 2 rows and at most ${TABLE_ROWS_MAX} rows` };
+  }
   /** @type {{ x: number, F: number }[]} */
   const points = [];
   for (let i = 0; i < n; i++) {
@@ -155,7 +159,7 @@ export function limbFromState(limb, limbLength, options = {}) {
   try {
     made = createLimb(result.limb);
   } catch (err) {
-    return { limb: null, error: err instanceof Error ? err.message : String(err) };
+    return { limb: null, error: describeError(err) };
   }
   // The brace moment and energy must stay inside the floating-point range.
   const moment = made.moment(0);
@@ -183,6 +187,7 @@ function limbDataFromState(limb, limbLength, options) {
   }
   if (limb.mode === 'table') {
     const rows = Array.isArray(limb.table) ? limb.table : [];
+    if (rows.length > TABLE_ROWS_MAX) return { limb: null, error: `The limb table needs at least 2 rows and at most ${TABLE_ROWS_MAX} rows` };
     // Rows give travel from brace and force at the axle; both are at least 0.
     for (let i = 0; i < rows.length; i++) {
       const { travel, force } = rows[i] ?? {};

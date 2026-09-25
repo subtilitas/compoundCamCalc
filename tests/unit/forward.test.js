@@ -738,6 +738,19 @@ describe('forward model: diagnostics', () => {
     );
   });
 
+  it('never throws when the thrown value cannot be turned into text', () => {
+    // A getter throws an object whose toString throws that same object.
+    const hostile = {};
+    Object.defineProperty(hostile, 'toString', { value: () => { throw hostile; } });
+    const geometry = Object.defineProperty({ ...input().geometry }, 'ata', { get: () => { throw hostile; } });
+    const r = solveForward(/** @type {any} */ ({ ...input({ samples: 20 }), geometry }));
+    expect(codes(r)).toEqual(['invalid-input']);
+    expect(r.diagnostics[0].message).toMatch(/cannot be read/);
+    // A thrown Error keeps its message.
+    const plain = Object.defineProperty({ ...input().geometry }, 'ata', { get: () => { throw new Error('ata unavailable'); } });
+    expect(solveForward(/** @type {any} */ ({ ...input({ samples: 20 }), geometry: plain })).diagnostics[0].message).toMatch(/ata unavailable/);
+  });
+
   it('brace: the cable anchor lies inside the cable track', () => {
     const r = solveForward(input({ cableTrack: eccentricCircle({ radius: 2 }) }));
     expect(codes(r)).toEqual(['brace']);

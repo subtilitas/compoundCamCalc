@@ -26,6 +26,7 @@
 import { CABLE_SIDE, STRING_SIDE, terminationConstant } from './contact.js';
 import { bowGeometry, createPose, evaluatePose } from './geometry.js';
 import { ANGLE_MAX, inRange } from './domain.js';
+import { describeError } from './errors.js';
 import { createLimb, limbEnergies } from './limb.js';
 import { createSupport } from './support.js';
 
@@ -261,7 +262,7 @@ export function solveForward(input) {
   try {
     return solveForwardChecked(input);
   } catch (err) {
-    return failed('invalid-input', err instanceof Error ? err.message : String(err));
+    return failed('invalid-input', describeError(err));
   }
 }
 
@@ -282,7 +283,7 @@ function solveForwardChecked(input) {
     limb = createLimb(input.limb);
     moment0 = limb.moment(0);
   } catch (err) {
-    return failed('invalid-input', err instanceof Error ? err.message : String(err));
+    return failed('invalid-input', describeError(err));
   }
   if (!Number.isFinite(moment0)) return failed('invalid-input', 'the limb moment at brace is not finite');
   const { bow, error } = bowGeometry(input.geometry, stringSupport);
