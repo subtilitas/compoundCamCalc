@@ -233,14 +233,22 @@ describe('export round trip', () => {
     const count = 1440;
     const knots = new Float64Array(count + 1);
     const values = new Float64Array(count + 1);
+    // The curve is closed and convex, so the sample that maximises S·n(ψ)
+    // moves forward as ψ turns: a full scan for the first angle, then a
+    // rotating scan that only steps forward.
+    const dot = (/** @type {number} */ i, /** @type {number} */ c, /** @type {number} */ s) => px[i % samples] * c + py[i % samples] * s;
+    let best = 0;
     for (let j = 0; j <= count; j++) {
       const psi = start + (j * 2 * Math.PI) / count;
       const c = Math.cos(psi);
       const s = Math.sin(psi);
-      let best = -Infinity;
-      for (let i = 0; i < samples; i++) best = Math.max(best, px[i] * c + py[i] * s);
+      if (j === 0) {
+        for (let i = 1; i < samples; i++) if (dot(i, c, s) > dot(best, c, s)) best = i;
+      } else {
+        while (dot(best + 1, c, s) >= dot(best, c, s)) best = (best + 1) % samples;
+      }
       knots[j] = psi;
-      values[j] = best;
+      values[j] = dot(best, c, s);
     }
     const cableTrack = splineSupport(knots, values, { periodic: true });
     const limb = /** @type {any} */ (limbFromState(state.limb, state.geometry.limbLength).limb);
@@ -259,7 +267,8 @@ describe('export round trip', () => {
     for (let i = 0; i < fwd.n; i++) worst = Math.max(worst, Math.abs(fwd.F[i] - a.F[i]));
     // Measured 0.0x N; the fit tolerance of the solver is 3 % of the peak.
     expect(worst).toBeLessThan(0.5);
-  });
+    // A forward solve of 1500 samples: slow under coverage on a CI runner.
+  }, 30_000);
 
   it('keeps the curvature of the cable track in the written spline', () => {
     const out = exportFiles(result, state, { date, version: '0', units: state.units });
