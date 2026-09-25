@@ -25,6 +25,21 @@ import { FIT_PADDING, KEYS_HELP, coord, createViewport, viewBoxFor } from './vie
 
 /** Caption over a stale plan. */
 export const STALE_CAPTION = 'Bow of the last cam that met every check';
+/** Caption over the plan while newer inputs are being solved. */
+export const OUTDATED_CAPTION = 'Bow of the previous inputs; solving the current inputs';
+
+/**
+ * Caption of a plan or loads view, or '' for none: while a newer solve
+ * runs the values belong to the previous inputs, which takes precedence.
+ * @param {boolean} stale the result shown is the last one that met every check
+ * @param {boolean} outdated a newer solve has run for PENDING_DELAY or longer
+ * @param {string} staleText
+ * @param {string} outdatedText
+ */
+export function ageCaption(stale, outdated, staleText, outdatedText) {
+  if (outdated) return outdatedText;
+  return stale ? staleText : '';
+}
 /** Length of the arrow of the largest limb tip load, as a fraction of the view. */
 const ARROW = 0.12;
 
@@ -89,6 +104,16 @@ export function loadDirection(tipX, tipY) {
   const deg = (Math.atan2(Math.abs(tipX), -tipY) * 180) / Math.PI;
   if (deg < 0.05) return 'along the vertical from the axle towards the grip';
   return `${fixed(deg, 1)}${DEGREE} off the vertical from the axle towards the grip, leaning towards the ${tipX > 0 ? 'archer' : 'target'}`;
+}
+
+/**
+ * Fill the full-draw pose; false when the solve stopped before full draw,
+ * so no full-draw pose exists.
+ * @param {LayoutContext} ctx
+ * @param {BowPose} pose
+ */
+export function fullDrawPose(ctx, pose) {
+  return bowPoseAt(ctx, ctx.xFull, pose) && !pose.beyondSolution;
 }
 
 /**
@@ -173,8 +198,10 @@ function placePose(g, p, r) {
 
 /**
  * @typedef {object} StringPlan
- * @property {(result: SolveResult | null, ctx: LayoutContext | null, units: Units, stale: boolean) => void} render
- *   draw the bow of a result; the same result, units and stale flag again do nothing
+ * @property {(result: SolveResult | null, ctx: LayoutContext | null, units: Units, stale: boolean, outdated?: boolean) => void} render
+ *   draw the bow of a result: stale when it is the last cam that met every
+ *   check, outdated while newer inputs are being solved; the same arguments
+ *   again do nothing
  * @property {(pose: BowPose | null, units: Units) => void} setPose move the solid pose
  */
 
@@ -257,16 +284,17 @@ export function createStringPlan(container) {
   });
 
   return {
-    render(result, next, units, stale) {
-      const nextKey = `${units.dims}|${units.draw}|${units.force}|${stale}`;
+    render(result, next, units, stale, outdated = false) {
+      const nextKey = `${units.dims}|${units.draw}|${units.force}|${stale}|${outdated}`;
       if (result === shownResult && next === ctx && nextKey === key) return;
       key = nextKey;
       ctx = next;
       shownResult = result;
       viewport.setUnit(units.dims);
-      root.classList.toggle('cam-stale', stale && next !== null);
-      caption.textContent = stale && next ? STALE_CAPTION : '';
-      caption.hidden = !(stale && next);
+      const text = next ? ageCaption(stale, outdated, STALE_CAPTION, OUTDATED_CAPTION) : '';
+      root.classList.toggle('cam-stale', text !== '');
+      caption.textContent = text;
+      caption.hidden = text === '';
       if (!result || !next) {
         viewport.clear();
         drawing.style.display = 'none';
@@ -280,8 +308,10 @@ export function createStringPlan(container) {
       const b = createBowPose();
       const f = createBowPose();
       bowPoseAt(next, next.xBrace, b);
-      bowPoseAt(next, next.xFull, f);
-      const base = viewBoxFor(planBounds([b, f], radius), FIT_PADDING);
+      const hasFull = fullDrawPose(next, f);
+      full.group.style.display = hasFull ? '' : 'none';
+      full.mirror.style.display = hasFull ? '' : 'none';
+      const base = viewBoxFor(planBounds(hasFull ? [b, f] : [b], radius), FIT_PADDING);
       size = base.size;
       viewport.setBase(base);
       const stringD = result.outlines.stringPitch ? pathOf(result.outlines.stringPitch) : '';
@@ -292,7 +322,7 @@ export function createStringPlan(container) {
       }
       const r = 0.006 * size;
       placePose(brace, b, r);
-      placePose(full, f, r);
+      if (hasFull) placePose(full, f, r);
       setAttrs(riser, { x1: coord(b.pivotX), y1: coord(-b.pivotY), x2: coord(b.pivotX), y2: coord(b.pivotY) });
       setAttrs(axis, { x1: 0, y1: 0, x2: coord(next.xFull), y2: 0 });
       setAttrs(grip, { cx: 0, cy: 0, r: 1.5 * r });

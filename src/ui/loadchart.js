@@ -12,7 +12,7 @@ import { AMO_OFFSET, fromSI, toSI } from '../core/units.js';
 import { amo, angleText, drawText, fixed, forceText } from './display.js';
 import { h, setAttrs, svg } from './dom.js';
 import { ticks } from './chart.js';
-import { loadDirection } from './stringplan.js';
+import { ageCaption, loadDirection } from './stringplan.js';
 
 /** @typedef {import('../core/layout.js').LayoutContext} LayoutContext */
 /** @typedef {import('../core/layout.js').BowPose} BowPose */
@@ -90,7 +90,7 @@ export function tableRows(ctx) {
 
 /**
  * @typedef {object} LoadChart
- * @property {(ctx: LayoutContext | null, units: Units, stale: boolean) => void} render
+ * @property {(ctx: LayoutContext | null, units: Units, stale: boolean, outdated?: boolean) => void} render
  *   draw the loads of a layout; the same layout, units and stale flag again do nothing
  * @property {(pose: BowPose | null, units: Units) => void} setPose move the marker and the readout
  */
@@ -246,16 +246,19 @@ export function createLoadChart(container) {
   }).observe(container);
 
   return {
-    render(next, u, isStale) {
-      const nextKey = `${u.draw}|${u.force}|${isStale}`;
+    render(next, u, isStale, outdated = false) {
+      const nextKey = `${u.draw}|${u.force}|${isStale}|${outdated}`;
       if (next === ctx && nextKey === key) return;
       ctx = next;
       units = u;
-      stale = isStale;
+      stale = isStale || outdated;
       key = nextKey;
-      root.classList.toggle('cam-stale', stale && next !== null);
-      caption.textContent = stale && next ? 'Loads of the last cam that met every check' : '';
-      caption.hidden = !(stale && next);
+      const text = next
+        ? ageCaption(isStale, outdated, 'Loads of the last cam that met every check', 'Loads of the previous inputs; solving the current inputs')
+        : '';
+      root.classList.toggle('cam-stale', text !== '');
+      caption.textContent = text;
+      caption.hidden = text === '';
       if (!next) {
         layout = null;
         lines.replaceChildren();

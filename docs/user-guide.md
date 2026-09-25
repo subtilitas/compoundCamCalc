@@ -291,7 +291,10 @@ rotation at 0 %, 10 % … 100 % of the draw. On a narrow screen the table
 scrolls sideways.
 
 When the latest input fails a check, the string plan and the loads show
-the last cam that met every check and say so.
+the last cam that met every check and say so. While a solve takes longer
+than 250 ms, they dim and say that they belong to the previous inputs. When
+the solve stopped before full draw, the string plan has no full-draw
+outline.
 
 ## Parametric and custom curves
 

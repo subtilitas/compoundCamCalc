@@ -262,8 +262,8 @@ export function startApp() {
     }
     const ctx = layoutOf.layout;
     scrubber.setDomain(ctx, now.units);
-    plan.render(shownResult, ctx, now.units, stale);
-    loads.render(ctx, now.units, stale);
+    plan.render(shownResult, ctx, now.units, stale, outdated);
+    loads.render(ctx, now.units, stale, outdated);
     // Cached values show in the units selected now.
     results.render({
       status, result: current?.result ?? null, state: current ? { ...current.state, units: now.units } : now, stale, outdated,

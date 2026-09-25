@@ -6,7 +6,7 @@ import { defaultState } from '../../src/state/presets.js';
 import { forceAt } from '../../src/ui/chart.js';
 import { SERIES, loadRange, seriesRuns, tableRows } from '../../src/ui/loadchart.js';
 import { peakX, placeIn, positionText, sliderModel, stepOfX, xOfStep } from '../../src/ui/scrubber.js';
-import { camRadius, loadDirection, planBounds, planDims } from '../../src/ui/stringplan.js';
+import { ageCaption, camRadius, fullDrawPose, loadDirection, planBounds, planDims } from '../../src/ui/stringplan.js';
 
 /** @typedef {import('../../src/core/layout.js').LayoutContext} LayoutContext */
 /** @typedef {import('../../src/state/schema.js').Units} Units */
@@ -139,5 +139,24 @@ describe('force chart marker', () => {
     expect(forceAt(overlay, 1)).toBe(10);
     expect(forceAt(overlay, 1.5)).toBeNaN();
     expect(forceAt(overlay, 4)).toBeNaN();
+  });
+});
+
+describe('age captions of the plan and the loads', () => {
+  it('names the previous inputs while a newer solve runs', () => {
+    expect(ageCaption(false, false, 'S', 'O')).toBe('');
+    expect(ageCaption(true, false, 'S', 'O')).toBe('S');
+    expect(ageCaption(false, true, 'S', 'O')).toBe('O');
+    expect(ageCaption(true, true, 'S', 'O')).toBe('O');
+  });
+});
+
+describe('full-draw pose of the plan', () => {
+  it('exists only when the solve reached full draw', () => {
+    const pose = createBowPose();
+    expect(fullDrawPose(ctx, pose)).toBe(true);
+    expect(pose.x).toBe(ctx.xFull);
+    const partial = { ...ctx, valid: 500, xLast: ctx.a.x[499] };
+    expect(fullDrawPose(partial, pose)).toBe(false);
   });
 });
