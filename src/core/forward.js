@@ -42,6 +42,8 @@ export const MAX_ITERATIONS = 30;
 export const MAX_ITERATION_LIMIT = 200;
 /** Largest accepted number of samples. */
 export const MAX_SAMPLES = 20000;
+/** Most negative ρ = p + p'' (m) that still counts as convex: rounding in p + p''. */
+export const CONCAVITY_TOLERANCE = 1e-9;
 /** Default wrap beyond the extreme contacts: cable lead-in and string residual wrap (rad). */
 export const DEFAULT_WRAP = Math.PI / 6;
 
@@ -459,7 +461,8 @@ function solveForwardChecked(input) {
     [cableSupport, cableTermination, maxPsiC, 'cable'],
   ])) {
     const smallest = support.minRho(a, b);
-    if (smallest.value < 0) {
+    // ρ above −1 nm is flat to within rounding, not concave.
+    if (smallest.value < -CONCAVITY_TOLERANCE) {
       const deg = ((smallest.psi * 180) / Math.PI).toFixed(1);
       diagnostics.push({
         code: 'concave-track',

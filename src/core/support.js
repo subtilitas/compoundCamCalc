@@ -12,7 +12,7 @@
  * @module core/support
  */
 
-import { ANGLE_MAX, LENGTH_MAX, LENGTH_MIN, SECOND_DERIVATIVE_MAX, SPLINE_INTERVALS_MAX, inRange } from './domain.js';
+import { ANGLE_MAX, KNOT_SPACING_MIN, LENGTH_MAX, LENGTH_MIN, SECOND_DERIVATIVE_MAX, SPLINE_INTERVALS_MAX, inRange } from './domain.js';
 import { ellipticE } from './elliptic.js';
 
 /**
@@ -410,8 +410,8 @@ function checkSplineData(d) {
     throw new RangeError(`Spline data needs matching knots and coefficients, with at most ${SPLINE_INTERVALS_MAX} intervals`);
   }
   for (let i = 0; i <= n; i++) {
-    if (!inRange(knots[i], -ANGLE_MAX, ANGLE_MAX) || (i > 0 && !(knots[i] > knots[i - 1]))) {
-      throw new RangeError(`Spline knots must be increasing angles of at most ${ANGLE_MAX} rad`);
+    if (!inRange(knots[i], -ANGLE_MAX, ANGLE_MAX) || (i > 0 && !(knots[i] - knots[i - 1] >= KNOT_SPACING_MIN))) {
+      throw new RangeError(`Spline knots must be angles of at most ${ANGLE_MAX} rad, each at least ${KNOT_SPACING_MIN} rad above the one before`);
     }
   }
   for (let j = 0; j < 4 * n; j++) {

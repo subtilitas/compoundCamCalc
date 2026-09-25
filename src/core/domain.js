@@ -27,6 +27,8 @@ export const TORSIONAL_STIFFNESS_MAX = 1e9;
 export const ROTATION_SPACING_MIN = 1e-6;
 /** Largest number of limb table rows. */
 export const TABLE_ROWS_MAX = 1000;
+/** Smallest spacing of spline track knots (rad), about 0.00006°. */
+export const KNOT_SPACING_MIN = 1e-6;
 /** Largest number of spline track intervals. */
 export const SPLINE_INTERVALS_MAX = 100000;
 /** Largest limb moment in a limb table (N·m). */

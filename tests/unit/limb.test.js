@@ -213,6 +213,17 @@ describe('table limb', () => {
     expect(limb.inverse(limb.energy(alphaPeak) + 1e-6)).toBeNaN();
   });
 
+  it('inverts every finite energy beyond the table in closed form', () => {
+    // M = q on [0, 1], then the end line M = q: W = q²/2 everywhere.
+    const limb = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 1], moment: [0, 1], alpha0: 0 }).limb));
+    expect(limb.inverse(1e308) / (Math.SQRT2 * 1e154)).toBeCloseTo(1, 12);
+    for (const alpha of [1.5, 10, 1e3, 1e10]) expect(limb.inverse(limb.energy(alpha)) / alpha).toBeCloseTo(1, 12);
+    // A flat end line: W grows linearly beyond the table.
+    const flat = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.5, 1], moment: [0, 1, 1], alpha0: 0 }).limb));
+    expect(flat.stiffness(2)).toBeCloseTo(0, 12);
+    expect(flat.inverse(flat.energy(3))).toBeCloseTo(3, 10);
+  });
+
   it('returns NaN for a NaN rotation or energy, like the linear limb', () => {
     const table = createLimb(/** @type {TableLimbData} */ (tableLimb({ rotation: [0, 0.2], moment: [0, 100], alpha0: 0.1 }).limb));
     const linear = createLimb(linearLimb({ stiffness: k, preloadTravel: s0, limbLength: R }));

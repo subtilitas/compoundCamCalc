@@ -350,14 +350,29 @@ function tableMethods(d) {
     },
     inverse(energy) {
       if (!(energy >= 0 && Number.isFinite(energy))) return NaN;
-      // W is increasing where M > 0; bracket [q0, hi] and refine by
-      // Newton steps kept inside the bracket. With a falling end slope the
-      // extended moment reaches 0 at the peak of W, which caps the bracket.
-      const peak = slopes[n] < 0 ? qn + values[n] / -slopes[n] : Infinity;
+      if (energy > total) {
+        // Beyond the table W = total + u·(v + s·u/2) with u = q − qn, so
+        // u = 2·ΔE/(v + √(v² + 2·s·ΔE)), the root without cancellation.
+        // The square root is formed from √s·√ΔE, which stays in range.
+        const v = values[n];
+        const s = slopes[n];
+        const dE = energy - total;
+        let root;
+        if (s >= 0) {
+          root = Math.hypot(v, Math.SQRT2 * Math.sqrt(s) * Math.sqrt(dE));
+        } else {
+          // A falling end line: W peaks at v²/(2·|s|) above the table.
+          const disc = v * v + 2 * s * dE;
+          if (!(disc >= 0)) return NaN;
+          root = Math.sqrt(disc);
+        }
+        const half = (v + root) / 2;
+        return half > 0 ? qn + dE / half - a0 : NaN;
+      }
+      // Inside the table W rises from 0 to total (M ≥ 0): Newton steps kept
+      // inside the bracket [q0, qn].
       let lo = q0;
-      let hi = Math.max(qn, q0 + 1e-6);
-      for (let k = 0; k < 200 && W(hi) < energy && hi < peak; k++) hi = Math.min(peak, q0 + 2 * (hi - q0));
-      if (!(W(hi) >= energy)) return NaN;
+      let hi = qn;
       let q = 0.5 * (lo + hi);
       for (let it = 0; it < 200; it++) {
         const r = W(q) - energy;

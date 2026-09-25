@@ -310,10 +310,13 @@ limb.
 - Travel mode: the stiffness that stores the draw energy W over the axle
   travel s_f from brace to full draw is k = W / ((s_f + s_0)² − s_0²),
   evaluated as W / (s_f·(s_f + 2·s_0)) without subtracting the squares.
-- E1', E1'' and the inverse E1⁻¹ (Newton inside a bracket, residual below
-  1e-9 J; closed form α = √2·√E/√k_t − α_0 for the linear limb) are
-  available for the inverse model. For a tabulated limb the bracket ends at
-  q_peak; an energy above E1 there has no inverse and gives NaN, as do a
+- E1', E1'' and the inverse E1⁻¹ are available for the inverse model. The
+  linear limb has the closed form α = √2·√E/√k_t − α_0. A tabulated limb
+  uses Newton inside the bracket [0, q_n] for energies up to the table
+  total (residual below 1e-9 J), and beyond the table the root of the end
+  line, u = 2·ΔE/(v + √(v² + 2·s·ΔE)) with u = q − q_n. With a falling end
+  slope E1 peaks at q_peak; an energy above E1 there has no inverse and
+  gives NaN, as do a
   negative or non-finite energy. Every limb method returns NaN for a NaN
   argument instead of throwing.
 
@@ -338,6 +341,7 @@ near the floating-point limits of about 1e±308.
 | Spacing of limb table rotations, and a first row after 0 | at least 1e-6 rad |
 | Limb table rows | 2 to 1000 |
 | Spline track intervals | at most 100000 |
+| Spacing of spline track knots | at least 1e-6 rad |
 | Torsional limb stiffness k_t | 1e-6 to 1e9 N·m/rad |
 | Limb table moments | 0 to 1e7 N·m |
 | Limb preload travel, table travel, limb travel | 0 to 10 m (travel mode: at least 1e-6 m) |
@@ -362,7 +366,7 @@ each run of affected samples.
 | `cable-lever` | c_a ≤ 0: limb rotation no longer takes up cable |
 | `cam-reversal` | dθ/dx ≤ 0 after brace |
 | `non-finite` | the force, a tension, θ or α at a sample, or the limb energy, is not finite. A guard: no input inside the domain is known to reach it |
-| `concave-track` | the radius of curvature p + p″ is negative somewhere on the wrapped range of a track (exact minimum: constant r for a circle, b²/a or an end value for an ellipse, the cubic p + p″ minimised on every spline interval): string from its smallest contact angle to its termination, cable from its termination to its largest contact angle |
+| `concave-track` | the radius of curvature p + p″ is below −1e-9 m (rounding in p + p″ stays above it) somewhere on the wrapped range of a track (exact minimum: constant r for a circle, b²/a or an end value for an ellipse, the cubic p + p″ minimised on every spline interval): string from its smallest contact angle to its termination, cable from its termination to its largest contact angle |
 
 ## Verification
 

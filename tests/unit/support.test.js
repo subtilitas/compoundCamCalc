@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createSupport, eccentricCircle, ellipse, offset, splineSupport, stringTrackSupport, toSupportData,
 } from '../../src/core/support.js';
+import { CONCAVITY_TOLERANCE } from '../../src/core/forward.js';
 import { defaultState } from '../../src/state/presets.js';
 import { derivative, integrate } from './numeric.js';
 
@@ -375,12 +376,25 @@ describe('serialized spline data', () => {
     expect(() => createSupport(ellipse({ a: 0.02, b: 0.05, axisAngle: -1e4 }))).not.toThrow();
     const beyond = { kind: 'ellipse', a: 0.02, b: 0.05, axisAngle: 1e4 + 0.1, offset: 0, offsetAngle: 0 };
     expect(() => createSupport(/** @type {any} */ (beyond))).toThrow(/angles/);
+    // Knots at least 1e-6 rad apart: a period of 3e-320 rad breaks the wrap count.
+    expect(() => createSupport(splineSupport([0, 1e-320, 2e-320, 3e-320], [0.03, 0.03, 0.03, 0.03], { periodic: true }))).toThrow(/at least 0\.000001 rad/);
+    expect(() => createSupport(splineSupport([0, 1e-6, 2e-6, 3e-6], [0.03, 0.03, 0.03, 0.03], { periodic: true }))).not.toThrow();
     // At most 100000 intervals, checked before the knots are read.
     const long = { kind: 'spline', knots: { length: 100002 }, coeffs: { length: 400004 }, cumulative: [], periodic: false };
     expect(() => createSupport(/** @type {any} */ (long))).toThrow(/at most 100000 intervals/);
     expect(() => splineSupport(/** @type {any} */ ({ length: 100002 }), /** @type {any} */ ({ length: 100002 }))).toThrow(/100000 intervals/);
     const farKnot = /** @type {any} */ (splineSupport([1e4, 1e4 + 1, 1e4 + 2], [0.03, 0.03, 0.03]));
     expect(() => createSupport(farKnot)).toThrow(/at most 10000 rad/);
+  });
+
+  it('finds a rounding-level minimum of a weakly convex track within the concavity tolerance', () => {
+    // p + p'' = (t − a)² ≥ 0 with its zero inside [0, 0.5].
+    const a = 3 / 100003;
+    const weak = /** @type {any} */ ({ kind: 'spline', knots: Float64Array.from([0, 1]), coeffs: Float64Array.from([a * a - 2, -2 * a, 1, 0]), cumulative: new Float64Array(2), periodic: false });
+    const m = createSupport(weak).minRho(0, 0.5);
+    expect(Math.abs(m.value)).toBeLessThan(1e-15);
+    expect(m.value).toBeGreaterThan(-CONCAVITY_TOLERANCE);
+    expect(m.psi).toBeCloseTo(a, 6);
   });
 
   it('bounds spline values between the knots', () => {
