@@ -92,6 +92,12 @@ export const ENERGY_SETTLED = 1e-9;
 const BRACE_CONTACT_TOLERANCE = 1e-9;
 
 /**
+ * Difference between the achieved and the ideal full-draw string contact
+ * above which the string termination moves to the achieved contact (rad).
+ */
+const TERMINATION_TOLERANCE = 1e-9;
+
+/**
  * Sample counts and spacings per resolution.
  * - forward: draw samples of the achieved curve
  * - inverse: draw samples of the ideal state
@@ -155,8 +161,10 @@ export const RESOLUTIONS = Object.freeze({
  * @property {number} stringLength (m)
  * @property {number} cableLength (m)
  * @property {number} camMaxDimension largest distance across the flange outlines (m)
- * @property {number} minRho smallest radius of curvature of both pitch lines (m)
- * @property {number} rhoLimit smallest allowed radius of curvature (m)
+ * @property {number} stringMinRho smallest radius of curvature of the string pitch line (m)
+ * @property {number} stringRhoLimit smallest allowed radius of curvature of the string track (m)
+ * @property {number} cableMinRho smallest radius of curvature of the cable pitch line (m)
+ * @property {number} cableRhoLimit smallest allowed radius of curvature of the cable track (m)
  * @property {number} stringWrap string wrap at brace, including the residual wrap (rad)
  * @property {number} cableWrap cable wrap at full draw, including the lead-in wrap (rad)
  */
@@ -557,7 +565,9 @@ function solveState(state, resolution, maxIterations, trials) {
   }
   res.timings.fit = now() - tFit;
 
-  const stringEnd = psiSFull + body.residualWrap;
+  // The termination leaves the residual wrap at the ideal full-draw
+  // contact; once the final cam is chosen it moves to the achieved one.
+  let stringEnd = psiSFull + body.residualWrap;
   res.tracks.string = { psiFull: psiSFull, psiEnd: stringEnd };
   const minRhoString = checkStringTrack(stringSupport, state, psiSFull, fmt, diags);
   if (trialFails()) return res;
@@ -661,7 +671,31 @@ function solveState(state, resolution, maxIterations, trials) {
     finishStringOnly(res, stringSupport, state, settings);
     return res;
   }
-  const { closed, forward } = best;
+  const { closed } = best;
+  let { forward } = best;
+  // A fitted cam reaches a different string contact at full draw than the
+  // ideal track: the termination follows it, so the residual wrap holds at
+  // the achieved full draw. The contact angles do not depend on the
+  // termination; the second forward solve gives the string length and the
+  // wrap checks for the moved termination.
+  const psiSFAchieved = forward.psiS[forward.n - 1];
+  if (Number.isFinite(psiSFAchieved) && Math.abs(psiSFAchieved - psiSFull) > TERMINATION_TOLERANCE) {
+    stringEnd = psiSFAchieved + body.residualWrap;
+    res.tracks.string = { psiFull: psiSFAchieved, psiEnd: stringEnd };
+    if (!diags.some((d) => d.code === 'string-wrap')) checkStringWrap(stringSupport, state, psiSFAchieved, fmt, diags);
+    const tForward = now();
+    forward = solveForward({
+      geometry,
+      stringTrack: stringPitch,
+      cableTrack: closed.support,
+      limb: limbData,
+      samples: settings.forward,
+      maxIterations,
+      stringTermination: stringEnd,
+      cableTermination: closed.psiStart,
+    });
+    res.timings.forward += now() - tForward;
+  }
   const closing = closed.ok ? null : closingDiagnostic(closed, best.active, state, rhoLimitCable, pMin, settings.step, fmt, trials);
   if (closing) diags.push(closing.diagnostic);
   if (trialFails()) return res;
@@ -706,7 +740,7 @@ function solveState(state, resolution, maxIterations, trials) {
   const postRadius = body.postDiameter / 2;
   const thetaFull = forward.theta[forward.n - 1];
   const psiCFAchieved = Number.isFinite(forward.psiC[forward.n - 1]) ? forward.psiC[forward.n - 1] : closed.psiFull;
-  const psiSFAchieved = Number.isFinite(forward.psiS[forward.n - 1]) ? forward.psiS[forward.n - 1] : psiSFull;
+  const psiSFMark = Number.isFinite(forward.psiS[forward.n - 1]) ? forward.psiS[forward.n - 1] : psiSFull;
   const psiCBAchieved = Number.isFinite(forward.psiC[0]) ? forward.psiC[0] : closed.psiBrace;
   res.posts = [
     terminationPost(stringSupport, stringEnd, postRadius, cords.stringDiameter, 'string-post'),
@@ -716,7 +750,7 @@ function solveState(state, resolution, maxIterations, trials) {
   res.marks = [
     trackMark(stringSupport, 0, 'string-brace'),
     trackMark(cableSupport, psiCBAchieved, 'cable-brace'),
-    trackMark(stringSupport, psiSFAchieved, 'full-draw'),
+    trackMark(stringSupport, psiSFMark, 'full-draw'),
   ];
   res.timings.outline += now() - tOutline2;
 
@@ -735,8 +769,10 @@ function solveState(state, resolution, maxIterations, trials) {
     stringLength: forward.stringLength,
     cableLength: forward.cableLength,
     camMaxDimension: maxDimension([stringFlange, cableFlange]),
-    minRho: Math.min(minRhoString, minRhoCable),
-    rhoLimit: Math.min(rhoLimitFor(body, cords.stringDiameter), rhoLimitCable),
+    stringMinRho: minRhoString,
+    stringRhoLimit: rhoLimitFor(body, cords.stringDiameter),
+    cableMinRho: minRhoCable,
+    cableRhoLimit: rhoLimitCable,
     stringWrap: stringEnd - forward.psiS[0],
     cableWrap: forward.psiC[forward.n - 1] - closed.psiStart,
   };
@@ -1504,6 +1540,21 @@ function checkStringTrack(s, state, psiFull, fmt, diags) {
       ),
     );
   }
+  checkStringWrap(s, state, psiFull, fmt, diags);
+  return low.value;
+}
+
+/**
+ * String wrap at brace: the full-draw contact angle plus the residual wrap
+ * must stay below one turn.
+ * @param {Support} s string pitch line
+ * @param {ProjectState} state
+ * @param {number} psiFull string contact angle at full draw (rad)
+ * @param {ReturnType<typeof formatter>} fmt
+ * @param {SolveDiagnostic[]} diags
+ */
+function checkStringWrap(s, state, psiFull, fmt, diags) {
+  const { body } = state;
   const wrap = psiFull + body.residualWrap;
   if (wrap >= 2 * Math.PI) {
     const excess = wrap - 2 * Math.PI + 5 * DEG;
@@ -1522,7 +1573,6 @@ function checkStringTrack(s, state, psiFull, fmt, diags) {
       ),
     );
   }
-  return low.value;
 }
 
 /**

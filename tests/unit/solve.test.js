@@ -104,7 +104,7 @@ describe('solve: default preset', () => {
       `default preset: peak ${m.peak.toFixed(1)} N, holding ${m.holding.toFixed(1)} N, let-off ${(m.letOff * 100).toFixed(1)} %, ` +
         `draw energy ${m.drawEnergy.toFixed(1)} J, limb energy ${m.limbEnergy.toFixed(1)} J, axle travel ${(m.axleTravel * 1e3).toFixed(1)} mm, ` +
         `cam rotation ${(m.rotation / DEG).toFixed(1)}°, limb rotation ${(m.limbRotation / DEG).toFixed(1)}°, ` +
-        `cam ${(m.camMaxDimension * 1e3).toFixed(1)} mm, min ρ ${(m.minRho * 1e3).toFixed(2)} mm, ` +
+        `cam ${(m.camMaxDimension * 1e3).toFixed(1)} mm, min ρ ${(m.stringMinRho * 1e3).toFixed(2)} mm (string), ${(m.cableMinRho * 1e3).toFixed(2)} mm (cable), ` +
         `string wrap ${(m.stringWrap / DEG).toFixed(0)}°, cable wrap ${(m.cableWrap / DEG).toFixed(0)}°, ` +
         `string ${(m.stringLength / INCH).toFixed(2)} in, cable ${(m.cableLength / INCH).toFixed(2)} in, fit ${r.fit.used} (${r.fit.maxForceDifference.toFixed(2)} N)`,
     );
@@ -114,8 +114,10 @@ describe('solve: default preset', () => {
     expect(m.drawEnergy).toBeLessThan(130);
     expect(m.limbEnergy).toBeGreaterThan(m.drawEnergy);
     expect(m.camMaxDimension).toBeLessThan(0.11);
-    expect(m.minRho).toBeGreaterThanOrEqual(m.rhoLimit - 1e-6);
-    expect(m.rhoLimit).toBe(Math.max(state.body.minBendRadius, state.cords.cableDiameter / 2 + GROOVE_MARGIN));
+    expect(m.stringMinRho).toBeGreaterThanOrEqual(m.stringRhoLimit - 1e-6);
+    expect(m.cableMinRho).toBeGreaterThanOrEqual(m.cableRhoLimit - 1e-6);
+    expect(m.stringRhoLimit).toBe(Math.max(state.body.minBendRadius, state.cords.stringDiameter / 2 + GROOVE_MARGIN));
+    expect(m.cableRhoLimit).toBe(Math.max(state.body.minBendRadius, state.cords.cableDiameter / 2 + GROOVE_MARGIN));
     expect(m.stringWrap).toBeLessThan(2 * Math.PI);
     expect(m.cableWrap).toBeLessThan(2 * Math.PI);
     expect(m.limbRotation).toBeLessThan(state.limb.maxRotation);
@@ -529,7 +531,7 @@ describe('solve: diagnostics', () => {
     expect(r.fit.used).toBe(true);
     expect(r.fit.withinTolerance).toBe(false);
     // The fitted cam is still built and meets the radius limit.
-    expect(/** @type {any} */ (r.metrics).minRho).toBeGreaterThanOrEqual(defaultState().body.minBendRadius - 1e-6);
+    expect(/** @type {any} */ (r.metrics).cableMinRho).toBeGreaterThanOrEqual(defaultState().body.minBendRadius - 1e-6);
   });
 
   // Eight full solves: 0.6 s alone and 2 s in the coverage run; the time
@@ -682,6 +684,23 @@ describe('solve: diagnostics', () => {
       const fixed = solve(modified((s) => (s.body.leadInWrap = lead * DEG)), { resolution: 'coarse' });
       expect(fixed.status).toBe('ok');
     }
+  });
+
+  it('places the string termination at the residual wrap past the achieved full-draw contact', () => {
+    // A fitted cam whose full-draw string contact lies 0.1° before the ideal one.
+    const s = reduce(defaultState(), { type: 'setCurveParams', params: { peak: 250, riseFraction: 0.49, valleyWidth: 1.4 * INCH } });
+    const r = solve(s);
+    expect(r.status).toBe('ok');
+    expect(r.fit.used).toBe(true);
+    const a = /** @type {NonNullable<SolveResult['achieved']>} */ (r.achieved);
+    const string = /** @type {NonNullable<SolveResult['tracks']['string']>} */ (r.tracks.string);
+    const psiF = a.psiS[a.psiS.length - 1];
+    expect(string.psiFull).toBe(psiF);
+    expect(string.psiEnd - psiF).toBeCloseTo(s.body.residualWrap, 12);
+    const post = /** @type {import('../../src/core/solve.js').Post} */ (r.posts.find((p) => p.id === 'string-post'));
+    expect(post.psi).toBeCloseTo(string.psiEnd, 15);
+    const forward = forwardOfResult(s, r, [a.x[0], a.x[a.x.length - 1]]);
+    expect(/** @type {any} */ (r.metrics).stringLength).toBeCloseTo(forward.stringLength, 12);
   });
 
   it('forward model diagnostics of the final cam become solver diagnostics once', () => {
@@ -1079,7 +1098,8 @@ describe('solve: lead-in and closing blend', () => {
       expect(cable.leadInRho).toBeCloseTo(pitch.p(cable.psiBrace), 12);
       console.info(`rise 40 %, let-off ${letOff * 100} %: cam ${(m.camMaxDimension * 1e3).toFixed(1)} mm, lead-in ρ_0 ${(cable.leadInRho * 1e3).toFixed(1)} mm`);
       expect(m.camMaxDimension).toBeLessThan(0.12);
-      expect(m.minRho).toBeGreaterThanOrEqual(m.rhoLimit - 1e-5);
+      expect(m.stringMinRho).toBeGreaterThanOrEqual(m.stringRhoLimit - 1e-5);
+      expect(m.cableMinRho).toBeGreaterThanOrEqual(m.cableRhoLimit - 1e-5);
     }
   });
 });

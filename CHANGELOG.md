@@ -135,7 +135,10 @@ All notable changes are listed here. Versions follow semantic versioning.
   carry numbers and units and whose suggestions name the input to change;
   never throws.
   The result type names each outline, and a result without a cable track
-  has the string outlines only; `brace` holds the brace conditions and the
+  has the string outlines only; the metrics give the smallest radius of
+  curvature and its limit for the string and the cable track separately;
+  the string termination lies the residual wrap past the achieved
+  full-draw contact; `brace` holds the brace conditions and the
   ends of the brace blend as ψ_c0, ψ_1 (rad) and x_1 (m). Without the fit
   the achieved curve equals the target from point 2 on within 1.3e-7 N
   (full) on a test cam. In the limb travel mode the stiffness passes

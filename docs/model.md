@@ -724,7 +724,11 @@ wrap at brace.
 
 The string track is the closed parametric track of the project; the string
 post sits at its termination, the full-draw contact angle plus the residual
-wrap.
+wrap. For a fitted cam the achieved full-draw contact replaces the ideal
+one (0.1° earlier for peak 250 N, rise 49 % and valley width 1.4 in), so
+the residual wrap holds at the achieved full draw; the contact angles do
+not depend on the termination, and a second forward solve gives the string
+length and the wrap checks.
 
 - Groove bottom and flange edge: parallel curves of the pitch line,
   p − d/2 and p − d/2 + groove depth.
@@ -768,8 +772,8 @@ the project state and returns plain data (structured-cloneable):
 6. Forward model of the final cam on 100 (coarse) or 1500 (full) samples:
    achieved curve, tensions, loads and metrics (peak, holding weight,
    let-off, draw and limb energy, axle travel, cam and limb rotation, string
-   and cable length, cam maximum dimension, smallest radius of curvature,
-   wraps).
+   and cable length, cam maximum dimension, smallest radius of curvature
+   and its limit for each track, wraps).
 7. Outlines, posts and marks.
 
 The result keeps the brace conditions in `brace` (slope, second
@@ -891,6 +895,7 @@ Measured values are the largest errors over the tested samples.
 | Lead-in wrap 0, 1.5e-179, 1e-15 and 1e-9 rad: knots at least 1e-3 of the spacing apart, ρ of the closed track ≥ ρ_lim | 1e-6 m | passes |
 | Solve with rise 40 % at let-off 75 % and 65 %: no `closing-blend`, cam below 120 mm, closed track ρ ≥ ρ_lim | 1e-5 m | cam 114.0 mm and 113.4 mm |
 | Solve with a lead-in wrap of 0: no diagnostics, cable post at ψ_c0; minimum bend radius 20 mm with a lead-in wrap of 5° and 10°: `closing-blend`, `cable-radius`, `cable-clearance`, suggestion a 10 mm bend radius, which solves without diagnostics, while no larger string track does; lead-in trials k·5° down to exactly 0 | | passes |
+| Peak 250 N, rise 49 %, valley width 1.4 in (fitted cam, full solve): string termination at the achieved full-draw contact plus 30° to 1e-12 rad, string post at the termination, string length equal to a forward solve with that termination to 1e-12 m | | passes |
 | Lead-in wrap 137.55° on the default preset (0.06° left to close, coarse and full): `closing-blend` alone, no cable track, achieved curve or metrics, string outlines only, suggestion a lead-in wrap of at most 105.0°, which solves without diagnostics; 100 random valid states: every solve without diagnostics has a cable track, an achieved curve and metrics | | passes |
 | `closing-blend` trials: point 2 at 12 in and 120 N names a 55.0 mm string track radius (full solve; 50 mm fails, 55 mm solves without diagnostics; the coarse solve runs no trials and names the force curve); a 45 mm × 35 mm ellipse with point 2 at 11 in and 100 N names both semi-axes 15 mm larger; point 2 at 10 in and 50 N names none, and each larger string track raises the largest force difference; trial states within the field range, the bend radius tried only when it sets ρ_lim | | passes |
 | Offsets, maximum dimension, termination and cable stop posts, timing marks | 5e-16 m to 1e-6 m | passes |
