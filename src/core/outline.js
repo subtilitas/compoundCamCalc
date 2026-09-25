@@ -21,7 +21,7 @@
  * @module core/outline
  */
 
-import { fitCableTrack } from './fit.js';
+import { fitCableTrack, splineLimits } from './fit.js';
 import { evaluatePoly } from './inverse.js';
 import { createSupport, offset, splineSupport } from './support.js';
 
@@ -36,6 +36,13 @@ export const LEAD_IN_DECAY = 0.5 * DEGREE;
  * the values into a spike of p''.
  */
 const MIN_KNOT_GAP = 1e-3;
+
+/**
+ * Shortfall of the closed track below ρ_lim or p_min that still counts as
+ * meeting them (m): the re-interpolation of the pieces as one periodic
+ * spline, measured below 1e-8 m on the tested states.
+ */
+const CLOSED_TOLERANCE = 1e-7;
 
 /** @typedef {import('./support.js').Support} Support */
 /** @typedef {import('./support.js').SupportData} SupportData */
@@ -207,7 +214,10 @@ export function minimumOn(f, a, b, count) {
 
 /**
  * @typedef {object} ClosedCable
- * @property {boolean} ok the closing blend exists and keeps ρ ≥ rhoMin
+ * @property {boolean} ok the closed track keeps ρ ≥ rhoMin and p ≥ pMin on
+ *   every interval (exact minima), to CLOSED_TOLERANCE
+ * @property {number} minRho smallest ρ of the closed track (m)
+ * @property {number} minP smallest p of the closed track (m)
  * @property {SplineData} support periodic pitch-line spline over
  *   [psiStart, psiStart + 2π]
  * @property {number} psiStart cable termination: psiBrace − lead-in (rad)
@@ -326,10 +336,14 @@ export function closeCableTrack(active, { leadIn, rhoMin, pMin = 0, step }) {
     // above 10 m): it is no cam.
     return null;
   }
+  // The limits apply to the returned closed track, which re-interpolates
+  // the lead-in, the active track and the blend: exact minima of p and ρ on
+  // every interval of the periodic spline.
+  const closedLimits = splineLimits(support, rhoMin, pMin);
   return {
-    // The fitted blend meets the limits on its constraint grid; allow the
-    // micrometre dips between grid points.
-    ok: low.rho.value >= rhoMin - 1e-5 && low.p >= pMin - 1e-6,
+    ok: closedLimits.minRho >= rhoMin - CLOSED_TOLERANCE && closedLimits.minP >= pMin - CLOSED_TOLERANCE,
+    minRho: closedLimits.minRho,
+    minP: closedLimits.minP,
     support,
     psiStart,
     psiBrace,

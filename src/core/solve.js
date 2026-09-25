@@ -80,6 +80,10 @@ export const FIT_FORCE_TOLERANCE = 0.03;
 export const FIT_FORCE_FLOOR = 2;
 /** Relative draw energy tolerance of a fitted cam. */
 export const FIT_ENERGY_TOLERANCE = 0.005;
+/** Largest number of passes that settle the travel-mode stiffness. */
+export const ENERGY_PASSES = 50;
+/** Relative change of the draw energy below which the travel-mode stiffness has settled. */
+export const ENERGY_SETTLED = 1e-9;
 /**
  * Distance of the brace contact of a cable track after ψ_c0 above which the
  * lead-in starts at that contact (rad). A track with p(ψ_c0) = p_c0 has its
@@ -330,15 +334,21 @@ function solveState(state, resolution, maxIterations, trials) {
   const natural = createCurve(points);
   const slope = natural.derivative(xBrace, 1);
 
-  // Limb, inverse context and brace conditions; the travel mode depends on
-  // the energy of the rebuilt target, so iterate twice.
+  // Limb, inverse context and brace conditions. In the travel mode the
+  // stiffness depends on the energy of the rebuilt target, which depends on
+  // the brace conditions of that stiffness: repeat until the energy the limb
+  // was built from and the energy of the target agree.
+  const travelMode = state.limb.mode === 'travel';
   let energy = natural.integral(xBrace, xFull);
   let limbData = null;
   let ctx = null;
   let brace = null;
   let curve = natural;
-  for (let pass = 0; pass < (state.limb.mode === 'travel' ? 3 : 1); pass++) {
-    const limbResult = limbFromState(state.limb, geometry.limbLength, { drawEnergy: energy });
+  let settled = !travelMode;
+  let change = 0;
+  for (let pass = 0; pass < (travelMode ? ENERGY_PASSES : 1); pass++) {
+    const used = energy;
+    const limbResult = limbFromState(state.limb, geometry.limbLength, { drawEnergy: used });
     if (!limbResult.limb) {
       diags.push(diagnostic('invalid-input', `The limb cannot be built: ${limbResult.error}`, 'Check the limb settings'));
       return res;
@@ -359,6 +369,21 @@ function solveState(state, resolution, maxIterations, trials) {
     brace = braceConditions(ctx, slope);
     curve = brace.ok ? createCurve(points, { startSlope: slope, startSecondDerivative: brace.second }) : natural;
     energy = curve.integral(xBrace, xFull);
+    change = Math.abs(energy - used);
+    if (travelMode && change <= ENERGY_SETTLED * Math.abs(used)) {
+      settled = true;
+      break;
+    }
+  }
+  if (!settled) {
+    diags.push(
+      diagnostic(
+        'no-convergence',
+        `The limb stiffness of the travel mode does not settle: after ${ENERGY_PASSES} passes the draw energy still changes by ${fmt.energy(change)}`,
+        'Use the stiffness mode, or change the limb travel',
+      ),
+    );
+    return res;
   }
   if (!ctx || !brace || !limbData) return res;
   const limb = ctx.limb;
@@ -1547,6 +1572,11 @@ export function forwardDiagnostics(forward, diags, fmt) {
       }
       case 'cable-lever':
         add(diagnostic('cable-lever', `Limb rotation takes up no power cable${range}`, 'Reduce the limb lever angle at brace', where));
+        break;
+      // non-finite, concave-track and any code without its own entry: the
+      // final cam has no usable force curve.
+      default:
+        add(diagnostic('no-convergence', `The force curve of the final cam cannot be computed${range}: ${d.message}`, 'Change the last edited input slightly, then solve again', where));
         break;
     }
   }

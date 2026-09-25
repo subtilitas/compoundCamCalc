@@ -477,12 +477,13 @@ function checkSplineData(d) {
 }
 
 /**
- * Smallest value of the cubic ρ(t) = r0 + r1·t + r2·t² + r3·t³ on [t0, t1].
+ * Smallest value of the cubic r0 + r1·t + r2·t² + r3·t³ on [t0, t1]: the
+ * ends and the stationary points inside.
  * @param {number} r0 @param {number} r1 @param {number} r2 @param {number} r3
  * @param {number} t0 @param {number} t1
  * @returns {{ value: number, t: number }}
  */
-function cubicMin(r0, r1, r2, r3, t0, t1) {
+export function cubicMin(r0, r1, r2, r3, t0, t1) {
   const f = (/** @type {number} */ t) => r0 + t * (r1 + t * (r2 + t * r3));
   let best = { value: f(t0), t: t0 };
   const consider = (/** @type {number} */ t) => {

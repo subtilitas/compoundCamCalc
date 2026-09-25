@@ -4,6 +4,7 @@ import { drawRange, generateCurve, pointMetrics } from '../../src/core/curve.js'
 import { CODES, formatter } from '../../src/core/diagnostics.js';
 import { axle, bowGeometry } from '../../src/core/geometry.js';
 import { COARSE_SAMPLES, FULL_SAMPLES, solveForward } from '../../src/core/forward.js';
+import { splineLimits } from '../../src/core/fit.js';
 import { limbFromState } from '../../src/core/limb.js';
 import {
   FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE, GROOVE_MARGIN, STRING_TRACK_TRIALS, changeSuggestion, forwardDiagnostics, largerStringTrack,
@@ -84,6 +85,14 @@ function camToWorld(O, theta, P) {
 describe('solve: default preset', () => {
   const state = defaultState();
   const r = solve(state);
+
+  it('keeps the closed cable track at or above p_min and ρ_lim on every interval', () => {
+    const pMin = state.body.boreDiameter / 2 + state.body.minWall + state.cords.cableDiameter / 2;
+    const rhoLimit = Math.max(state.body.minBendRadius, state.cords.cableDiameter / 2 + GROOVE_MARGIN);
+    const limits = splineLimits(/** @type {import('../../src/core/support.js').SplineData} */ (r.tracks.cablePitch), rhoLimit, pMin);
+    expect(limits.minP).toBeGreaterThanOrEqual(pMin);
+    expect(limits.minRho).toBeGreaterThanOrEqual(rhoLimit);
+  });
 
   it('solves with zero diagnostics and a buildable cam', () => {
     expect(validate(state)).toEqual([]);
@@ -691,6 +700,14 @@ describe('solve: diagnostics', () => {
     const cable = [];
     forwardDiagnostics({ ...forward, psiS: [0, 1], stringTermination: 2, psiC: [4, 10], cableTermination: 3, diagnostics: [forward.diagnostics[3]] }, cable, fmt);
     expect(cable.map((d) => d.code)).toEqual(['cable-wrap']);
+    // A non-finite or concave final cam has no usable force curve.
+    for (const code of ['non-finite', 'concave-track']) {
+      /** @type {import('../../src/core/diagnostics.js').SolveDiagnostic[]} */
+      const lost = [];
+      forwardDiagnostics({ ...forward, diagnostics: [{ code, xRange: [0.2, 0.3], message: 'the limb energy overflows' }] }, lost, fmt);
+      expect(lost.map((d) => d.code)).toEqual(['no-convergence']);
+      expect(lost[0].message).toMatch(/cannot be computed .*: the limb energy overflows$/);
+    }
   });
 
   it('no-convergence: an iteration limit of one Newton step', () => {
@@ -699,6 +716,20 @@ describe('solve: diagnostics', () => {
     expect(d.xRange?.[1]).toBe(defaultState().curve.points.at(-1)?.x);
     // The string track outlines are still there.
     expect(outline(r, 'stringPitch').x.length).toBe(361);
+  });
+});
+
+describe('solve: limb travel mode', () => {
+  it('builds the limb from the settled draw energy, so the ideal track turns the limb by the requested travel', () => {
+    for (const travel of [0.02, 0.05, 0.1]) {
+      const s = defaultState();
+      s.limb.mode = 'travel';
+      s.limb.travel = travel;
+      const r = solve(s);
+      const alpha = /** @type {NonNullable<SolveResult['ideal']>} */ (r.ideal).alpha;
+      // Axle travel of the ideal track at full draw, R_L·α_f.
+      expect(Math.abs(/** @type {number} */ (alpha.at(-1)) * s.geometry.limbLength - travel)).toBeLessThan(1e-9);
+    }
   });
 });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitCableTrack } from '../../src/core/fit.js';
+import { fitCableTrack, splineLimits } from '../../src/core/fit.js';
 import { createSupport, eccentricCircle } from '../../src/core/support.js';
 
 const DEG = Math.PI / 180;
@@ -113,6 +113,36 @@ describe('constrained cable track fit', () => {
     expect(fitCableTrack({ ...holes, start, end, rhoMin: 0.005, pMin: 0.008 }).status).toBe('optimal');
   });
 
+  it('keeps the limits between the constraint points, not only on them', () => {
+    // Samples 2 mm inside p_min with one constraint point per interval and
+    // no margin: the least-squares spline sags between the points unless
+    // the exact interval minima are added as constraints.
+    const pMin = 0.008;
+    const inside = samples((psi) => 0.006 + 0.001 * Math.sin(3 * psi), start, end, 200);
+    const r = fitCableTrack({ ...inside, start, end, rhoMin: 0.001, pMin, gridPerInterval: 1, margin: 0 });
+    expect(r.status).toBe('optimal');
+    const limits = splineLimits(/** @type {import('../../src/core/support.js').SplineData} */ (r.spline), 0.001, pMin);
+    expect(limits.low).toEqual([]);
+    expect(limits.minP).toBeGreaterThanOrEqual(pMin - 1e-9);
+    expect(r.minP).toBe(limits.minP);
+  });
+
+  it('finds the exact minima of p and of p plus its second derivative on every interval', () => {
+    // One interval [0, 2]: p = 0.01 − 0.004·t + 0.001·t², minimum 6 mm at t = 2;
+    // ρ = p + 0.002 has its minimum 8 mm there too.
+    const spline = { kind: /** @type {const} */ ('spline'), knots: Float64Array.from([0, 2]), coeffs: Float64Array.from([0.01, -0.004, 0.001, 0]), cumulative: new Float64Array(2), periodic: false };
+    const low = splineLimits(spline, 0.009, 0.007);
+    expect(low.minP).toBeCloseTo(0.006, 15);
+    expect(low.minRho).toBeCloseTo(0.008, 15);
+    // Both fall short at the same angle, which is added once.
+    expect(low.low).toEqual([2]);
+    // p = 0.01 − 0.004·t + 0.002·t² has its minimum 8 mm inside, at t = 1.
+    const inner = { ...spline, coeffs: Float64Array.from([0.01, -0.004, 0.002, 0]) };
+    const lim = splineLimits(inner, 0, 0.0085);
+    expect(lim.minP).toBeCloseTo(0.008, 15);
+    expect(lim.low).toEqual([1]);
+  });
+
   it('reports an optimum outside the input domain instead of throwing', () => {
     // Samples at a 20 m lever arm: the fitted track would be 20 m in size.
     const huge = samples(() => 20, start, end, 100);
@@ -160,6 +190,11 @@ describe('constrained cable track fit', () => {
       { through: [{ psi: start + 1, p: NaN, integral: 0.01 }] },
       { through: [{ psi: start + 1, p: 0.02, integral: Infinity }] },
       { through: [{ psi: start + 1, p: 0.02, integral: 0.02 }, { psi: start + 2, p: 0.02, integral: NaN }] },
+      // Malformed nested values: missing ends, a null through point, no samples.
+      { ends: /** @type {any} */ ({}) },
+      { ends: /** @type {any} */ ({ start: [0.01, 0, 0] }) },
+      { through: /** @type {any} */ ([null]) },
+      { psi: /** @type {any} */ (undefined) },
     ];
     for (const change of bad) {
       const r = fitCableTrack({ ...base, ...change });

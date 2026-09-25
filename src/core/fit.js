@@ -23,13 +23,22 @@
 
 import { ANGLE_MAX, KNOT_SPACING_MIN } from './domain.js';
 import { solveQP } from './qp.js';
-import { createSupport, splineSupport } from './support.js';
+import { createSupport, cubicMin, splineSupport } from './support.js';
 
 /** @typedef {import('./support.js').SplineData} SplineData */
 
 /** Scale of the internal unit (1 mm). */
 const MM = 1e-3;
 
+
+/**
+ * Largest number of exchange rounds: after each solve the exact minima of
+ * ρ and p that fall below their limits between the grid points become
+ * constraints, and the programme is solved again.
+ */
+const EXCHANGE_ROUNDS = 10;
+/** Shortfall below a limit that the fitted track may keep: rounding (m). */
+const LIMIT_TOLERANCE = 1e-9;
 
 /** Largest number of knot intervals and of constraint points per interval. */
 const MAX_INTERVALS = 200;
@@ -51,7 +60,9 @@ const MAX_GRID = 50;
  * @property {{ start: ArrayLike<number>, end: ArrayLike<number> }} [ends] p, p'
  *   and p'' prescribed at both ends (m, m/rad, m/rad²), for a C2 join
  * @property {number} [gridPerInterval] constraint points per knot interval, 1 to 50 (default 8)
- * @property {number} [margin] added to both limits in the constraints (m, default 1e-6)
+ * @property {number} [margin] added to both limits in the constraints
+ *   (m, default 5e-6): the spline between two constraint points stays above
+ *   the limits, so the exchange rounds are rarely needed
  */
 
 /**
@@ -96,10 +107,30 @@ const finiteOrUndefined = (values) => values.every((v) => v === undefined || Num
  * @returns {FitResult}
  */
 export function fitCableTrack(input) {
+  try {
+    return fitChecked(input);
+  } catch {
+    // Input whose reading throws (a getter, a malformed nested value).
+    return failedFit('invalid');
+  }
+}
+
+/**
+ * @param {FitResult['status']} status
+ * @returns {FitResult}
+ */
+function failedFit(status) {
+  return { status, spline: null, rms: NaN, maxDeviation: NaN, unknowns: 0, active: 0, minRho: NaN, minP: NaN };
+}
+
+/**
+ * Body of {@link fitCableTrack}, which guards it.
+ * @param {FitInput} input
+ * @returns {FitResult}
+ */
+function fitChecked(input) {
   const { psi, p, start, end, rhoMin, pMin } = input;
-  const failed = (/** @type {FitResult['status']} */ status) => ({
-    status, spline: null, rms: NaN, maxDeviation: NaN, unknowns: 0, active: 0, minRho: NaN, minP: NaN,
-  });
+  const failed = failedFit;
   const m = psi.length;
   const span = end - start;
   const intervals = input.intervals ?? Math.min(37, Math.max(17, Math.round(span / (10 * (Math.PI / 180)))));
@@ -125,9 +156,9 @@ export function fitCableTrack(input) {
     perInterval >= 1 &&
     perInterval <= MAX_GRID &&
     span / intervals >= KNOT_SPACING_MIN &&
-    ends.every((v) => v.length === 3 && Array.from(v).every(Number.isFinite)) &&
+    ends.every((v) => v !== null && v !== undefined && v.length === 3 && Array.from(v).every(Number.isFinite)) &&
     Array.isArray(through) &&
-    through.every((q) => q.psi > start && q.psi <= end && Number.isFinite(q.p) && Number.isFinite(q.integral));
+    through.every((q) => q !== null && q !== undefined && q.psi > start && q.psi <= end && Number.isFinite(q.p) && Number.isFinite(q.integral));
   if (!valid) return failed('invalid');
   const knots = uniformKnots(start, end, intervals);
   const nv = intervals + 1;
@@ -191,7 +222,7 @@ export function fitCableTrack(input) {
   // Constraints: equalities (start value, points passed through), then ρ
   // and p on the grid.
   const gridCount = intervals * perInterval;
-  const margin = (input.margin ?? 1e-6) / MM;
+  const margin = (input.margin ?? 5e-6) / MM;
   /** @type {{ row: Float64Array, value: number }[]} */
   const equalities = [];
   if (input.startValue !== undefined) equalities.push({ row: rows(start).rp, value: input.startValue / MM });
@@ -208,36 +239,51 @@ export function fitCableTrack(input) {
     }
   }
   const meq = equalities.length;
-  const mc = meq + 2 * (gridCount + 1);
-  const C = new Float64Array(mc * n);
-  const b = new Float64Array(mc);
-  equalities.forEach((e, i) => {
-    C.set(e.row, i * n);
-    b[i] = e.value;
-  });
-  for (let k = 0; k <= gridCount; k++) {
-    const { rp, r2 } = rows(start + (span * k) / gridCount);
-    const i = meq + 2 * k;
-    for (let j = 0; j < n; j++) {
-      C[i * n + j] = rp[j] + r2[j];
-      C[(i + 1) * n + j] = rp[j];
-    }
-    b[i] = rhoMin / MM + margin;
-    b[i + 1] = pMin / MM + margin;
-  }
-  const result = solveQP({ n, G, a, C, b, meq });
-  if (result.status !== 'optimal') return { ...failed(result.status), unknowns: n };
-  const x = result.x;
-  const values = Float64Array.from(x.subarray(0, nv), (v) => v * MM);
-  const spline = splineSupport(knots, values, { endSlopes: [x[nv] * MM, x[nv + 1] * MM] });
+  /** Constraint angles: the grid, then the exchange points. */
+  const at = Array.from({ length: gridCount + 1 }, (_, k) => start + (span * k) / gridCount);
+  /** @type {ReturnType<typeof solveQP>} */
+  let result;
+  /** @type {import('./support.js').SplineData} */
+  let spline;
   /** @type {import('./support.js').Support} */
   let s;
-  try {
-    s = createSupport(spline);
-  } catch {
-    // The optimum leaves the input domain of support.js (|p| or |p'| above
-    // 10 m): no track of the size of a cam meets the conditions.
-    return { ...failed('out-of-domain'), unknowns: n };
+  /** @type {{ minRho: number, minP: number, low: number[] }} */
+  let limits;
+  for (let round = 0; ; round++) {
+    const mc = meq + 2 * at.length;
+    const C = new Float64Array(mc * n);
+    const b = new Float64Array(mc);
+    equalities.forEach((e, i) => {
+      C.set(e.row, i * n);
+      b[i] = e.value;
+    });
+    at.forEach((psiK, k) => {
+      const { rp, r2 } = rows(psiK);
+      const i = meq + 2 * k;
+      for (let j = 0; j < n; j++) {
+        C[i * n + j] = rp[j] + r2[j];
+        C[(i + 1) * n + j] = rp[j];
+      }
+      b[i] = rhoMin / MM + margin;
+      b[i + 1] = pMin / MM + margin;
+    });
+    result = solveQP({ n, G, a, C, b, meq });
+    if (result.status !== 'optimal') return { ...failed(result.status), unknowns: n };
+    const x = result.x;
+    const values = Float64Array.from(x.subarray(0, nv), (v) => v * MM);
+    spline = splineSupport(knots, values, { endSlopes: [x[nv] * MM, x[nv + 1] * MM] });
+    try {
+      s = createSupport(spline);
+    } catch {
+      // The optimum leaves the input domain of support.js (|p| or |p'| above
+      // 10 m): no track of the size of a cam meets the conditions.
+      return { ...failed('out-of-domain'), unknowns: n };
+    }
+    limits = splineLimits(spline, rhoMin, pMin);
+    if (limits.low.length === 0) break;
+    // The limits hold on the grid but not between its points.
+    if (round === EXCHANGE_ROUNDS) return { ...failed('max-iterations'), unknowns: n };
+    at.push(...limits.low);
   }
   let sum = 0;
   let count = 0;
@@ -249,14 +295,6 @@ export function fitCableTrack(input) {
     count++;
     maxDeviation = Math.max(maxDeviation, Math.abs(d));
   }
-  let minRho = Infinity;
-  let minP = Infinity;
-  const fine = 4 * gridCount;
-  for (let k = 0; k <= fine; k++) {
-    s.evaluate(start + (span * k) / fine, buf);
-    minRho = Math.min(minRho, buf[0] + buf[2]);
-    minP = Math.min(minP, buf[0]);
-  }
   return {
     status: 'optimal',
     spline,
@@ -264,7 +302,35 @@ export function fitCableTrack(input) {
     maxDeviation,
     unknowns: n,
     active: result.active.length,
-    minRho,
-    minP,
+    minRho: limits.minRho,
+    minP: limits.minP,
   };
+}
+
+/**
+ * Exact smallest ρ = p + p'' and p of a clamped spline over its knots, and
+ * the angles, one per interval and quantity, where either falls more than
+ * LIMIT_TOLERANCE below its limit. p and ρ are cubics on each interval.
+ * @param {import('./support.js').SplineData} spline
+ * @param {number} rhoMin (m)
+ * @param {number} pMin (m)
+ * @returns {{ minRho: number, minP: number, low: number[] }}
+ */
+export function splineLimits(spline, rhoMin, pMin) {
+  const { knots, coeffs } = spline;
+  let minRho = Infinity;
+  let minP = Infinity;
+  /** @type {number[]} */
+  const low = [];
+  for (let i = 0; i < knots.length - 1; i++) {
+    const h = knots[i + 1] - knots[i];
+    const [c0, c1, c2, c3] = [coeffs[4 * i], coeffs[4 * i + 1], coeffs[4 * i + 2], coeffs[4 * i + 3]];
+    const p = cubicMin(c0, c1, c2, c3, 0, h);
+    const rho = cubicMin(c0 + 2 * c2, c1 + 6 * c3, c2, c3, 0, h);
+    minP = Math.min(minP, p.value);
+    minRho = Math.min(minRho, rho.value);
+    if (p.value < pMin - LIMIT_TOLERANCE) low.push(knots[i] + p.t);
+    if (rho.value < rhoMin - LIMIT_TOLERANCE && !(p.value < pMin - LIMIT_TOLERANCE && rho.t === p.t)) low.push(knots[i] + rho.t);
+  }
+  return { minRho, minP, low };
 }

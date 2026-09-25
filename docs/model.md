@@ -488,7 +488,14 @@ p       ≥ p_min = bore/2 + minimum wall + d/2
 
 p_min keeps the groove bottom of a convex track outside the bore and its
 wall: the closest point of a convex curve around the axle lies at the
-distance min p. Optional equalities: p(ψ_c0) = p_c0 and, at the contact
+distance min p. The grid constraints carry a margin of 5 µm. After each
+solve the exact minima of p and ρ on every knot interval (both are cubics
+there) are checked; any that falls more than 1e-9 m below its limit
+becomes a further constraint and the programme is solved again, at most
+10 times, so the limits hold between the grid points too. A margin of
+1 µm leaves the spline up to 3.5 µm below p_min between two grid points
+near full draw of the default preset; with 5 µm none of 62 fits of the
+default and its edits needs a further round. Optional equalities: p(ψ_c0) = p_c0 and, at the contact
 angle ψ_k of every curve point k whose ideal lever arm meets p_min,
 
 ```
@@ -673,8 +680,11 @@ wrap at brace.
   that matches p, p', p'' at both joins. When it bends below ρ_lim or comes
   below p_min, the constrained fit replaces it: a clamped spline close to
   the quintic with p, p', p'' prescribed at both joins and the two limits
-  as constraints. When no such spline exists the solver reports
-  `closing-blend`. The suggestion names the largest lead-in wrap k·5°
+  as constraints. The closed track re-interpolates the lead-in, the active
+  track and the blend as one periodic spline; it counts as closed only when
+  the exact minima of its p and ρ on every interval meet p_min and ρ_lim to
+  1e-7 m (on the default preset and 8 edits they clear both by 0.1 µm to
+  1 µm). When no such track exists the solver reports `closing-blend`. The suggestion names the largest lead-in wrap k·5°
   below the input, down to 0°, that closes the track; the lead-in does not
   change the active track, so closing it is the whole check.
 - When no lead-in wrap closes the track, a full solve runs trial solves:
@@ -742,8 +752,10 @@ the project state and returns plain data (structured-cloneable):
 1. Validation (`invalid-input` on failure); the first and last curve
    point are placed exactly at x_b and x_f (validation accepts them within
    1e-9 m); string pitch line, bow geometry, limb; in the travel mode the
-   stiffness follows from the draw energy of the rebuilt target, iterated
-   three times.
+   stiffness follows from the draw energy of the rebuilt target, which
+   depends on that stiffness through the brace conditions; the passes
+   repeat until the energy changes by less than 1e-9 of itself (at most 50,
+   else `no-convergence`), and the limb is built from that energy.
 2. Brace conditions and the rebuilt target.
 3. Inverse model on the draw grid; checks of the ideal state.
 4. Ideal cable track (samples, spline, brace blend); ρ and p checks; the
@@ -797,7 +809,7 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in too close to the bore | the let-off (computed limit) at full draw or the force at the position, and the bore radius plus wall (at most the lowest lever arm / 1.03 minus the cable radius, rounded down, when at least 1.5 mm); a larger string track also raises the lever arm at the peak and is not suggested |
 | `cable-wrap` | active cable range plus lead-in wrap ≥ 360° | the lead-in wrap (computed) or the string track radius |
 | `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the smallest string track increase (5 mm to 20 mm, both semi-axes of an ellipse), then half the minimum bend radius when it sets ρ_lim, with which a coarse trial solve reports no diagnostic; otherwise the changes tried and the force curve. The trials run in a full solve; a coarse solve names the force curve |
-| `no-convergence` | a closure, the resampling, the constrained fit or the forward model of the final cam fails, or an internal error | the input to change |
+| `no-convergence` | a closure, the resampling, the constrained fit or the forward model of the final cam fails (including a non-finite or concave final cam, and any forward code without its own entry), the travel-mode stiffness does not settle, or an internal error | the input to change |
 | `slack-string` | the string of the final cam goes slack (forward model) | the force in the range or the let-off |
 | `wrap-exhausted` | a contact of the final cam passes its termination (forward model) | the residual and lead-in wrap |
 
@@ -916,7 +928,7 @@ first 123 mm of the power stroke.
 | Inverse draw grid | 100 (coarse), 600 (full) samples, x − x_b = s², plus the curve points |
 | Inverse string closure | Newton, residual below 1e-10 m, at most 30 iterations |
 | Ideal cable resampling | 0.5° (coarse), 0.25° (full); Illinois search stopped within 0.1 % of the step |
-| Constrained fit | one knot interval per about 10° (17 to 37), 8 constraint points per interval, margin 1e-6 m, penalty 1e-8·trace on second differences |
+| Constrained fit | one knot interval per about 10° (17 to 37), 8 constraint points per interval, margin 5e-6 m, penalty 1e-8·trace on second differences; up to 10 exchange rounds add the exact minima of p and ρ that fall more than 1e-9 m below their limits as constraints (none needed on 62 fits of the default and its edits) |
 | Constrained fit input | \|ψ\| ≤ 1e4 rad, 1 to 200 knot intervals, 1 to 50 constraint points per interval, knot spacing at least 1e-6 rad (the input domain), points to pass through at ψ_0 < ψ ≤ ψ_1 with finite lever arm and integral; an optimum outside the input domain gives the status `out-of-domain`, and a closed cable track outside it cannot be closed |
 | Quadratic programme | violation tolerance 1e-10 of the row scale, for active constraints of max(row scale, size of the terms), for redundant equalities of that size plus the sizes of the rows they combine; dependence at \|z\|_G ≤ 1e-8 of the cancelled terms; refinement after each added constraint while the largest active residual falls or exceeds 4 machine epsilons (8.9e-16) of its size, at most 8 passes; at most 10·(n + m) + 20 steps |
 | Fit tolerance | force 3 % of the peak, at least 2 N; draw energy 0.5 % |
