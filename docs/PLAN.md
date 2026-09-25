@@ -31,10 +31,16 @@ This file is the running record of the project. Each slice updates it.
 - Brace height x_b, full draw x_f. Draw length (AMO) = x_f + 1.75 in. Power
   stroke = x_f − x_b.
 - Top axle O(α) moves on a circle of radius R_L about the limb pivot Q; α is
-  the limb rotation from brace. The bottom axle is the mirror image,
-  A = (O_x, −O_y). A is also the anchor of the top cam's power cable.
-- θ is the cam rotation, positive in the string pay-out direction. Cam frame:
-  v_cam = R(θ)·v_world.
+  the limb rotation from brace, positive towards the bow centre. The limb
+  lever angle β is measured from +x, counter-clockwise positive:
+  β = β_b − α, O = Q + R_L·(cos β, sin β), O_α = R_L·(sin β, −cos β). At
+  brace the string is vertical at x_b and touches the string track at ψ = 0,
+  so O_b = (x_b − p_s(0), ATA/2) and Q = O_b − R_L·(cos β_b, sin β_b). The
+  bottom axle is the mirror image, A = (O_x, −O_y). A is also the anchor of
+  the top cam's power cable.
+- θ is the cam rotation, positive in the string pay-out direction, which is
+  a clockwise turn of the top cam in the world frame. Cam frame:
+  v_cam = R(θ)·v_world with R the counter-clockwise rotation matrix.
 - Each track is a convex curve given by its support function p(ψ) about the
   axle, on the cord centreline (pitch line):
   n = (cos ψ, sin ψ), t = (−sin ψ, cos ψ),
@@ -96,18 +102,28 @@ T_c = T_s·p_s / p_c                cable tension
 E1'(α) = T_s·s_a + T_c·c_a         limb balance (check)
 ```
 
-Validity: T_s > 0, T_c > 0, c_a > 0 along the path.
+The implementation evaluates T_s = E1'·p_c/det and T_c = E1'·p_s/det with
+det = p_s·c_a + s_a·p_c, which equal the lines above and hold at brace
+without a division by sin φ.
+
+Validity: T_s > 0, T_c > 0, c_a > 0 along the path. The forward model
+reports `{code, xRange, message}` diagnostics; codes and the verification
+results are in `docs/model.md`.
 
 ### Limb
 
 - Rigid lever of length R_L (pivot to axle) with torsional stiffness
-  k_t = k·R_L², k in N/mm measured at the axle perpendicular to the lever.
-- Preload: axle travel from unstrung to brace (mm), or limb moment at brace
-  M_b. E1(α) = ½·k_t·(α − α_0)².
-- Energy: α_f = α_0 + √((α_b − α_0)² + W/k_t), W = draw energy.
-- Input modes: (a) stiffness k plus preload; (b) target axle travel from
-  brace to full draw plus preload, k derived; (c) measured force-deflection
-  table fitted by a C2 monotone spline.
+  k_t = k·R_L², k measured at the axle perpendicular to the lever (stored in
+  N/m, shown in N/mm).
+- Preload: axle travel s_0 from unstrung to brace, α_0 = s_0/R_L > 0 is the
+  rotation from unstrung to brace, or limb moment at brace M_b = k_t·α_0.
+  E1(α) = ½·k_t·(α + α_0)².
+- Energy: W = 2·(E1(α_f) − E1(0)), so α_f = −α_0 + √(α_0² + W/k_t),
+  W = draw energy.
+- Input modes: (a) stiffness k plus preload; (b) target axle travel s_f from
+  brace to full draw plus preload, k = W/((s_f + s_0)² − s_0²); (c) measured
+  force-deflection table, converted to limb moment against rotation from
+  unstrung and fitted by the C2 monotone quintic of `src/core/interp.js`.
 - Outputs: draw energy W and total limb energy including preload, reported
   separately; axle travel in mm.
 
@@ -404,8 +420,8 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 1a | Scaffold, lint, typecheck, unit tests, coverage check, e2e on a stub page, three workflows, README, manual setup notes |
 | 1b | Units, interpolation, ProjectState schema with schemaVersion, default preset, autosave |
 | 1c | Force curve editor (pointer, touch, keyboard, table, sliders, undo/redo), unit toggles |
-| 2 | Support functions, contact solver, limb model, forward model, `docs/model.md`, achieved-curve overlay |
-| 3 | Inverse solver, brace conditions, diagnostics, constrained fit, closed outline, cam view, results card, worker |
+| 2 | Support functions, contact solver, limb model, forward model, `docs/model.md` |
+| 3 | Inverse solver, brace conditions, diagnostics, constrained fit, closed outline, achieved-curve overlay (needs the cable track from the inverse solver), cam view, results card, worker |
 | 4 | String plan layout, build lengths, loads chart, draw-position scrubber |
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export |
 | 6 | STEP export |

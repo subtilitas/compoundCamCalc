@@ -1,0 +1,149 @@
+import { describe, expect, it } from 'vitest';
+import {
+  INVERSE_TOLERANCE, createLimb, limbEnergies, limbFromState, linearLimb, stiffnessForTravel, tableLimb,
+} from '../../src/core/limb.js';
+import { defaultState } from '../../src/state/presets.js';
+import { derivative, integrate } from './numeric.js';
+
+/** @typedef {import('../../src/core/limb.js').TableLimbData} TableLimbData */
+
+const R = 0.2794;
+const k = 27e3;
+const s0 = 0.03;
+
+describe('linear limb', () => {
+  const limb = createLimb(linearLimb({ stiffness: k, preloadTravel: s0, limbLength: R }));
+
+  it('stores ½·k_t·(α + α_0)² with k_t = k·R_L² and α_0 = preload / R_L', () => {
+    expect(limb.kind).toBe('linear');
+    const kt = k * R * R;
+    const a0 = s0 / R;
+    for (const alpha of [-0.05, 0, 0.1, 0.25]) {
+      expect(limb.energy(alpha)).toBeCloseTo(0.5 * kt * (alpha + a0) ** 2, 12);
+      expect(limb.moment(alpha)).toBeCloseTo(kt * (alpha + a0), 11);
+      expect(limb.stiffness(alpha)).toBe(kt);
+      expect(derivative(limb.energy, alpha, 1e-4)).toBeCloseTo(limb.moment(alpha), 9);
+    }
+    // In axle terms: E1 = ½·k·(s + s_0)² with the arc travel s = R_L·α.
+    expect(limb.energy(0.038 / R)).toBeCloseTo(0.5 * k * (0.038 + s0) ** 2, 12);
+    expect(limb.moment(0)).toBeCloseTo(k * R * s0, 11);
+  });
+
+  it('inverts the energy', () => {
+    for (const alpha of [0, 0.01, 0.2, 0.5]) expect(limb.inverse(limb.energy(alpha))).toBeCloseTo(alpha, 13);
+    expect(limb.inverse(-1)).toBeNaN();
+    expect(limb.inverse(Infinity)).toBeNaN();
+  });
+
+  it('reports draw, total and preload energy separately', () => {
+    const e = limbEnergies(limb, 0.14);
+    expect(e.preloadEnergy).toBeCloseTo(k * s0 * s0, 12);
+    expect(e.limbEnergy).toBeCloseTo(k * (0.14 * R + s0) ** 2, 12);
+    expect(e.drawEnergy).toBeCloseTo(e.limbEnergy - e.preloadEnergy, 12);
+  });
+});
+
+describe('stiffnessForTravel', () => {
+  it('returns the stiffness that stores the draw energy over the travel', () => {
+    const W = 90;
+    const kk = stiffnessForTravel({ drawEnergy: W, travel: 0.038, preloadTravel: s0 });
+    const limb = createLimb(linearLimb({ stiffness: kk, preloadTravel: s0, limbLength: R }));
+    expect(limbEnergies(limb, 0.038 / R).drawEnergy).toBeCloseTo(W, 10);
+    expect(stiffnessForTravel({ drawEnergy: -1, travel: 0.038, preloadTravel: s0 })).toBeNaN();
+    expect(stiffnessForTravel({ drawEnergy: 90, travel: 0, preloadTravel: 0 })).toBeNaN();
+  });
+});
+
+describe('table limb', () => {
+  it('reproduces the linear limb from linear data exactly', () => {
+    const kt = k * R * R;
+    const rotation = [0.05, 0.1, 0.2, 0.3, 0.4];
+    const { limb: data, error } = tableLimb({ rotation, moment: rotation.map((q) => kt * q), alpha0: s0 / R });
+    expect(error).toBeNull();
+    const table = createLimb(/** @type {TableLimbData} */ (data));
+    const linear = createLimb(linearLimb({ stiffness: k, preloadTravel: s0, limbLength: R }));
+    // The table starts at 0.05 rad, so the unloaded point (0, 0) is added.
+    expect(table.kind === 'table' && table.curve.knots[0]).toBe(0);
+    for (const alpha of [-0.2, -0.05, 0, 0.1, 0.25, 0.4, 0.6]) {
+      expect(table.energy(alpha)).toBeCloseTo(linear.energy(alpha), 10);
+      expect(table.moment(alpha)).toBeCloseTo(linear.moment(alpha), 9);
+      expect(table.stiffness(alpha)).toBeCloseTo(linear.stiffness(alpha), 8);
+    }
+    for (const alpha of [0, 0.1, 0.5]) expect(table.inverse(linear.energy(alpha))).toBeCloseTo(alpha, 12);
+  });
+
+  it('fits a nonlinear monotone table with a C2 curve and integrates it exactly', () => {
+    const rotation = [0, 0.08, 0.16, 0.24, 0.32, 0.4];
+    const moment = [0, 120, 205, 270, 330, 400];
+    const { limb: data } = tableLimb({ rotation, moment, alpha0: 0.1 });
+    const limb = createLimb(/** @type {TableLimbData} */ (data));
+    rotation.forEach((q, i) => expect(limb.moment(q - 0.1)).toBeCloseTo(moment[i], 9));
+    for (const alpha of [0, 0.05, 0.17, 0.25, 0.4]) {
+      // Quadrature per knot interval: the quintic pieces join with a jump in M'''.
+      const cuts = [0, ...rotation.filter((q) => q > 0 && q < alpha + 0.1), alpha + 0.1];
+      let exact = 0;
+      for (let j = 0; j < cuts.length - 1; j++) exact += integrate((q) => limb.moment(q - 0.1), cuts[j], cuts[j + 1], 2);
+      expect(limb.energy(alpha)).toBeCloseTo(exact, 9);
+      expect(derivative(limb.moment, alpha, 1e-5)).toBeCloseTo(limb.stiffness(alpha), 4);
+      const back = limb.inverse(limb.energy(alpha));
+      expect(Math.abs(limb.energy(back) - limb.energy(alpha))).toBeLessThan(INVERSE_TOLERANCE);
+    }
+    // Monotone data give a monotone moment.
+    for (let q = 0; q < 0.4; q += 0.001) expect(limb.moment(q + 0.001 - 0.1)).toBeGreaterThanOrEqual(limb.moment(q - 0.1));
+    // Beyond the table the moment continues with the end slope.
+    const end = 0.4 - 0.1;
+    expect(limb.moment(end + 0.1)).toBeCloseTo(400 + 0.1 * limb.stiffness(end), 9);
+    expect(derivative(limb.energy, end + 0.05, 1e-4)).toBeCloseTo(limb.moment(end + 0.05), 7);
+    expect(limb.inverse(limb.energy(end + 0.3))).toBeCloseTo(end + 0.3, 10);
+    expect(limb.inverse(-1)).toBeNaN();
+  });
+
+  it('rejects invalid tables with a message', () => {
+    expect(tableLimb({ rotation: [0.1], moment: [5], alpha0: 0 }).error).toMatch(/2 rows/);
+    expect(tableLimb({ rotation: [0.1, 0.2], moment: [5], alpha0: 0 }).error).toMatch(/2 rows/);
+    expect(tableLimb({ rotation: [0.1, 0.1], moment: [5, 6], alpha0: 0 }).error).toMatch(/row 2/);
+    expect(tableLimb({ rotation: [0.1, 0.2], moment: [5, -6], alpha0: 0 }).error).toMatch(/row 2/);
+    expect(tableLimb({ rotation: [0.1, 0.2], moment: [5, 6], alpha0: NaN }).error).toMatch(/preload/);
+    const flat = tableLimb({ rotation: [0, 1], moment: [0, 0], alpha0: 0 }).limb;
+    expect(createLimb(/** @type {TableLimbData} */ (flat)).inverse(1)).toBeNaN();
+  });
+});
+
+describe('limbFromState', () => {
+  const state = defaultState();
+
+  it('builds the linear limb of the stiffness mode', () => {
+    const { limb, error } = limbFromState(state.limb, state.geometry.limbLength);
+    expect(error).toBeNull();
+    expect(limb).toEqual(linearLimb({ stiffness: state.limb.stiffness, preloadTravel: state.limb.preloadTravel, limbLength: state.geometry.limbLength }));
+  });
+
+  it('derives the stiffness in the travel mode from the draw energy', () => {
+    const limbState = { ...state.limb, mode: /** @type {const} */ ('travel') };
+    expect(limbFromState(limbState, R).error).toMatch(/draw energy/);
+    const { limb } = limbFromState(limbState, R, { drawEnergy: 80 });
+    const e = limbEnergies(createLimb(/** @type {any} */ (limb)), limbState.travel / R);
+    expect(e.drawEnergy).toBeCloseTo(80, 10);
+  });
+
+  it('converts table rows from axle travel and force to rotation and moment', () => {
+    const table = [
+      { travel: 0, force: 800 },
+      { travel: 0.02, force: 1300 },
+      { travel: 0.04, force: 1800 },
+    ];
+    const limbState = { ...state.limb, mode: /** @type {const} */ ('table'), table };
+    const { limb } = limbFromState(limbState, R);
+    const l = createLimb(/** @type {any} */ (limb));
+    expect(l.moment(0)).toBeCloseTo(800 * R, 9);
+    expect(l.moment(0.04 / R)).toBeCloseTo(1800 * R, 9);
+    expect(l.alpha0).toBeCloseTo(state.limb.preloadTravel / R, 15);
+    expect(limbFromState({ ...limbState, table: /** @type {any} */ (null) }, R).error).toMatch(/2 rows/);
+  });
+
+  it('rejects invalid values', () => {
+    expect(limbFromState(state.limb, 0).error).toMatch(/lever length/);
+    expect(limbFromState({ ...state.limb, stiffness: -1 }, R).error).toMatch(/stiffness/);
+    expect(limbFromState({ ...state.limb, preloadTravel: -0.01 }, R).error).toMatch(/preload/);
+  });
+});
