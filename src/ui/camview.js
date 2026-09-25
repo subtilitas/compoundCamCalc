@@ -234,6 +234,22 @@ export function radialBounds(result, boreRadius) {
 }
 
 /**
+ * Distance along the unit direction (ux, uy) from (x, y) to the circle of
+ * radius r about the origin; 0 when the point lies outside it.
+ * @param {number} x
+ * @param {number} y
+ * @param {number} ux
+ * @param {number} uy
+ * @param {number} r
+ */
+export function rayToCircle(x, y, ux, uy, r) {
+  const b = x * ux + y * uy;
+  const c = x * x + y * y - r * r;
+  if (!(c < 0)) return 0;
+  return -b + Math.sqrt(b * b - c);
+}
+
+/**
  * SVG transform of the cam turned by θ.
  * @param {number} theta (rad)
  */
@@ -405,8 +421,11 @@ export function createCamView(container) {
     setAttrs(leverC, { x1: 0, y1: 0, x2: coord(footC[0]), y2: coord(-footC[1]) });
     // Cord directions in the cam frame, tangent at the contact: the string
     // towards the nock, the cable towards the anchor.
-    const lenS = Math.min(Math.max(p.spanS, 0), reach);
-    const lenC = Math.min(Math.max(p.spanC, 0), reach);
+    // Each line ends inside the fitted view: at the circle that the square
+    // view box encloses.
+    const edge = size / 2;
+    const lenS = Math.min(Math.max(p.spanS, 0), reach, rayToCircle(p.stringCamX, p.stringCamY, Math.sin(p.psiS), -Math.cos(p.psiS), edge));
+    const lenC = Math.min(Math.max(p.spanC, 0), reach, rayToCircle(p.cableCamX, p.cableCamY, -Math.sin(p.psiC), Math.cos(p.psiC), edge));
     const us = [Math.sin(p.psiS), -Math.cos(p.psiS)];
     const uc = [-Math.sin(p.psiC), Math.cos(p.psiC)];
     setAttrs(cordS, {

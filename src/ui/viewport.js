@@ -198,6 +198,8 @@ export function createViewport(root, { prefix, label, extra = [] }) {
   }
 
   function drawScale() {
+    // No scale without a drawing.
+    scale.style.display = drawn ? '' : 'none';
     const bar = niceLength(view.size / 5, unit);
     const x0 = view.x + 0.05 * view.size;
     const y0 = view.y + 0.94 * view.size;

@@ -34,6 +34,19 @@ test.describe('draw position', () => {
     await expect.poll(async () => ((await theta(page)) * 180) / Math.PI).toBeCloseTo(rotation, 0);
     await expect(page.getByTestId('scrubber-readout')).toContainText('Draw 29.00 in');
     await expect(page.getByTestId('scrubber-plus')).toBeDisabled();
+    // The cord-direction lines end inside the fitted cam view.
+    const inside = await page.evaluate(() => {
+      const svgEl = /** @type {SVGSVGElement} */ (document.querySelector('[data-testid="cam-view"]'));
+      const [vx, vy, vs] = /** @type {string} */ (svgEl.getAttribute('viewBox')).split(' ').map(Number);
+      const rotor = /** @type {SVGGElement} */ (document.querySelector('[data-testid="cam-rotor"]'));
+      const m = /** @type {DOMMatrix} */ (rotor.transform.baseVal.consolidate()?.matrix ?? new DOMMatrix());
+      return ['cam-cord-string', 'cam-cord-cable'].every((id) => {
+        const l = /** @type {SVGLineElement} */ (document.querySelector(`[data-testid="${id}"]`));
+        const p = new DOMPoint(Number(l.getAttribute('x2')), Number(l.getAttribute('y2'))).matrixTransform(m);
+        return p.x >= vx - 1e-9 && p.x <= vx + vs + 1e-9 && p.y >= vy - 1e-9 && p.y <= vy + vs + 1e-9;
+      });
+    });
+    expect(inside).toBe(true);
     // The chart marker sits at the full-draw line on the right of the plot.
     const line = page.getByTestId('chart-marker').locator('line');
     const x = Number(await line.getAttribute('x1'));

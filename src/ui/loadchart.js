@@ -261,7 +261,11 @@ export function createLoadChart(container) {
       caption.hidden = text === '';
       if (!next) {
         layout = null;
+        // No scales of an earlier cam stay on screen.
         lines.replaceChildren();
+        grid.replaceChildren();
+        axes.replaceChildren();
+        setAttrs(bg, { width: 0, height: 0 });
         marker.style.display = 'none';
         fill(now, []);
         fill(peaks, []);

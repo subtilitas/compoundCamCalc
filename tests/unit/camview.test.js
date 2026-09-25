@@ -15,6 +15,7 @@ import {
   pathOf,
   poseText,
   radialBounds,
+  rayToCircle,
   rotorTransform,
   staleCaption,
   viewBoxFor,
@@ -247,5 +248,15 @@ describe('turned cam', () => {
     expect(poseText(pose, { draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' }))
       .toBe('At 24.0 in: cam turned 180.0°; lever arms: string 63.6 mm, cable 9.1 mm, ratio 7.0 : 1');
     expect(poseText({ ...pose, pC: 0 }, { draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' })).not.toMatch(/ratio/);
+  });
+});
+
+describe('rayToCircle', () => {
+  it('measures the distance to the circle along a direction', () => {
+    expect(rayToCircle(0, 0, 1, 0, 2)).toBe(2);
+    expect(rayToCircle(1, 0, 1, 0, 2)).toBeCloseTo(1, 12);
+    expect(rayToCircle(1, 0, -1, 0, 2)).toBeCloseTo(3, 12);
+    expect(rayToCircle(0, 1, 1, 0, 2)).toBeCloseTo(Math.sqrt(3), 12);
+    expect(rayToCircle(3, 0, 1, 0, 2)).toBe(0);
   });
 });
