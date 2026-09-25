@@ -115,6 +115,9 @@ export function tableLimb({ rotation, moment, alpha0 }) {
 export function limbFromState(limb, limbLength, options = {}) {
   if (!(limbLength > 0)) return { limb: null, error: 'The limb lever length must be positive' };
   const preloadTravel = limb.preloadTravel;
+  if (!(preloadTravel >= 0 && Number.isFinite(preloadTravel))) {
+    return { limb: null, error: 'The limb preload travel must be at least 0' };
+  }
   if (limb.mode === 'table') {
     const rows = Array.isArray(limb.table) ? limb.table : [];
     return tableLimb({
@@ -219,8 +222,10 @@ function tableMethods(d) {
  * @returns {Limb}
  */
 export function createLimb(data) {
-  const methods = data.kind === 'table' ? tableMethods(data) : linearMethods(data);
-  return { ...data, ...methods };
+  const kind = /** @type {{ kind?: unknown } | null | undefined} */ (data)?.kind;
+  if (kind === 'table') return { ...data, ...tableMethods(/** @type {TableLimbData} */ (data)) };
+  if (kind === 'linear') return { ...data, ...linearMethods(/** @type {LinearLimbData} */ (data)) };
+  throw new RangeError(`Unknown limb kind "${String(kind)}"`);
 }
 
 /**

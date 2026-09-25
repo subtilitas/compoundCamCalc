@@ -183,4 +183,18 @@ describe('limbFromState', () => {
     expect(limbFromState({ ...state.limb, stiffness: -1 }, R).error).toMatch(/stiffness/);
     expect(limbFromState({ ...state.limb, preloadTravel: -0.01 }, R).error).toMatch(/preload/);
   });
+
+  it('rejects a negative preload in table mode, even when every row stays above zero rotation', () => {
+    const table = { ...state.limb, mode: /** @type {const} */ ('table'), preloadTravel: -0.01, table: [{ travel: 0.02, force: 100 }, { travel: 0.08, force: 400 }] };
+    expect(limbFromState(table, R).error).toMatch(/preload/);
+    expect(limbFromState({ ...table, preloadTravel: NaN }, R).error).toMatch(/preload/);
+  });
+});
+
+describe('createLimb', () => {
+  it('rejects an unknown limb kind', () => {
+    const data = /** @type {any} */ ({ kind: 'spring', torsionalStiffness: 100, alpha0: 0.1 });
+    expect(() => createLimb(data)).toThrow(/Unknown limb kind/);
+    expect(() => createLimb(/** @type {any} */ (null))).toThrow(/Unknown limb kind/);
+  });
 });

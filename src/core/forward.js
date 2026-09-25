@@ -252,6 +252,11 @@ export function solveForward(input) {
   if (!bow) return failed('invalid-input', /** @type {string} */ (error));
   const grid = gridFor(input, bow.xBrace, bow.xFull);
   if (typeof grid === 'string') return failed('invalid-input', grid);
+  for (const key of /** @type {const} */ (['stringTermination', 'cableTermination'])) {
+    if (input[key] !== undefined && !Number.isFinite(input[key])) {
+      return failed('invalid-input', `${key} must be a finite angle`);
+    }
+  }
   const maxIterations = input.maxIterations ?? MAX_ITERATIONS;
 
   // Brace: θ = 0, α = 0.
@@ -390,6 +395,21 @@ export function solveForward(input) {
   const cableTermination = input.cableTermination ?? minPsiC - DEFAULT_WRAP;
 
   const diagnostics = collectDiagnostics(out, solved, bow.xBrace, stringTermination, cableTermination, stringSupport, cableSupport);
+  // A grid that starts after brace does not sample the brace tensions.
+  if (!(grid[0] <= bow.xBrace)) {
+    const braceRange = /** @type {[number, number]} */ ([bow.xBrace, bow.xBrace]);
+    if (!(brace.stringTension > 0)) diagnostics.unshift({ code: 'slack-string', xRange: braceRange, message: MESSAGES['slack-string'] });
+    if (!(brace.cableTension > 0)) diagnostics.push({ code: 'slack-cable', xRange: braceRange, message: MESSAGES['slack-cable'] });
+  }
+  // The terminations must lie on the defined part of an open track.
+  const outside = (/** @type {number} */ psi, /** @type {import('./support.js').Support} */ s) => psi < s.min || psi > s.max;
+  if (outside(stringTermination, stringSupport) || outside(cableTermination, cableSupport)) {
+    diagnostics.push({
+      code: 'wrap-exhausted',
+      xRange: [grid[0], grid[n - 1]],
+      message: `${MESSAGES['wrap-exhausted']}: a cord termination lies beyond the end of its track`,
+    });
+  }
   if (failedAt >= 0) {
     diagnostics.unshift({
       code: 'no-convergence',

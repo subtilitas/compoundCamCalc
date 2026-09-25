@@ -648,6 +648,9 @@ describe('forward model: diagnostics', () => {
       input({ limb: { kind: 'linear', torsionalStiffness: NaN, alpha0: 0.1 } }),
       input({ limb: { ...table, alpha0: NaN } }),
       input({ limb: /** @type {any} */ ({ ...table, alpha0: undefined }) }),
+      input({ limb: /** @type {any} */ ({ kind: 'spring', torsionalStiffness: 100, alpha0: 0.1 }) }),
+      input({ stringTermination: NaN }),
+      input({ cableTermination: Infinity }),
     ];
     for (const c of cases) {
       const r = solveForward(c);
@@ -709,6 +712,17 @@ describe('forward model: diagnostics', () => {
     for (const d of r.diagnostics) expect(d.xRange).toEqual([geometry.braceHeight, geometry.braceHeight]);
   });
 
+  it('slack-string: reported for the brace tensions when the grid starts after brace', () => {
+    const zero = linearLimb({ stiffness: 10e3, preloadTravel: 0, limbLength: geometry.limbLength });
+    const xFull = bowFor(twinCam.stringTrack).xFull;
+    const x = Array.from({ length: 50 }, (_, i) => geometry.braceHeight + 0.01 + ((xFull - geometry.braceHeight - 0.01) * i) / 49);
+    const r = solveForward(input({ limb: zero, x }));
+    expect(r.status).toBe('infeasible');
+    expect(codes(r)).toContain('slack-string');
+    expect(codes(r)).toContain('slack-cable');
+    expect(r.diagnostics.find((d) => d.code === 'slack-string')?.xRange).toEqual([geometry.braceHeight, geometry.braceHeight]);
+  });
+
   it('slack-string: a small negative cable lever arm makes the string push', () => {
     const r = solveForward(input({ cableTrack: eccentricCircle({ radius: 0.01, offset: 0.08, phase: 0 }), samples: 100 }));
     expect(r.brace?.pC).toBeLessThan(0);
@@ -744,6 +758,21 @@ describe('forward model: diagnostics', () => {
 
     const cable = solveForward(input({ samples: 50, cableTermination: 4 }));
     expect(cable.diagnostics.find((q) => q.code === 'wrap-exhausted')?.xRange?.[0]).toBe(cable.x[0]);
+  });
+
+  it('wrap-exhausted: a default termination beyond the end of an open cable track', () => {
+    // Open spline copy of the cable track that ends 5° beyond the smallest
+    // brace-side contact: the default termination (30° before it) lies off the track.
+    const reference = solveForward(input({ samples: 100 }));
+    const track = createSupport(twinCam.cableTrack);
+    const lo = Math.min(...reference.psiC) - 5 * DEG;
+    const hi = Math.max(...reference.psiC) + 5 * DEG;
+    const knots = Array.from({ length: 81 }, (_, i) => lo + ((hi - lo) * i) / 80);
+    const open = splineSupport(knots, knots.map((psi) => track.p(psi)), { endSlopes: [track.dp(lo), track.dp(hi)] });
+    const r = solveForward(input({ cableTrack: open, samples: 100 }));
+    const d = r.diagnostics.find((q) => q.code === 'wrap-exhausted');
+    expect(d?.message).toMatch(/termination lies beyond the end of its track/);
+    expect(r.status).toBe('infeasible');
   });
 
   it('wrap-overlap: a string track of 36 mm wraps more than one turn early in the draw', () => {

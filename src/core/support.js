@@ -185,7 +185,7 @@ export function splineSupport(knots, values, options = {}) {
   const delta = new Float64Array(n);
   for (let i = 0; i < n; i++) {
     h[i] = x[i + 1] - x[i];
-    if (!(h[i] > 0) || !Number.isFinite(y[i]) || !Number.isFinite(y[i + 1])) {
+    if (!(h[i] > 0) || !Number.isFinite(h[i]) || !Number.isFinite(x[i]) || !Number.isFinite(y[i]) || !Number.isFinite(y[i + 1])) {
       throw new RangeError(`Spline knots must increase and values must be finite (interval ${i})`);
     }
     delta[i] = (y[i + 1] - y[i]) / h[i];

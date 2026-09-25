@@ -241,6 +241,8 @@ describe('spline support', () => {
     expect(() => splineSupport([0, 1, 2], [1, 2])).toThrow(RangeError);
     expect(() => splineSupport([0, 1, 1], [1, 2, 3])).toThrow(RangeError);
     expect(() => splineSupport([0, 1, 2], [1, NaN, 3])).toThrow(RangeError);
+    expect(() => splineSupport([0, 1, Infinity], [1, 2, 3])).toThrow(RangeError);
+    expect(() => splineSupport([-Infinity, 0, 1], [1, 2, 3])).toThrow(RangeError);
     expect(() => splineSupport([0, 1, 2], [1, 2, 1], { periodic: true })).toThrow(RangeError);
   });
 });
