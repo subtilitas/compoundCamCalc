@@ -559,10 +559,9 @@ The result is optimal only when every active constraint holds within the
 tolerance times its size t_i = max(s_i, |b_i| + Σ|c_ij·x_j|), and every
 redundant equality within the tolerance times t_p + Σ|r_k|·t_k over the
 rows it combines. Otherwise the status is `infeasible`. An active
-constraint outside its bound means that rounding has moved x off it: the
-programme cannot be solved in double precision, for example with normals
-that differ by 1e-7 of their size and a solution 1e7 times the row scale
-away. A redundant equality outside its bound was only nearly dependent.
+constraint outside its bound means that rounding in this solver has moved
+x off it, typically with nearly parallel active normals (Reliability,
+below). A redundant equality outside its bound was only nearly dependent.
 The combined bound keeps an exact combination of large rows: with rows
 (3e8, 2), (−3e8, 5) and their sum (0, 7), rounding leaves the sum 4.7e-6
 off, within 1e-10 of the sizes of the combined rows (6e8 each) and outside
@@ -580,7 +579,9 @@ rows that change each coefficient of an earlier row by up to 5e-7 of its
 size (nearly parallel); 60 % of the problems pass through a known point
 (feasible), the others have arbitrary right-hand sides. Over 400,000
 problems (eight seeds of the unit test's generator), by the smallest sine
-between two rows of a feasible problem with two or more unknowns:
+between two rows; the first row counts every feasible problem without
+nearly parallel rows, the others the feasible problems with two or more
+unknowns:
 
 | Smallest sine between two rows | Feasible problems | Reported `infeasible` | `optimal` with a redundant equality off by more than 1e-8 of its size |
 |---|---|---|---|
@@ -852,7 +853,7 @@ Measured values are the largest errors over the tested samples.
 | Contact solver: tangent pair within 1 µm of a circle next to the end of the scan window; warm starts up to 1e6 rad | | passes |
 | One test per diagnostic code | | passes |
 | Realistic twin cam (below): peak between 150 N and 500 N, let-off above 20 %, each cord wrapped less than one turn | | 260 N, 38 %, 341° |
-| Forward model: coarse solve (100 samples) and full solve (1500 samples) | 8 ms and 100 ms, tested with a factor 5 margin | 0.4 ms and 3.8 ms to 4.7 ms after warm-up |
+| Forward model: coarse solve (100 samples) and full solve (1500 samples) | 8 ms and 100 ms, tested with a factor 5 margin | 0.4 ms and 5.2 ms median after warm-up (full: 3.6 ms to 7.8 ms over 30 runs) |
 | Inverse brace conditions against the forward model of the twin cam: T_s0, T_c0, p_c0, ψ_c0, c_a0 from F'(x_b) | 1e-12 relative, 1e-15 m, 1e-13 rad | passes |
 | Inverse F''(x_b) against a degree-7 fit of the forward force at x_b + k·1 mm, for the twin cam and for a cable circle of radius p_c0; F'(x_b) of the same fit | 1e-8 relative; 1e-9 relative | 4.7e-10 and 2.3e-9; 1.6e-14 |
 | Brace feasibility: T_s0 ≤ 0 and T_s0 ≥ M_b/s_a0 rejected, 0.999 of the limit accepted | | passes |
@@ -882,7 +883,7 @@ Measured values are the largest errors over the tested samples.
 | Solve with the first curve point moved by ±1e-12 m, ±5e-10 m and ±1e-9 m, or the last by 1e-9 m (all accepted by validation): the result of the exact state; inverse samples within 1e-9 m of x_b take the brace values | | identical |
 | Inverse B·t = √(D² − p_c²) minus p_c'(ψ_c) against the free cable span of the forward model, twin cam | 1e-8 m | 4.8e-12 m |
 | Fitted cam without the brace value (10 mm wall, point 2 at 60 N): cable-brace mark at the brace contact of the forward model, 0.47° after ψ_c0, on the cable line to the anchor; lead-in from that contact | 1e-9 m, 1e-9 rad | passes |
-| Suggestions applied: the brace-tension force of point 2 at 30 mm and 50 mm preload travel (slope 0.77 and 0.80 of the limit), the cable-clearance hub and let-off limits at let-off 80 %, a lower or 2 in later point 2 for a cable contact behind brace at point 2, point 5 moved 0.5 in earlier for a `cable-radius` miss between points 5 and 6; for a miss between points 2 and 3 at rise 30 % (43.5 N), rise 40 % (10.6 N) and 44 % (no diagnostics), and point 3 of the custom curve 1.5 in later (6.6 N, within the tolerance), while point 2 10 N lower raises the difference to 60 N | | passes |
+| Suggestions applied: the brace-tension force of point 2 at 30 mm and 50 mm preload travel (slope 0.77 and 0.80 of the limit), the cable-clearance hub and let-off limits at let-off 80 %, a lower or 2 in later point 2 for a cable contact behind brace at point 2, point 5 moved 0.5 in earlier for a `cable-radius` miss between points 5 and 6; for a miss between points 2 and 3 at rise 30 % (43.5 N), rise 40 % (10.6 N) and 44 % (no diagnostics), and point 3 of the custom curve 1.5 in later (6.6 N, within the tolerance), while point 2 10 N lower raises the difference to 60 N; for a miss between brace and point 2 with point 2 at 16.75 in and 240 N (10.7 N), point 2 at 245 N (5.7 N, no diagnostics) | | passes |
 | Solve of the default preset: coarse and full, timed in a worker thread (no coverage counters) | 30 ms and 200 ms, tested with a factor 5 margin | 24 ms to 27 ms and 30 ms to 35 ms after warm-up (Node 22, 4-core 2.1 GHz Xeon); 26 ms to 28 ms and 33 ms to 39 ms in the coverage run |
 | Coarse solve with point 2 at 10 in and 50 N, where no lead-in wrap closes the track: no trial solves, timed in the worker thread | 10 times the 30 ms coarse budget | 78 ms to 89 ms after warm-up; 76 ms to 86 ms in the coverage run |
 

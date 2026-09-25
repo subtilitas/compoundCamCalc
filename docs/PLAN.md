@@ -276,16 +276,17 @@ Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
   dependent when n constraints are active or when its step is at rounding
   level, skips dependent equalities that hold and checks them again at the
   end, refines x onto the active constraints after each added constraint
-  until the residuals stop falling (at most 8 passes), reports `infeasible`
-  when rounding leaves an active constraint or a skipped equality outside
-  the tolerance, and returns `invalid` for mismatched sizes or non-finite
-  data. It is reliable when the active normals differ in direction by well
-  over 1e-6, as in the fit programmes; with two rows 1e-8 to 1e-6 apart it
-  reports 4 % to 13 % of feasible random problems `infeasible` and returns
-  a few `optimal` results with a redundant equality off by up to 1.1e-2 of
-  its size (`docs/model.md`). The fit returns `invalid` for
-  out-of-range input, including points to pass through outside the fitted
-  range or with non-finite values, instead of throwing.
+  while the largest active residual falls or stays above rounding (at most
+  8 passes), reports `infeasible` when rounding leaves an active
+  constraint or a skipped equality outside the tolerance, and returns
+  `invalid` for mismatched sizes or non-finite data. It is reliable when
+  the active normals differ in direction by well over 1e-6, as in the fit
+  programmes; with two rows 1e-8 to 1e-6 apart it reports 4 % to 13 % of
+  feasible random problems `infeasible` and returns a few `optimal`
+  results with a redundant equality off by up to 1.1e-2 of its size
+  (`docs/model.md`). The fit returns `invalid` for out-of-range input,
+  including points to pass through outside the fitted range or with
+  non-finite values, instead of throwing.
 - Equalities at every curve point whose ideal lever arm meets p_min:
   p(ψ_k) = p_k and ∫ p dψ from ψ_c0 to ψ_k from the cable closure, plus
   p(ψ_c0) = p_c0. The fitted cam then passes through the target force and
@@ -622,7 +623,7 @@ but not with the margins of 75 %:
   (tolerance 8.0 N), 92 mm axle travel, 124 mm cam. Eight of the nine
   edits above build (largest 6.7 N; rise 44 % reports `closing-blend`),
   and 29 of the 45 edits do (largest cam 135 mm); tuned for the 45 edits
-  as well, 33 of 45 (2.08 N/mm, 93 mm axle travel, 127 mm cam).
+  as well, 33 of 45 (2.07 N/mm, 93 mm axle travel, 127 mm cam).
 - Default hub with the cam at most 105 mm and the axle travel at most
   85 mm: at best 6.9 N (86 % of the tolerance), and up to 93 % of the
   tolerance on the nine edits, with a 48 mm groove radius and a 73.8 mm

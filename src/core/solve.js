@@ -20,9 +20,10 @@
  * 6. Closed outline from the brace contact of the track, offsets, posts and
  *    marks (core/outline).
  * 7. Forward model of the final cam: achieved curve, loads and metrics.
- * 8. For a closing blend that no lead-in wrap closes: coarse trial solves
- *    with a larger string track or half the minimum bend radius choose the
- *    suggestion (at most five, 90 ms median on 77 edits of point 2).
+ * 8. In a full solve, for a closing blend that no lead-in wrap closes:
+ *    coarse trial solves with a larger string track or half the minimum
+ *    bend radius choose the suggestion (at most five, 107 ms to 112 ms
+ *    median on 76 edits of point 2); a coarse solve names the force curve.
  * @module core/solve
  */
 

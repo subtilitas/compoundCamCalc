@@ -90,18 +90,19 @@ All notable changes are listed here. Versions follow semantic versioning.
   solver treats a constraint as dependent when n constraints are active or
   its step is at rounding level, skips dependent equalities that hold and
   checks them again at the end, refines x onto the active constraints
-  after each step until the residuals stop falling (at most 8 passes),
-  reports `infeasible` when rounding leaves an active constraint or a
-  skipped equality outside the tolerance, and returns `invalid` for
-  mismatched sizes or non-finite data; the fit programmes of 600 random
-  near-default states end with the constraints met to 1e-10 of the row
-  scale. With two rows 1e-8 to 1e-6 apart, 4 % to 13 % of feasible random
-  problems come back `infeasible`, and 44 of 64,054 come back `optimal`
-  with a redundant equality off by up to 1.1e-2 of its size. The fit returns `invalid` for non-finite or out-of-range
+  after each step while the largest active residual falls or stays above
+  rounding (at most 8 passes), reports `infeasible` when rounding leaves
+  an active constraint or a skipped equality outside the tolerance, and
+  returns `invalid` for mismatched sizes or non-finite data; the fit
+  programmes of 600 random near-default states end with the constraints
+  met to 1e-10 of the row scale. With two rows 1e-8 to 1e-6 apart, 4 % to
+  13 % of feasible random problems come back `infeasible`, and 44 of
+  64,054 come back `optimal` with a redundant equality off by up to 1.1e-2
+  of its size. The fit returns `invalid` for non-finite or out-of-range
   input, including points to pass through outside the fitted range or
-  with non-finite values, instead of throwing. A fitted cam whose
-  force stays within 3 % of the peak (at least 2 N) and whose draw energy
-  stays within 0.5 % of the target meets it; 41 of 45 edits of the default
+  with non-finite values, instead of throwing. A fitted cam whose force
+  stays within 3 % of the peak (at least 2 N) and whose draw energy stays
+  within 0.5 % of the target meets it; 41 of 45 edits of the default
   preset (peak 250 N to 290 N, rise 43 % to 50 %, valley 1.0 in to 1.5 in)
   do.
 - Closed cam outline (`src/core/outline.js`): lead-in, closing blend,
@@ -138,10 +139,11 @@ All notable changes are listed here. Versions follow semantic versioning.
   peak. `cable-radius` leaves out the brace blend, gives a negative radius
   as the angle over which the track bends the wrong way, and names the
   draw position and curve points of the largest force difference of the
-  fitted cam; a difference between points 2 and 3 names a later point 3,
-  for a parametric curve a larger rise to peak. `cable-clearance` gives the largest bore radius plus wall
-  that clears the lever arm. The first and last curve point are placed
-  exactly at brace and full draw, so points within the 1e-9 m validation
+  fitted cam; a difference before point 2 names point 2, one between
+  points 2 and 3 a later point 3, for a parametric curve a larger rise to
+  peak. `cable-clearance` gives the largest bore radius plus wall that
+  clears the lever arm. The first and last curve point are placed exactly
+  at brace and full draw, so points within the 1e-9 m validation
   tolerance give the result of the exact state. The cable-brace mark and
   the lead-in start at the brace contact of the built cam.
 - Default preset tuned so the solver builds its cam without diagnostics:

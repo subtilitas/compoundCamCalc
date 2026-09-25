@@ -37,22 +37,22 @@
  *   every redundant equality within the tolerance times t_p + Σ|r_k|·t_k
  *   over the rows of its combination. Otherwise the status is
  *   'infeasible'. An active constraint outside the bound means that
- *   rounding has moved x off it: the programme cannot be solved in double
- *   precision. A redundant equality outside the bound was only nearly
- *   dependent. Example: x = 0 and x + 1e-9·y = 0 with y ≥ 100. At the
- *   unconstrained minimum y = 0.1 the second equality misses by 1e-10 and
- *   counts as redundant; y ≥ 100 then moves its miss to 1e-7, and the
- *   programme is infeasible.
+ *   rounding in this solver has moved x off it, typically with nearly
+ *   parallel active normals (Reliability, below). A redundant equality
+ *   outside the bound was only nearly dependent. Example: x = 0 and
+ *   x + 1e-9·y = 0 with y ≥ 100. At the unconstrained minimum y = 0.1 the
+ *   second equality misses by 1e-10 and counts as redundant; y ≥ 100 then
+ *   moves its miss to 1e-7, and the programme is infeasible.
  *
  * Reliability. The solver is reliable when the active normals differ in
  * direction by well over 1e-6 (sine of the angle between them). In the fit
  * programmes that core/solve.js builds for 600 random near-default states
  * the smallest sine between two active normals is 0.028, and the active
- * residuals end within 6.5e-16 of their size. For
- * two normals 1e-8 to 1e-6 apart, M is nearly singular, a refinement pass
- * removes only part of the residual, and x is uncertain along the nearly
- * shared direction. Two failures remain there (400,000 random problems
- * with up to 5 unknowns and 11 constraints, docs/model.md):
+ * residuals end within 6.5e-16 of their size. For two normals 1e-8 to 1e-6
+ * apart, M is nearly singular, a refinement pass removes only part of the
+ * residual, and x is uncertain along the nearly shared direction. Two
+ * failures remain there (400,000 random problems with up to 5 unknowns and
+ * 11 constraints, docs/model.md):
  * - A feasible programme is reported 'infeasible': 4.0 % of those with
  *   rows 1e-7 to 1e-6 apart, 13 % with rows 1e-8 to 1e-7 apart.
  * - A redundant equality comes back 'optimal' off by more than 1e-8 of its

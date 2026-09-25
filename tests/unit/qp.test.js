@@ -604,7 +604,7 @@ describe('solveQP', () => {
   it('fails only on nearly parallel rows, within the measured rates, on 20,000 random problems', () => {
     // 1 to 5 unknowns, 0 to 11 rows: random rows, multiples and
     // combinations of earlier rows, and rows that change each coefficient
-    // of an earlier row by up to 5e-7 of its size (nearly parallel, 1e-9 to
+    // of an earlier row by up to 5e-7 of its size (nearly parallel, up to
     // 1e-6 apart). 60 % of the problems pass through a known point
     // (feasible), the others have arbitrary right-hand sides. Measured with
     // seed 7: 257 of 4294 feasible problems with nearly parallel rows are

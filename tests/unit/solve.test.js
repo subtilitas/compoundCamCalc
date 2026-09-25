@@ -582,6 +582,29 @@ describe('solve: diagnostics', () => {
     expect(rm.fit.maxForceDifference).toBeLessThan(0.6 * rd.fit.maxForceDifference);
   }, 30_000);
 
+  it('cable-radius: a miss between brace and point 2 names point 2', () => {
+    /** @param {number} F force of point 2 at 16.75 in (N) */
+    const pointTwoAt = (F) => modified((st) => {
+      st.curve.mode = 'custom';
+      st.curve.points[1] = { x: 16.75 * INCH - AMO_OFFSET, F };
+    });
+    // Point 2 at 16.75 in with 240 N: the fitted cam is 10.7 N below the
+    // target at 12.2 in, between brace and point 2, more than the 8.0 N
+    // tolerance. The worst range of the ideal track lies after point 2, at
+    // 17.2 in to 17.8 in; the suggestion follows the fitted cam.
+    const { r, d } = expectCode(pointTwoAt(240), 'cable-radius');
+    expect(codes(r)).toEqual(['cable-radius', 'cable-clearance']);
+    expect(d.message).toMatch(/at worst it bends the wrong way over \d+\.\d° between 17\.\d in and 17\.\d in/);
+    expect(d.message).toMatch(/the largest difference, below the target, lies at 12\.\d in, between points 1 and 2$/);
+    expect(d.suggestion).toBe('Move point 2 so that the force rises more evenly from brace to point 3');
+    expect(r.fit.maxForceDifference).toBeGreaterThan(10);
+    // Applied: point 2 5 N higher builds without diagnostics (5.7 N).
+    const higher = solve(pointTwoAt(245), { resolution: 'coarse' });
+    expect(higher.status).toBe('ok');
+    expect(higher.diagnostics).toEqual([]);
+    expect(higher.fit.maxForceDifference).toBeLessThan(0.6 * r.fit.maxForceDifference);
+  });
+
   it('cable-clearance: a let-off that needs a cable lever arm inside the bore wall', () => {
     const { d } = expectCode(modified((s) => (s.curve.params.letOff = 0.9), { regenerate: true }), 'cable-clearance');
     expect(d.message).toMatch(/lever arm of \d+\.\d mm between .* in and .* in/);
