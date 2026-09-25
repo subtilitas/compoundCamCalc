@@ -141,8 +141,8 @@ All notable changes are listed here. Versions follow semantic versioning.
   curvature and its limit for the string and the cable track separately;
   the string termination lies the residual wrap past the achieved
   full-draw contact, the reported full-draw cable contact is the achieved
-  one, and the limb rotation is checked on the final cam as well as on the
-  ideal track; `brace` holds the brace conditions and the
+  one, and the string wrap and the limb rotation of the final cam replace
+  those of the ideal track once the cam is built; `brace` holds the brace conditions and the
   ends of the brace blend as ψ_c0, ψ_1 (rad) and x_1 (m). Without the fit
   the achieved curve equals the target from point 2 on within 1.3e-7 N
   (full) on a test cam. In the limb travel mode the stiffness passes

@@ -684,7 +684,6 @@ function solveState(state, resolution, maxIterations, trials) {
   if (Number.isFinite(psiSFAchieved) && Math.abs(psiSFAchieved - psiSFull) > TERMINATION_TOLERANCE) {
     stringEnd = psiSFAchieved + body.residualWrap;
     res.tracks.string = { psiFull: psiSFAchieved, psiEnd: stringEnd };
-    if (!diags.some((d) => d.code === 'string-wrap')) checkStringWrap(stringSupport, state, psiSFAchieved, fmt, diags);
     const tForward = now();
     forward = solveForward({
       geometry,
@@ -698,6 +697,19 @@ function solveState(state, resolution, maxIterations, trials) {
     });
     res.timings.forward += now() - tForward;
   }
+  // The string wrap and the limb rotation of the final cam replace those of
+  // the ideal track, which differ for a fitted cam (by 0.005° and 0.008° on
+  // the default preset and its edits); a trial solve has already stopped at
+  // the ideal ones.
+  for (const code of ['string-wrap', 'limb-rotation']) {
+    const k = diags.findIndex((d) => d.code === code);
+    if (k >= 0) diags.splice(k, 1);
+  }
+  checkStringWrap(stringSupport, state, Number.isFinite(psiSFAchieved) ? psiSFAchieved : psiSFull, fmt, diags);
+  const rotation = limbRotationDiagnostic(
+    forward.alpha[forward.n - 1], forward.x[forward.n - 1], forward.drawEnergy, state, ctx, limbData, fmt,
+  );
+  if (rotation) diags.push(rotation);
   const closing = closed.ok ? null : closingDiagnostic(closed, best.active, state, rhoLimitCable, pMin, settings.step, fmt, trials);
   if (closing) diags.push(closing.diagnostic);
   if (trialFails()) return res;
@@ -728,14 +740,6 @@ function solveState(state, resolution, maxIterations, trials) {
     axleX: forward.axleX, axleY: forward.axleY, spanS: forward.spanS, spanC: forward.spanC,
   };
   forwardDiagnostics(forward, diags, fmt);
-  // A fitted cam can store more energy than the ideal track and turn the
-  // limbs further.
-  if (!diags.some((d) => d.code === 'limb-rotation')) {
-    const rotation = limbRotationDiagnostic(
-      forward.alpha[forward.n - 1], forward.x[forward.n - 1], forward.drawEnergy, state, ctx, limbData, fmt,
-    );
-    if (rotation) diags.push(rotation);
-  }
 
   // Outlines, posts, marks.
   const tOutline2 = now();
@@ -1112,6 +1116,20 @@ function checkIdeal(s, i1, state, ctx, limbData, targetMetrics, fmt, diags) {
 }
 
 /**
+ * Two angles in degrees with 1 to 4 decimals, the fewest that tell them
+ * apart.
+ * @param {number} a (rad)
+ * @param {number} b (rad)
+ * @returns {[string, string]}
+ */
+function distinctAngles(a, b) {
+  const deg = (/** @type {number} */ v, /** @type {number} */ d) => `${(v / DEG).toFixed(d)}°`;
+  let digits = 1;
+  while (digits < 4 && deg(a, digits) === deg(b, digits)) digits++;
+  return [deg(a, digits), deg(b, digits)];
+}
+
+/**
  * Diagnostic of a limb rotation from brace to full draw above the maximum
  * limb rotation, or null.
  * @param {number} alphaFull limb rotation at full draw α_f (rad)
@@ -1138,13 +1156,10 @@ function limbRotationDiagnostic(alphaFull, xFull, energy, state, ctx, limbData, 
   } else {
     suggestion = `Use a stiffer limb table, or raise the maximum limb rotation to ${fmt.angle(alphaFull + 0.5 * DEG)}`;
   }
-  // Enough decimals to tell the rotation from the limit (up to 4).
-  const deg = (/** @type {number} */ v, /** @type {number} */ d) => `${(v / DEG).toFixed(d)}°`;
-  let digits = 1;
-  while (digits < 4 && deg(alphaFull, digits) === deg(maxRotation, digits)) digits++;
+  const [turn, limit] = distinctAngles(alphaFull, maxRotation);
   return diagnostic(
     'limb-rotation',
-    `The limbs turn ${deg(alphaFull, digits)} from brace to full draw; the maximum limb rotation is ${deg(maxRotation, digits)}`,
+    `The limbs turn ${turn} from brace to full draw; the maximum limb rotation is ${limit}`,
     suggestion,
     { xRange: [xFull, xFull] },
   );
@@ -1598,7 +1613,7 @@ function checkStringWrap(s, state, psiFull, fmt, diags) {
     diags.push(
       diagnostic(
         'string-wrap',
-        `The string wraps ${fmt.angle(wrap)} on its track at brace, including the ${fmt.angle(body.residualWrap)} residual wrap; a groove holds less than one turn`,
+        `The string wraps ${distinctAngles(wrap, 2 * Math.PI)[0]} on its track at brace, including the ${fmt.angle(body.residualWrap)} residual wrap; a groove holds less than one turn`,
         text.charAt(0).toUpperCase() + text.slice(1),
         { psiRange: [0, wrap] },
       ),

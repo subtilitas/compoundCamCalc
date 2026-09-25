@@ -698,6 +698,29 @@ describe('solve: diagnostics', () => {
     }
   });
 
+  it('checks the string wrap and the limb rotation on the final cam, not on the ideal track', () => {
+    // Default preset: the ideal full-draw string contact lies 8.96e-5 rad
+    // beyond the achieved one. A residual wrap in between wraps the ideal
+    // track a full turn, the final cam 359.997°.
+    const inside = solve(modified((s) => (s.body.residualWrap = 1.4639550368669456)), { resolution: 'coarse' });
+    expect(inside.status).toBe('ok');
+    expect(/** @type {any} */ (inside.metrics).stringWrap).toBeLessThan(2 * Math.PI);
+    const over = expectCode(modified((s) => (s.body.residualWrap = 1.4641)), 'string-wrap');
+    expect(over.d.message).toMatch(/^The string wraps 360\.01° on its track at brace/);
+    // A fitted cam that turns the limbs 16.975°, its ideal track 16.983°: a
+    // 16.979° limit holds for the cam that is built.
+    let s = reduce(defaultState(), { type: 'setCurveParams', params: { peak: 270.7047847708244, letOff: 0.7737568576604859 } });
+    s = structuredClone(s);
+    Object.assign(s.limb, { stiffness: 2575.683623121904, preloadTravel: 0.17818955784579255, maxRotation: 0.2963370393401076 });
+    Object.assign(s.stringTrack, { radius: 0.047027845708200636, offset: 0.023169014773410285, phase: -2.066118159917778 });
+    expect(validate(s)).toEqual([]);
+    const limb = solve(s, { resolution: 'coarse' });
+    expect(limb.fit.used).toBe(true);
+    const alpha = /** @type {NonNullable<SolveResult['achieved']>} */ (limb.achieved).alpha;
+    expect(alpha[alpha.length - 1]).toBeLessThan(s.limb.maxRotation);
+    expect(codes(limb)).not.toContain('limb-rotation');
+  });
+
   it('places the string termination at the residual wrap past the achieved full-draw contact', () => {
     // A fitted cam whose full-draw string contact lies 0.1° before the ideal one.
     const s = reduce(defaultState(), { type: 'setCurveParams', params: { peak: 250, riseFraction: 0.49, valleyWidth: 1.4 * INCH } });
