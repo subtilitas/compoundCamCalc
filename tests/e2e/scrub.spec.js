@@ -54,6 +54,24 @@ test.describe('draw position', () => {
     await expect(slider).toHaveAttribute('aria-valuetext', /\(brace\)/);
   });
 
+  test('after a unit change the slider and the readout show the same position', async ({ page }) => {
+    await page.goto('./');
+    await solved(page);
+    const slider = page.getByTestId('scrubber');
+    await slider.focus();
+    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+    await expect(slider).toHaveAttribute('aria-valuetext', /^Draw 8\.55 in/);
+    await page.getByTestId('unit-draw').selectOption('mm');
+    await expect(page.getByTestId('scrubber-label')).toHaveText('Draw position (AMO, mm)');
+    const readout = page.getByTestId('scrubber-readout');
+    const before = await readout.textContent();
+    await slider.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(readout).not.toHaveText(/** @type {string} */ (before));
+    await page.keyboard.press('ArrowLeft');
+    await expect(readout).toHaveText(/** @type {string} */ (before));
+  });
+
   test('moving the position changes no project state and starts no solve', async ({ page }) => {
     await page.goto('./');
     await solved(page);

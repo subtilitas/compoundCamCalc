@@ -28,17 +28,21 @@ export const STALE_CAPTION = 'Bow of the last cam that met every check';
 /** Caption over the plan while newer inputs are being solved. */
 export const OUTDATED_CAPTION = 'Bow of the previous inputs; solving the current inputs';
 
+/** Sentence added to a stale caption while the current inputs are being solved. */
+export const SOLVING_SUFFIX = '; solving the current inputs';
+
 /**
- * Caption of a plan or loads view, or '' for none: while a newer solve
- * runs the values belong to the previous inputs, which takes precedence.
+ * Caption of a plan or loads view, or '' for none. A stale view shows the
+ * last cam that met every check, also while a newer solve runs; an outdated
+ * view shows the previous inputs.
  * @param {boolean} stale the result shown is the last one that met every check
  * @param {boolean} outdated a newer solve has run for PENDING_DELAY or longer
  * @param {string} staleText
  * @param {string} outdatedText
  */
 export function ageCaption(stale, outdated, staleText, outdatedText) {
-  if (outdated) return outdatedText;
-  return stale ? staleText : '';
+  if (stale) return outdated ? `${staleText}${SOLVING_SUFFIX}` : staleText;
+  return outdated ? outdatedText : '';
 }
 /** Length of the arrow of the largest limb tip load, as a fraction of the view. */
 const ARROW = 0.12;

@@ -143,11 +143,11 @@ describe('force chart marker', () => {
 });
 
 describe('age captions of the plan and the loads', () => {
-  it('names the previous inputs while a newer solve runs', () => {
+  it('keeps the last-valid wording and adds the running solve', () => {
     expect(ageCaption(false, false, 'S', 'O')).toBe('');
     expect(ageCaption(true, false, 'S', 'O')).toBe('S');
     expect(ageCaption(false, true, 'S', 'O')).toBe('O');
-    expect(ageCaption(true, true, 'S', 'O')).toBe('O');
+    expect(ageCaption(true, true, 'S', 'O')).toBe('S; solving the current inputs');
   });
 });
 

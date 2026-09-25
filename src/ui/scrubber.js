@@ -231,7 +231,8 @@ export function createScrubber(container, { panel, onChange }) {
       const step = pos.pin === 'full' ? m.count : pos.pin === 'brace' ? 0 : stepOfX(m, x);
       setAttrs(slider, { max: m.count });
       slider.value = String(step);
-      pos = { pin: pos.pin, x };
+      // The kept position moves to the slider step it shows.
+      pos = { pin: pos.pin, x: xOfStep(m, step) };
       setButtons(step, m.count);
     },
     x() {
