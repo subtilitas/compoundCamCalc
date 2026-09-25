@@ -146,7 +146,9 @@ const scratch = { buf: new Float64Array(3), fv: new Float64Array(2) };
  * Solve the contact angle by Newton from the warm start psi0. When Newton
  * leaves the branch, stalls, or moves more than half a turn from psi0, a
  * scan of [psi0 − π, psi0 + π] brackets the root of the branch nearest to
- * psi0, and a safeguarded Newton–bisection finishes it. Never throws.
+ * psi0, and a safeguarded Newton–bisection finishes it. Never throws for
+ * a support built by createSupport (support.js), which validates it; the
+ * support is not checked again here, on the inner loop of every solve.
  * @param {Support} support
  * @param {number} bx B in the cam frame (m)
  * @param {number} by

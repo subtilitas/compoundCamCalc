@@ -102,7 +102,22 @@ export function stiffnessForTravel({ drawEnergy, travel, preloadTravel }) {
  * @param {{ rotation: ArrayLike<number>, moment: ArrayLike<number>, alpha0: number }} params
  * @returns {{ limb: TableLimbData | null, error: string | null }}
  */
-export function tableLimb({ rotation, moment, alpha0 }) {
+export function tableLimb(params) {
+  try {
+    return tableLimbChecked(params);
+  } catch (err) {
+    // Any exception while reading malformed input.
+    return { limb: null, error: describeError(err) };
+  }
+}
+
+/**
+ * Body of {@link tableLimb}, which guards it.
+ * @param {Parameters<typeof tableLimb>[0]} params
+ * @returns {ReturnType<typeof tableLimb>}
+ */
+function tableLimbChecked(params) {
+  const { rotation, moment, alpha0 } = params !== null && typeof params === 'object' ? params : /** @type {any} */ ({});
   const n = rotation?.length ?? 0;
   if (!(n >= 2 && n <= TABLE_ROWS_MAX) || moment?.length !== n) {
     return { limb: null, error: `The limb table needs at least 2 rows and at most ${TABLE_ROWS_MAX} rows` };
@@ -152,7 +167,23 @@ export function tableLimb({ rotation, moment, alpha0 }) {
  * @returns {{ limb: LimbData | null, error: string | null }}
  */
 export function limbFromState(limb, limbLength, options = {}) {
-  const result = limbDataFromState(limb, limbLength, options);
+  try {
+    return limbFromStateChecked(limb, limbLength, options);
+  } catch (err) {
+    // Any exception while reading malformed input.
+    return { limb: null, error: describeError(err) };
+  }
+}
+
+/**
+ * Body of {@link limbFromState}, which guards it.
+ * @param {Parameters<typeof limbFromState>[0]} limb
+ * @param {Parameters<typeof limbFromState>[1]} limbLength
+ * @param {Parameters<typeof limbFromState>[2]} options
+ * @returns {ReturnType<typeof limbFromState>}
+ */
+function limbFromStateChecked(limb, limbLength, options) {
+  const result = limbDataFromState(limb, limbLength, options ?? {});
   if (!result.limb) return result;
   /** @type {Limb} */
   let made;

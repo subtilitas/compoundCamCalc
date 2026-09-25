@@ -160,7 +160,8 @@ describe('curve actions', () => {
     const s = store.getState();
     expect(s.curve.mode).toBe('custom');
     expect(s.curve.params.peak).toBeCloseTo(300, 9);
-    expect(s.curve.params.letOff).toBeCloseTo(1 - (0.2 * 267) / 300, 9);
+    const hold = (1 - defaultState().curve.params.letOff) * 267;
+    expect(s.curve.params.letOff).toBeCloseTo(1 - hold / 300, 9);
   });
 
   it('keeps the mode and the history when the points do not change', () => {

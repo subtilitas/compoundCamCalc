@@ -24,6 +24,7 @@
  */
 
 import { CABLE_SIDE, STRING_SIDE, terminationConstant } from './contact.js';
+import { runs } from './diagnostics.js';
 import { bowGeometry, createPose, evaluatePose } from './geometry.js';
 import { ANGLE_MAX, inRange } from './domain.js';
 import { describeError } from './errors.js';
@@ -550,15 +551,7 @@ function collectDiagnostics(out, solved, xBrace, stringTermination, cableTermina
   /** @type {Diagnostic[]} */
   const diagnostics = [];
   for (const [code, flagged] of checks) {
-    let start = -1;
-    for (let i = 0; i <= solved; i++) {
-      const on = i < solved && flagged(i);
-      if (on && start < 0) start = i;
-      if (!on && start >= 0) {
-        diagnostics.push({ code, xRange: [out.x[start], out.x[i - 1]], message: MESSAGES[code] });
-        start = -1;
-      }
-    }
+    for (const [a, b] of runs(solved, flagged)) diagnostics.push({ code, xRange: [out.x[a], out.x[b]], message: MESSAGES[code] });
   }
   return diagnostics;
 }

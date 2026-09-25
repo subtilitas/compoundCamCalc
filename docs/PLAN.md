@@ -131,18 +131,24 @@ results are in `docs/model.md`.
 
 ### Inverse model (target force curve → cable track)
 
-Explicit per sample, no marching:
+Explicit per sample, no marching (`src/core/inverse.js`):
 
 1. W(x) = exact integral of the target curve.
 2. α(x) = E1⁻¹(E_b + W/2).
 3. θ(x) from the string closure (1D Newton, derivative −p_s).
 4. T_s = F / (2 sin φ); at brace T_s0 = F'(x_b)·l_0 / 2 (l_0 = free string
    span at brace).
-5. p_c = p_s·c_a·T_s / (E1'(α) − T_s·s_a); 2–3 fixed-point iterations on
-   ψ_c = β + θ, β = angle(A − O) − acos(p_c / D).
-6. Sample (ψ_c, p_c) uniformly in ψ (0.25–0.5°), with x clustered near brace
-   (x − x_b = s²), and fit a C2 spline p_c(ψ).
-7. Check: p_c = c_a·dα/dθ.
+5. p_c = p_s·c_a·T_s / (E1'(α) − T_s·s_a). Implemented in closed form: the
+   anchor lies straight below the axle at D = 2·O_y, so
+   c_a = 2·R_L·cos β·√(1 − (p_c/D)²) and, with
+   K = 2·R_L·cos β·p_s·T_s / (E1' − T_s·s_a), p_c = K·D/√(D² + K²) and
+   ψ_c = π + asin(p_c/D) + θ. This is the limit of the fixed-point
+   iteration on the cable direction.
+6. Draw grid x − x_b = s² plus the curve points; cable samples near a
+   uniform ψ grid (0.25° full, 0.5° coarse) by regula falsi in x, each an
+   exact point of the ideal track; open C2 spline with fourth-order end
+   slopes.
+7. Check: p_c = c_a·dα/dθ (tests).
 
 ### Brace conditions
 
@@ -150,9 +156,28 @@ Explicit per sample, no marching:
 - p_c0 = p_s0·c_a0·T_s0 / (M_b − T_s0·s_a0). Feasible only for
   0 < T_s0 < M_b / s_a0.
 - F''(x_b) is fixed by geometry, preload and p_c0 and does not depend on p_c'.
-  The solver computes it with the forward model of a circle of radius p_c0
-  about the axle and replaces the first segment of the target with a quintic
-  that matches F, F', F'' at brace and at the first interior point.
+  Implemented by the analytic brace expansion
+  F''(x_b) = −(2·T_s0/l_0²)·(3·K_1 + ρ_s0/l_0),
+  K_1 = (p_s'(0)·c_a0 + R_L·sin β_b·p_c0)/det_0 (derivation in
+  `docs/model.md`). A degree-7 fit of the forward force at x_b + k·1 mm
+  agrees with it to 1e-8 relative (tested; measured 4.7e-10 for the twin
+  cam and 2.3e-9 for a cable circle of radius p_c0). The target is rebuilt
+  with
+  `createCurve(points, { startSlope, startSecondDerivative })`.
+- Refinement: F'''' at brace is fixed by the geometry too; a mismatch gives
+  the cable track a (ψ − ψ_c0)^(3/2) term with negative ρ near brace. The
+  solver replaces the cable track over the first curve segment by a brace
+  blend: the quintic in ψ with p(ψ_c0) = p_c0, a C2 join to the ideal track
+  at point 2, ∫ p dψ from the cable closure
+  (√(D_0² − p_c0²) − √(D_1² − p_1²)) and the smallest ∫ p'''² dψ. The cam
+  then reaches the target state at point 2, and the achieved curve equals
+  the target from point 2 on to the accuracy of the resampled track: on a
+  test cam built without the fit, 1.3e-7 N (full) and 3.8e-7 N (coarse),
+  tested to 1e-6 N and 5e-6 N; θ and α at the curve points agree with the
+  inverse model to 1e-12 rad (full) and 2e-10 rad (coarse). Inside the
+  first segment the achieved curve follows the cam (0.006 N from the
+  target on that cam). A fitted track replaces the blend and meets the fit
+  tolerance instead.
 - The app shows the brace slope, the implied p_c0 and its feasible range.
 
 ### Target curve representation
@@ -200,15 +225,22 @@ Explicit per sample, no marching:
   over 5 in has room for 49 gaps of 0.1 in). Validation rejects smaller
   gaps (tolerance 10⁻⁹ m). A move never goes towards a neighbour that is
   already closer.
-- Parametric generator: brace, ramp point (40 % of the rise, 70 % of the
-  peak), peak start (rise fraction of the power stroke), peak end (60 % of
-  the way to the valley), let-off transition point (halfway, half the drop),
-  valley start and full draw; the flat part at full draw is adjusted until
-  the measured valley width matches the requested one as closely as the
-  let-off, rise and power stroke allow (the let-off transition sets a
-  smallest width, about 1.03 in at 80 % let-off on the default bow; at a
-  let-off ≤ 5 % the valley spans peak to full draw). The valley field names
-  the reached width when it differs by more than 1 %.
+- Parametric generator: brace, ramp point (40 % of the rise, 38 % of the
+  peak), peak start (rise fraction of the power stroke, default 46 %), peak
+  end (30 % of the way to the valley), let-off transition point (halfway,
+  67 % of the drop), valley start and full draw (default valley width
+  1.2 in); the flat part at full draw is adjusted until the measured valley
+  width matches the requested one. When the flat part is at its minimum of
+  0.1 in and the valley is still more than 1 % too wide, the transition
+  point moves on the straight line towards the valley start, so the last
+  part of the drop keeps its mean slope, until the width matches. Close to
+  the valley start the drop becomes one S-shaped segment and the valley
+  widens again, so the generator has a smallest width: on the default bow
+  about 0.49 in at 75 % let-off, 0.46 in at 80 %, 0.68 in at 50 % and
+  1.54 in at 20 % (rise 46 %); at a let-off ≤ 5 % the valley spans peak to
+  full draw. The valley field names the reached width when it differs by
+  more than 1 %. The default curve keeps its transition point halfway: its
+  valley is 1.2036 in, 0.3 % above the request.
 - Walls are vertical in the rigid model; the wall position is x_f. A cable
   stop post is placed on the cable span at θ(x_f).
 
@@ -221,6 +253,8 @@ The solver never throws on user input and never clamps silently. It returns
 - T_c > 0 along the path, equivalently E1'(α) > s_a·T_s and dθ/dx > 0.
 - F > 0 on (x_b, x_f].
 - Brace: 0 < T_s0 < M_b / s_a0.
+- The cable contact at point 2 lies after its brace position, so the brace
+  blend exists.
 - ρ ≥ max(ρ_min, d/2 + margin) on both tracks (groove bottom stays convex).
 - Clearance: |X| ≥ r_bore + wall + d/2; groove bottom stays outside the bore
   wall.
@@ -235,23 +269,111 @@ constraints ρ ≥ ρ_min and p ≥ p_min, runs the forward model on it and show
 the achieved curve against the target with differences in peak, let-off and
 energy. Clearance is checked and reported.
 
+Implementation (`src/core/fit.js`, `src/core/qp.js`, `src/core/solve.js`):
+
+- Clamped cubic spline on uniform knots (values and end slopes as unknowns),
+  dual active-set QP of Goldfarb and Idnani. The QP treats a constraint as
+  dependent when n constraints are active or when its step is at rounding
+  level, skips dependent equalities that hold and checks them again at the
+  end, refines x onto the active constraints after each added constraint
+  while the largest active residual falls or stays above rounding (at most
+  8 passes), reports `infeasible` when rounding leaves an active
+  constraint or a skipped equality outside the tolerance, and returns
+  `invalid` for mismatched sizes or non-finite data. It is reliable when
+  the active normals differ in direction by well over 1e-6, as in the fit
+  programmes; with two rows 1e-8 to 1e-6 apart it reports 4 % to 13 % of
+  feasible random problems `infeasible` and returns a few `optimal`
+  results with a redundant equality off by up to 1.1e-2 of its size
+  (`docs/model.md`). The fit returns `invalid` for out-of-range input,
+  including points to pass through outside the fitted range or with
+  non-finite values, instead of throwing.
+- Equalities at every curve point whose ideal lever arm meets p_min:
+  p(ψ_k) = p_k and ∫ p dψ from ψ_c0 to ψ_k from the cable closure, plus
+  p(ψ_c0) = p_c0. The fitted cam then passes through the target force and
+  energy at those points.
+- Refinement of the diagnostics: the ideal track follows every wiggle of the
+  interpolant between the points and often bends the wrong way over a few
+  degrees, most at the corners of the curve (peak start and end, let-off
+  transition). A convex cam rounds these corners: on the default preset the
+  largest force difference stays at 3.7 N to 3.9 N for 22 to 90 spline
+  intervals. A fitted cam whose achieved force stays within 3 % of the peak
+  (8.0 N at 267 N, at least 2 N) of the target everywhere, with the draw
+  energy within 0.5 %, meets the target; the violations of the ideal track
+  are then kept in `fit.idealIssues` and are no diagnostics. Larger
+  differences are reported as `cable-radius` or `cable-clearance`, with the
+  draw position of the largest difference and the curve points on either
+  side; the `cable-radius` suggestion is chosen there, and its named range
+  leaves out the brace blend, which the fit always replaces. Of 45
+  edits of the default (peak 250 N to 290 N, rise 43 % to 50 %, valley
+  1.0 in to 1.5 in), 41 meet 3 % of the peak and 2 meet 1.5 %; the largest
+  draw energy difference is 0.14 J against a tolerance of at least 0.42 J.
+- Codes: `invalid-input`, `brace-tension`, `cable-lever`, `slack-cable`,
+  `nonpositive-force`, `cable-fold`, `limb-rotation`, `limb-energy`,
+  `target-shape`, `string-radius`, `string-clearance`, `string-wrap`,
+  `cable-radius`, `cable-clearance`, `cable-wrap`, `closing-blend`,
+  `no-convergence`, `slack-string`, `wrap-exhausted`; the table with the
+  suggestions is in `docs/model.md`.
+
 ### Closed cam outline
 
 - The active part of each track covers the draw. Extensions: lead-in wrap at
   brace for the cable, residual wrap at full draw for the string (inputs,
-  default 30°), each at constant ρ, ending at a post.
+  0° to 180°, default 30°), each ending at a post. The string residual wrap
+  lies on the string track. The cable lead-in keeps p, p' and p''
+  continuous at the brace contact of the track (ψ_c0, or later when the fit
+  leaves out p(ψ_c0) = p_c0) and settles within about 10° to a constant
+  ρ_0 = clamp(ρ(ψ_c0), ρ_min, p(ψ_c0)), so it cannot swing outwards
+  (`docs/model.md`).
 - The remaining arc is closed by a quintic blend in ψ that matches p, p', p''
   at both joins with ρ ≥ ρ_min. Any periodic p with p + p'' > 0 gives a closed
   convex curve.
+- When no closing blend exists, `closing-blend` names the largest lead-in
+  wrap (5° steps, down to 0°) that closes the track. Otherwise it names a
+  string track 5 mm to 20 mm larger, or half the minimum bend radius, only
+  when a coarse trial solve with that change reports no diagnostic, and
+  otherwise lists what was tried (`docs/model.md`). The trials run in a
+  full solve; a coarse solve, which runs while an input is dragged, names
+  the force curve.
 - Posts (string post, cable post), cable stop post and timing marks (string
   exit at brace, cable exit at brace, full-draw index) are placed in the cam
   frame.
+- Implementation (`src/core/outline.js`): when the quintic blend bends below
+  ρ_min or comes below p_min, a constrained spline fit with p, p', p''
+  prescribed at both joins replaces it. The closed track is a periodic C2
+  cubic spline through samples of the pieces (at most 0.25° apart in a full
+  solve, 0.5° in a coarse solve). The
+  cable stop peg touches the full-draw cable line on the axle side where it
+  clears the cable groove bottom by its radius. The cam maximum dimension
+  is the largest width of the union of both flange outlines.
 
 ### Numerics
 
-- Forward model: 1000–2000 draw samples for final results, about 100 while
-  dragging; closure residual < 1e-10 m; contact residual < 1e-12 m.
-- Inverse: samples uniform in ψ; E1⁻¹ residual < 1e-9 J.
+- Forward model: 1500 draw samples for final results, 100 while dragging;
+  closure residual < 1e-10 m; contact residual < 1e-15 m. Budgets: 8 ms
+  for 100 samples and 100 ms for 1500 samples.
+- Inverse: samples uniform in ψ; E1⁻¹ residual < 1e-9 J. Draw grid of 100
+  (coarse) or 600 (full) samples plus the curve points; cable samples every
+  0.5° or 0.25°; string closure residual < 1e-10 m.
+- Solve budgets for the default preset: 30 ms coarse (while dragging),
+  200 ms full (on release). The performance tests report the medians and
+  fail only above 5 times the budget, which allows for shared continuous
+  integration (CI) machines. The solve test times the solve in a worker
+  thread: the coverage run adds V8 block counters to the test process,
+  which slow the solve about 4 times, and the budget applies to the code as
+  the app runs it. Measured medians with Node 22 on a 4-core 2.1 GHz Xeon:
+  24 ms to 27 ms coarse and 30 ms to 35 ms full alone; 26 ms to 35 ms and
+  33 ms to 51 ms in the coverage run with the rest of the suite in
+  parallel; 32 ms to 49 ms and 56 ms to 63 ms with every core also loaded
+  by another process. The first call, before the JavaScript engine has
+  optimised the code, takes 200 ms to 250 ms alone and up to 480 ms on a
+  loaded machine. A `closing-blend` that no lead-in wrap closes adds up to
+  five coarse trial solves to a full solve: 107 ms to 112 ms median and at
+  most 490 ms on 76 edits of point 2 of the default. A coarse solve runs
+  no trials: on these edits it takes 82 ms to 85 ms median and at most
+  127 ms. The performance test holds the coarse solve with point 2 at
+  10 in and 50 N below 10 times the coarse budget: 78 ms to 89 ms alone
+  and up to 138 ms on a loaded machine. Its five trial solves take about
+  350 ms in a full solve.
 - Exported curves deviate from the model curve by at most the export
   tolerance (default 0.01 mm) along the normal.
 
@@ -296,7 +418,8 @@ Independent set; everything else is derived and shown read-only.
 - Validation on Enter, blur or stepper; sliders update live. Every field has
   min, max, step and unit; inline messages next to the field.
 - Solve runs in a Web Worker, latest request wins. Coarse solve while
-  dragging (budget 8 ms on a laptop), full solve on release (budget 100 ms).
+  dragging, full solve on release, within the solve budgets under
+  Numerics (30 ms and 200 ms for the default preset).
   `data-solve-state` attribute exposes idle / busy / ok / error.
 - On an infeasible result the last valid cam stays visible, dimmed; the
   diagnostic names the draw range, the constraint and the input to change.
@@ -426,17 +549,94 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 1c | Force curve editor (pointer, touch, keyboard, table, sliders, undo/redo), unit toggles |
 | 2 | Support functions, contact solver, limb model, forward model, `docs/model.md` |
 | 3 | Inverse solver, brace conditions, diagnostics, constrained fit, closed outline, achieved-curve overlay (needs the cable track from the inverse solver), cam view, results card, worker |
+| 3a | Model code of slice 3 in `src/core` (inverse, fit, QP solver, outline, diagnostics, `solve`) and the tuned default preset; no user interface |
 | 4 | String plan layout, build lengths, loads chart, draw-position scrubber |
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export |
 | 6 | STEP export |
 | 7 | Additional presets, JSON save/load, share URL, glossary and help, print report, wiki user guide |
 
-Default preset: ATA 33 in, brace height 6.5 in, draw length 29 in, peak
-267 N (60 lbf), let-off 80 %, string diameter 2.5 mm; it must solve with zero
-diagnostics. For the 29 in draw the string track needs a groove radius of
-about 45 mm or more (6 mm offset): the 36 mm groove of the current preset
-wraps the string about 400° at brace and reports `wrap-overlap`. Slice 3
-tunes the preset.
+Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
+length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter
+2.5 mm, limb 11 in long at 25° at brace. The solver builds it with zero
+diagnostics:
+
+- Limb: stiffness mode, 2.6 N/mm, preload travel 192 mm, axle travel
+  78 mm, rotation limit 30°; achieved axle travel 77.5 mm. The limb is soft
+  and heavily preloaded: the preload travel turns the 11 in lever 39° from
+  unstrung to brace, and the limb pushes on the axle with 499 N at brace
+  and 701 N at full draw. These values are not checked against measured
+  limbs; the repository has no limb data.
+- String track: eccentric circle, radius 45 mm, offset 22 mm towards −122°;
+  string lever arm 63.6 mm at full draw.
+- Hub: bore 8 mm, wall 3 mm; the cable lever arm stays at or above
+  p_min = 4 + 3 + 1.25 = 8.25 mm.
+- Curve: the generator defaults above (rise 46 %, valley 1.2 in).
+- Result (full resolution): achieved peak 270.1 N, let-off 74.9 %, draw
+  energy 93.0 J, limb energy 188.8 J, cam rotation 224°, largest cam
+  dimension 98 mm, smallest cable radius of curvature 5.0 mm (the limit);
+  the fitted cam follows the target within 3.7 N (tolerance 8.0 N) and
+  0.01 J.
+- Edits: peak 250, 260, 275 and 285 N, rise 44 %, 48 % and 50 %, and
+  valley 0.9 in and 1.5 in each build with zero diagnostics (a unit test);
+  the largest force difference is 6.0 N at peak 250 N (tolerance 7.5 N).
+  Of the 45 edits of peak 250 N to 290 N, rise 43 % to 50 % and valley
+  1.0 in to 1.5 in, 41 build with zero diagnostics.
+
+Let-off ceiling (symbols as in docs/model.md, L the let-off). At full draw
+the string carries the low holding force, F_hold = (1 − L)·F_peak =
+2·T_s,f·sin φ_f,
+and the cable lever arm p_c = p_s·c_a·T_s / (E1' − T_s·s_a) must stay at or
+above p_min. This bounds the limb moment at full draw from above,
+E1'_f ≤ T_s,f·(s_a + p_s,f·c_a/p_min). At a fixed draw energy
+W = k·s_f·(s_f + 2·s_0) (both limbs) the limb force at the axle at full
+draw is k·(s_0 + s_f) = W·(s_0 + s_f)/(s_f·(s_f + 2·s_0)); it falls with
+more axle travel s_f and more preload travel s_0. With the lever geometry
+of this bow the balance gives an approximate lower bound on the axle
+travel,
+
+```
+s_f ≳ η·S·sin φ_f / ((1 − L)·(2·p_s,f/p_min + 1)) · (s_0 + s_f)/(s_0 + s_f/2)
+```
+
+with η = W/(F_peak·S) = 0.66, power stroke S = 527 mm and φ_f = 52°: 78 mm
+at 75 % (the model gives 77.5 mm), about 100 mm at 80 % and about 140 mm at
+85 %. On four tuned 80 % states the bound lies within 3 % of the model
+(model 77.6 mm to 101 mm, bound 78.8 mm to 103 mm).
+
+- The main levers are p_min (bore and wall) and the string lever arm at
+  full draw p_s,f: both enter as p_s,f/p_min.
+- At a fixed draw energy a softer, more preloaded limb with more axle
+  travel raises the let-off, and a stiffer one lowers it. With the default
+  string groove and hub the achieved let-off follows the limb force at the
+  axle at full draw: 10 N/mm with 60 mm preload (1142 N) reaches 61.5 % for
+  a 75 % target; 2.6 N/mm with 192 mm (699 N) and 4 N/mm with 84 mm
+  (694 N) reach 76.1 % and 76.3 % for an 80 % target; 1.8 N/mm with 200 mm
+  (543 N) reaches 80.8 %.
+- A lower let-off also relaxes the limit.
+
+Let-off 80 % builds with zero diagnostics and at least 90 J of draw energy,
+but not with the margins of 75 %:
+
+- Default limb, groove and hub: 76.1 % achieved, 15.5 N from the target.
+- Default hub, limb 2.1 N/mm with 191 mm preload, groove radius 44.3 mm,
+  offset 24.2 mm towards −117.4°, rise 47.2 %: 79.6 %, 91.2 J, 4.4 N
+  (tolerance 8.0 N), 92 mm axle travel, 124 mm cam. Eight of the nine
+  edits above build (largest 6.7 N; rise 44 % reports `closing-blend`),
+  and 29 of the 45 edits do (largest cam 135 mm); tuned for the 45 edits
+  as well, 33 of 45 (2.07 N/mm, 93 mm axle travel, 127 mm cam).
+- Default hub with the cam at most 105 mm and the axle travel at most
+  85 mm: at best 6.9 N (86 % of the tolerance), and up to 93 % of the
+  tolerance on the nine edits, with a 48 mm groove radius and a 73.8 mm
+  string lever arm at full draw.
+- Bore 6.35 mm and wall 2 mm (p_min 6.43 mm), limb 2.575 N/mm with 191 mm
+  preload, groove radius 43.1 mm, offset 22 mm towards −120.75°, valley
+  1.18 in: 79.6 %, 91.8 J, 3.86 N, 77.6 mm axle travel, 95 mm cam; the nine
+  edits build (largest 6.9 N) and 38 of the 45 edits do. This needs a
+  smaller axle and bushing than the default hub.
+
+Let-off 75 % is the default: among the states with the default hub it has
+the smallest cam, the shortest axle travel and the most edits within the
+tolerance (41 of 45).
 
 ## Limitations
 

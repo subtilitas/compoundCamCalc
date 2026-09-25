@@ -120,8 +120,13 @@ describe('generateCurve', () => {
   it('follows peak, let-off, rise and valley inputs', () => {
     for (const [peak, letOff, riseFraction, valleyWidth] of [
       [100, 0.5, 0.2, 2 * INCH],
+      [100, 0.5, 0.2, 1.5 * INCH],
       [600, 0.9, 0.5, 1.5 * INCH],
       [267, 0.65, 0.3, 3 * INCH],
+      [267, 0.5, GENERATOR_DEFAULTS.riseFraction, GENERATOR_DEFAULTS.valleyWidth],
+      [267, 0.75, GENERATOR_DEFAULTS.riseFraction, 0.8 * INCH],
+      [267, 0.75, 0.3, 0.7 * INCH],
+      [267, 0.8, 0.1, 1 * INCH],
     ]) {
       const points = generateCurve({ ...defaults, peak, letOff, riseFraction, valleyWidth });
       const m = pointMetrics(points);
@@ -132,9 +137,50 @@ describe('generateCurve', () => {
     }
   });
 
-  it('keeps a valley that cannot be narrower than the let-off drop allows', () => {
+  it('matches a valley that the four flat-length steps leave 1.8 % wide', () => {
+    // Let-off 6 %, rise 50.5 %: the steps stop at a 5.834 in valley; the
+    // bracketed root of the width error over the flat length gives 5.73 in.
+    const points = generateCurve({ ...defaults, letOff: 0.06, riseFraction: 0.505, valleyWidth: 5.73 * INCH });
+    expect(pointMetrics(points).valleyWidth / INCH).toBeCloseTo(5.73, 6);
+  });
+
+  it('moves the let-off transition point on the line towards the valley start for a narrow valley', () => {
+    const wide = generateCurve({ ...defaults, letOff: 0.75 });
+    const narrow = generateCurve({ ...defaults, letOff: 0.75, valleyWidth: 0.9 * INCH });
+    // Both have the shortest flat part; only the transition point differs.
+    expect(wide[6].x - wide[5].x).toBeCloseTo(MIN_GAP, 12);
+    expect(narrow.slice(0, 4)).toEqual(wide.slice(0, 4));
+    expect(narrow.slice(5)).toEqual(wide.slice(5));
+    const [T, V, N] = [wide[4], wide[5], narrow[4]];
+    const tau = (V.x - N.x) / (V.x - T.x);
+    expect(tau).toBeGreaterThan(0.3);
+    expect(tau).toBeLessThan(0.8);
+    expect((N.F - V.F) / (T.F - V.F)).toBeCloseTo(tau, 12);
+    expect(Math.abs(pointMetrics(narrow).valleyWidth / (0.9 * INCH) - 1)).toBeLessThan(1e-6);
+  });
+
+  it('keeps the transition point halfway when the valley is within 1 % of the request', () => {
+    // At 75 % let-off, rise 46 % and 1.2 in the shortest flat part gives
+    // 1.2036 in, 0.3 % above the request.
+    const points = generateCurve({ ...defaults, letOff: 0.75 });
+    expect(points[6].x - points[5].x).toBeCloseTo(MIN_GAP, 12);
+    expect(points[4].x).toBeCloseTo(0.5 * (points[3].x + points[5].x), 15);
+    const width = pointMetrics(points).valleyWidth;
+    expect(width).toBeGreaterThan(GENERATOR_DEFAULTS.valleyWidth);
+    expect(width).toBeLessThan(1.01 * GENERATOR_DEFAULTS.valleyWidth);
+  });
+
+  it('keeps the narrowest valley the transition point reaches for a request below it', () => {
+    // At 80 % let-off and rise 46 % the narrowest valley is about 0.46 in.
     const points = generateCurve({ ...defaults, valleyWidth: 0.1 * INCH });
     expect(points[6].x - points[5].x).toBeCloseTo(MIN_GAP, 12);
+    const width = pointMetrics(points).valleyWidth;
+    expect(width).toBeGreaterThan(0.4 * INCH);
+    expect(width).toBeLessThan(0.5 * INCH);
+    for (const request of [0.2 * INCH, 0.99 * width]) {
+      expect(pointMetrics(generateCurve({ ...defaults, valleyWidth: request })).valleyWidth).toBeCloseTo(width, 6);
+    }
+    expect(pointMetrics(generateCurve({ ...defaults, valleyWidth: 1.05 * width })).valleyWidth / (1.05 * width)).toBeCloseTo(1, 6);
   });
 
   it('keeps the minimum gap at the shortest valid power stroke', () => {
