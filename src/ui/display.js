@@ -18,6 +18,32 @@ export const DRAW_DECIMALS_SHORT = Object.freeze({ in: 1, mm: 0, cm: 1 });
 export const FORCE_DECIMALS = Object.freeze({ N: 1, lbf: 1 });
 /** Decimals of forces in short labels, per unit. */
 export const FORCE_DECIMALS_SHORT = Object.freeze({ N: 0, lbf: 1 });
+/**
+ * Decimals of cam dimensions (sizes, lengths of cords, radii) per unit; the
+ * same as the solver messages (core/diagnostics size).
+ */
+export const DIMS_DECIMALS = Object.freeze({ mm: 1, in: 3 });
+/** Symbol of angles in the user interface, as in the solver messages. */
+export const DEGREE = '°';
+
+/**
+ * Cam dimension with its unit, for example '98.2 mm' or '3.866 in'.
+ * @param {number} value (m)
+ * @param {Units} units
+ */
+export function dimsText(value, units) {
+  return `${fixed(fromSI(value, 'length', units.dims), DIMS_DECIMALS[units.dims])} ${units.dims}`;
+}
+
+/**
+ * Angle with the degree symbol, for example '224.5°'.
+ * @param {number} value (rad)
+ * @param {number} [decimals]
+ */
+export function angleText(value, decimals = 1) {
+  return `${fixed(fromSI(value, 'angle', 'deg'), decimals)}${DEGREE}`;
+}
+
 /** Arrow-key step of a point along the draw, in display units (Shift: ×10). */
 export const DRAW_STEP = Object.freeze({ in: 0.1, mm: 2.5, cm: 0.25 });
 /** Arrow-key step of a point force, in display units (Shift: ×10). */

@@ -2,16 +2,21 @@
 
 The Compound Cam Calculator designs the cams of a twin-cam compound bow from
 the draw force curve the bow should have. This guide covers the force curve
-editor, which defines that curve.
+editor, which defines that curve, the settings of the bow and the cam, the
+results and the cam view.
 
 ## Screen layout
 
 - **Force curve** panel: the chart, the editing toolbar, the stats line and
   the point table.
-- **Settings** panel: bow geometry, draw force parameters and display units.
+- **Results** panel: the solve status, the values of the cam and the
+  problems with their suggestions.
+- **Cam** panel: a drawing of one cam at brace.
+- **Settings** panel: bow geometry, draw force, limbs, string track, cords,
+  cam body and display units.
 
-On screens 960 px wide or wider the panels sit side by side; on narrower
-screens the settings follow below the chart. The point table is open on wide
+On screens 960 px wide or wider the settings sit to the right of the other
+panels; on narrower screens the panels follow each other in the order above. The point table is open on wide
 screens and closed on narrow screens; select **Point table** to open or close
 it.
 
@@ -113,8 +118,25 @@ focus moves to the next useful button.
   a let-off of 5 % or less the valley covers the whole range from the peak
   to full draw. When the curve misses the requested width by more than 1 %,
   a note under the field names the width it reaches.
-- **Units**: draw length in in, mm or cm; force in N or lbf; energy in J or
-  ft·lbf. The model works in SI units (metre, newton, joule); the units only
+- **Limb lever length** and **Limb lever angle at brace**: the rigid lever
+  from the limb pivot to the axle.
+- **Limbs**: the limb input selects how the limb is given. *Stiffness and
+  preload*: the stiffness at the axle and the preload travel from unstrung
+  to brace; Results show the axle travel to full draw. *Axle travel and
+  preload*: the axle travel from brace to full draw sets the stiffness for
+  the draw energy of the curve. *Measured table*: 3 to 50 rows of axle
+  travel from brace and force at the axle, with Add row and Remove row.
+  **Maximum limb rotation from brace** is the limit of the limb-rotation
+  check.
+- **String track**: an eccentric circle (radius, centre offset from the
+  axle, phase) or an ellipse (semi-major and semi-minor axis, centre offset,
+  phase), measured on the groove bottom.
+- **Cords**: string and cable diameter and the depth of each groove.
+- **Cam body**: axle bore diameter, minimum wall between groove bottom and
+  bore, post diameter, minimum bend radius of a track, lead-in wrap of the
+  cable at brace and residual wrap of the string at full draw.
+- **Units**: draw length in in, mm or cm; force in N or lbf; dimensions in
+  mm or in; energy in J or ft·lbf; stiffness in N/mm or lbf/in. The model works in SI units (metre, newton, joule); the units only
   change the display and the default unit of typed values.
 
 Each text field has a − and a + button and responds to the up and down arrow
@@ -123,6 +145,50 @@ message and is not applied; the bounds shown under the field, rounded to the
 field's decimals, are accepted. A message about a rejected value disappears
 when the value changes in another way, for example after an undo or a unit
 change.
+
+A status line at the top of the settings shows the solve status, for
+example "Cam: 2 problems, see Results", and stays in view while the settings
+scroll; select it to go to the results.
+
+## Results
+
+Every change of an input solves the cam again. While a point or a slider is
+dragged the solver uses a coarse grid (100 samples); when the drag ends it
+solves on the full grid (1500 samples). The newest input always wins: an
+older solve that finishes late is shown until the newer one arrives.
+
+- The status line says whether the cam meets the target and every check,
+  how many problems it has, or that the solver did not converge.
+- The values: achieved peak, holding weight, let-off, draw energy, limb
+  energy at full draw, axle travel, cam rotation, string and cable length,
+  cam maximum dimension and the smallest radius of curvature of each track
+  with its limit. When the cable track is fitted to meet the limits, the
+  last row gives the largest force difference from the target and the
+  tolerance (3 % of the peak, at least 2 N).
+- **Problems** lists each problem with numbers and units and a suggestion
+  that names the input to change. Draw ranges of problems are shaded on the
+  chart.
+
+The chart shows the achieved force curve of the cam as a dashed line over
+the target. When the latest input fails a check, the dashed line is labelled
+"Achieved, latest attempt", the values belong to that attempt, and the cam
+view keeps the last cam that met every check, dimmed and labelled.
+
+## Cam view
+
+The drawing shows one cam at brace in the cam frame: the string track and
+the cable track as flange outlines, their groove bottoms (dashed) and pitch
+lines (thin), the axle bore, the posts and the timing marks. A legend under
+the drawing names each line. A scale bar gives the length in the dimension
+unit.
+
+- **+**, **−** and **Fit** zoom in, zoom out (1 to 8 times) and fit the cam
+  in view.
+- Hold Ctrl (Cmd on a Mac) and turn the wheel to zoom at the pointer; the
+  wheel alone scrolls the page.
+- Once zoomed in, drag to pan. With the keyboard, select the drawing (Tab)
+  and use the arrow keys to pan (Shift for larger steps), plus and minus to
+  zoom and 0 to fit.
 
 ## Parametric and custom curves
 

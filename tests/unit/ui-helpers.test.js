@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCurve, pointMetrics } from '../../src/core/curve.js';
 import { INCH, toSI } from '../../src/core/units.js';
+import { chipText } from '../../src/ui/app.js';
 import { moveLimitMessage, niceStep, ticks } from '../../src/ui/chart.js';
 import { amo, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain, pointLabel } from '../../src/ui/display.js';
 
@@ -72,5 +73,16 @@ describe('range bounds and messages', () => {
     expect(metricsOf(points)).toBe(m);
     expect(m).toEqual(pointMetrics(points));
     expect(metricsOf(points.slice())).not.toBe(m);
+  });
+});
+
+describe('solve status link', () => {
+  it('names the state and the number of problems', () => {
+    expect(chipText('busy', 0)).toBe('Cam: solving…');
+    expect(chipText('ok', 0)).toBe('Cam: meets every check');
+    expect(chipText('infeasible', 1)).toBe('Cam: 1 problem, see Results');
+    expect(chipText('infeasible', 3)).toBe('Cam: 3 problems, see Results');
+    expect(chipText('no-convergence', 1)).toBe('Cam: the solver did not converge, see Results');
+    expect(chipText('error', 0)).toBe('Cam: the solver stopped with an error');
   });
 });

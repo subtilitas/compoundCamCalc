@@ -1,23 +1,39 @@
 /**
- * Settings panel: bow geometry, draw force parameters and display units.
+ * Settings panel: bow geometry, draw force parameters, limbs, string track,
+ * cords, cam body and display units.
  * Text fields validate on Enter, blur and the stepper buttons; sliders apply
  * live, and one slider gesture is one undo entry. A note under a field says
- * when the curve cannot follow its value.
+ * when the curve cannot follow its value. Fields that do not apply to the
+ * selected limb mode or track shape are hidden and keep their values.
  * @module ui/settings
  */
 
 import { AMO_OFFSET, fromSI, parseNumber, parseQuantity, toSI } from '../core/units.js';
 import { FIELDS, MIN_POWER_STROKE } from '../state/schema.js';
-import { fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
+import { DEGREE, DIMS_DECIMALS, FORCE_DECIMALS, dimsText, fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
 import { h } from './dom.js';
 import { infoButton } from './glossary.js';
 
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../state/schema.js').Units} Units */
+/** @typedef {import('../state/schema.js').LimbState} LimbState */
+/** @typedef {import('../state/schema.js').LimbRow} LimbRow */
+/** @typedef {import('../state/schema.js').StringTrack} StringTrack */
 /** @typedef {import('../state/store.js').Store} Store */
 /** @typedef {import('../state/store.js').Action} Action */
 /** @typedef {import('../core/interp.js').CurvePoint} CurvePoint */
 /** @typedef {keyof typeof import('./glossary.js').GLOSSARY} GlossaryKey */
+
+/**
+ * Kind of a field: selects the quantity and the display unit.
+ * - draw: length in units.draw
+ * - dims: length in units.dims
+ * - force: force in units.force
+ * - percent: ratio shown in %
+ * - angle: angle shown in degrees (°)
+ * - stiffness: stiffness in units.stiffness
+ * @typedef {'draw' | 'dims' | 'force' | 'percent' | 'angle' | 'stiffness'} FieldKind
+ */
 
 /**
  * @typedef {object} FieldDef
@@ -25,7 +41,7 @@ import { infoButton } from './glossary.js';
  * @property {string} label
  * @property {GlossaryKey} [glossary]
  * @property {string} path key of the range in FIELDS
- * @property {'draw' | 'force' | 'percent'} kind
+ * @property {FieldKind} kind
  * @property {(s: ProjectState) => number} get SI value
  * @property {(v: number, basePoints?: CurvePoint[]) => Action} action
  *   basePoints: custom points at the start of a slider gesture
@@ -35,44 +51,113 @@ import { infoButton } from './glossary.js';
  * @property {(v: number, s: ProjectState) => string | null} [extra] cross-field check
  * @property {(s: ProjectState, def: FieldDef) => string} [note] information
  *   about the curve and this field, '' for none
+ * @property {(s: ProjectState) => boolean} [visible] false hides the field;
+ *   default: always shown
  */
 
 /**
- * @param {FieldDef} def
- * @param {Units} units
+ * Quantity of a field kind as used by core/units, or 'ratio' for percent.
+ * @param {FieldKind} kind
+ * @returns {'length' | 'force' | 'angle' | 'stiffness' | 'ratio'}
  */
-function unitOf(def, units) {
-  return def.kind === 'draw' ? units.draw : def.kind === 'force' ? units.force : '%';
+export function quantityOf(kind) {
+  switch (kind) {
+    case 'draw':
+    case 'dims':
+      return 'length';
+    case 'force':
+      return 'force';
+    case 'angle':
+      return 'angle';
+    case 'stiffness':
+      return 'stiffness';
+    default:
+      return 'ratio';
+  }
 }
 
 /**
- * @param {FieldDef} def
+ * Display unit of a field.
+ * @param {{ kind: FieldKind }} def
+ * @param {Units} units
+ * @returns {string} for example 'in', 'mm', 'N', '%', '°', 'N/mm'
+ */
+export function unitOf(def, units) {
+  switch (def.kind) {
+    case 'draw':
+      return units.draw;
+    case 'dims':
+      return units.dims;
+    case 'force':
+      return units.force;
+    case 'angle':
+      return DEGREE;
+    case 'stiffness':
+      return units.stiffness;
+    default:
+      return '%';
+  }
+}
+
+/**
+ * Unit key of core/units for a field: the display unit, except 'deg' for
+ * the degree symbol.
+ * @param {{ kind: FieldKind }} def
+ * @param {Units} units
+ */
+function convUnitOf(def, units) {
+  return def.kind === 'angle' ? 'deg' : unitOf(def, units);
+}
+
+/**
+ * A value with its unit: '12.5 mm', '75 %', but '30°' without a space.
+ * @param {string} text
+ * @param {string} unit
+ */
+export function withUnit(text, unit) {
+  return unit === DEGREE ? `${text}${unit}` : `${text} ${unit}`;
+}
+
+/**
+ * SI value of a field in its display unit.
+ * @param {{ kind: FieldKind }} def
  * @param {number} v SI value
  * @param {Units} units
+ * @returns {number}
  */
-function toDisplay(def, v, units) {
-  if (def.kind === 'percent') return v * 100;
-  return fromSI(v, def.kind === 'draw' ? 'length' : 'force', unitOf(def, units));
+export function toDisplay(def, v, units) {
+  const q = quantityOf(def.kind);
+  if (q === 'ratio') return v * 100;
+  return fromSI(v, q, convUnitOf(def, units));
 }
 
 /**
- * @param {FieldDef} def
+ * Display value of a field in SI.
+ * @param {{ kind: FieldKind }} def
  * @param {number} v display value
  * @param {Units} units
+ * @returns {number}
  */
-function fromDisplay(def, v, units) {
-  if (def.kind === 'percent') return v / 100;
-  return toSI(v, def.kind === 'draw' ? 'length' : 'force', unitOf(def, units));
+export function fromDisplay(def, v, units) {
+  const q = quantityOf(def.kind);
+  if (q === 'ratio') return v / 100;
+  return toSI(v, q, convUnitOf(def, units));
 }
 
 /**
- * @param {FieldDef} def
+ * Parse the text of a field. A unit suffix of the same quantity is
+ * accepted, for example "0.1 in" in a millimetre field; an angle takes
+ * '°', 'deg' or 'rad'.
+ * @param {{ kind: FieldKind }} def
  * @param {string} text
  * @param {Units} units
+ * @returns {number} SI value, NaN when the text is not a number
  */
-function parse(def, text, units) {
-  if (def.kind === 'percent') return parseNumber(text.replace(/\s*%\s*$/, '')) / 100;
-  return parseQuantity(text, def.kind === 'draw' ? 'length' : 'force', unitOf(def, units));
+export function parseField(def, text, units) {
+  const q = quantityOf(def.kind);
+  if (q === 'ratio') return parseNumber(text.replace(/\s*%\s*$/, '')) / 100;
+  if (q === 'angle') return parseQuantity(text.replace(/\s*°\s*$/, ''), q, 'deg');
+  return parseQuantity(text, q, unitOf(def, units));
 }
 
 /**
@@ -106,7 +191,213 @@ function outsideNote(def, s, measured, what, shown) {
   if (s.curve.mode !== 'custom' || (measured >= spec.min - tol && measured <= spec.max + tol)) return '';
   const u = unitOf(def, s.units);
   const used = plain(toDisplay(def, measured < spec.min ? spec.min : spec.max, s.units));
-  return `The custom curve ${what} ${shown}, outside this range; Reset curve uses ${used} ${u}`;
+  return `The custom curve ${what} ${shown}, outside this range; Reset curve uses ${withUnit(used, u)}`;
+}
+
+/**
+ * Cross-field message of a string track, the rules of schema.validate:
+ * eccentric circle offset smaller than the radius, ellipse offset smaller
+ * than the semi-minor axis, semi-minor axis not larger than the semi-major
+ * axis. Returns the first rule the track breaks, or null.
+ * @param {StringTrack} track
+ * @param {Units} units
+ * @returns {string | null}
+ */
+export function stringTrackMessage(track, units) {
+  const { shape, offset, radius, semiMajor, semiMinor } = track;
+  if (shape === 'eccentric' && offset >= radius) {
+    return `String track offset must be smaller than the radius (${dimsText(radius, units)})`;
+  }
+  if (shape === 'ellipse' && offset >= semiMinor) {
+    return `String track offset must be smaller than the semi-minor axis (${dimsText(semiMinor, units)})`;
+  }
+  if (semiMinor > semiMajor) {
+    return `String track semi-minor axis must not exceed the semi-major axis (${dimsText(semiMajor, units)})`;
+  }
+  return null;
+}
+
+/**
+ * Cross-field check of one string track field against the current state.
+ * @param {'radius' | 'offset' | 'semiMajor' | 'semiMinor' | 'shape'} key
+ * @param {number | StringTrack['shape']} value SI value, or the shape
+ * @param {ProjectState} s
+ * @returns {string | null}
+ */
+export function stringTrackExtra(key, value, s) {
+  return stringTrackMessage({ ...s.stringTrack, [key]: value }, s.units);
+}
+
+/** Limits of the measured limb table. The schema needs 3 rows in table mode. */
+export const LIMB_TABLE = Object.freeze({
+  /** Fewest rows. */
+  minRows: 3,
+  /** Most rows. */
+  maxRows: 50,
+  /** Largest travel from brace (m). */
+  travelMax: 0.4,
+  /** Largest force at the axle (N). */
+  forceMax: 10000,
+  /**
+   * Smallest travel step between rows (m): 0.01 mm. The solver needs rows
+   * at least 1e-6 rad of limb rotation apart, 0.5 µm on a 0.508 m lever.
+   */
+  travelGapMin: 1e-5,
+});
+
+/**
+ * @typedef {object} LimbRowText
+ * @property {string} travel travel from brace in the dimension unit
+ * @property {string} force force at the axle in the force unit
+ */
+
+/**
+ * @typedef {object} LimbRowError
+ * @property {number} row 0-based row index, -1 for the whole table
+ * @property {'travel' | 'force' | 'table'} column
+ * @property {string} message
+ */
+
+/**
+ * Limb table rows as display text.
+ * @param {LimbRow[]} rows SI values
+ * @param {Units} units
+ * @returns {LimbRowText[]}
+ */
+export function formatLimbRows(rows, units) {
+  return rows.map((r) => ({
+    travel: fixed(fromSI(r.travel, 'length', units.dims), DIMS_DECIMALS[units.dims]),
+    force: fixed(fromSI(r.force, 'force', units.force), FORCE_DECIMALS[units.force]),
+  }));
+}
+
+/**
+ * Check limb table rows: row count, numbers inside the ranges of LIMB_TABLE
+ * and travel increasing by at least LIMB_TABLE.travelGapMin.
+ * @param {LimbRow[]} rows SI values
+ * @param {Units} units unit of the messages
+ * @returns {LimbRowError[]} empty when valid
+ */
+export function validateLimbRows(rows, units) {
+  /** @type {LimbRowError[]} */
+  const errors = [];
+  if (rows.length < LIMB_TABLE.minRows || rows.length > LIMB_TABLE.maxRows) {
+    errors.push({
+      row: -1,
+      column: 'table',
+      message: `The limb table needs ${LIMB_TABLE.minRows} to ${LIMB_TABLE.maxRows} rows`,
+    });
+  }
+  const { travelHi, forceHi } = limbBoundsText(units);
+  const gap = plain(fromSI(LIMB_TABLE.travelGapMin, 'length', units.dims));
+  for (let i = 0; i < rows.length; i++) {
+    const { travel, force } = rows[i];
+    if (!Number.isFinite(travel)) {
+      errors.push({ row: i, column: 'travel', message: `Row ${i + 1}: travel must be a number` });
+    } else if (travel < 0 || travel > LIMB_TABLE.travelMax) {
+      errors.push({ row: i, column: 'travel', message: `Row ${i + 1}: travel must be between 0 and ${travelHi} ${units.dims}` });
+    } else if (i > 0 && Number.isFinite(rows[i - 1].travel) && !(travel > rows[i - 1].travel)) {
+      errors.push({ row: i, column: 'travel', message: `Row ${i + 1}: travel must be larger than in row ${i}` });
+    } else if (i > 0 && Number.isFinite(rows[i - 1].travel) && travel - rows[i - 1].travel < LIMB_TABLE.travelGapMin * (1 - 1e-9)) {
+      errors.push({ row: i, column: 'travel', message: `Row ${i + 1}: travel must be at least ${gap} ${units.dims} larger than in row ${i}` });
+    }
+    if (!Number.isFinite(force)) {
+      errors.push({ row: i, column: 'force', message: `Row ${i + 1}: force must be a number` });
+    } else if (force < 0 || force > LIMB_TABLE.forceMax) {
+      errors.push({ row: i, column: 'force', message: `Row ${i + 1}: force must be between 0 and ${forceHi} ${units.force}` });
+    }
+  }
+  return errors;
+}
+
+/**
+ * Upper bounds of the limb table in the display units, rounded down at the
+ * decimals of the cells so that typing a printed bound is accepted.
+ * @param {Units} units
+ */
+function limbBoundsText(units) {
+  return {
+    travelHi: plain(Number(inward(fromSI(LIMB_TABLE.travelMax, 'length', units.dims), DIMS_DECIMALS[units.dims], -1))),
+    forceHi: plain(Number(inward(fromSI(LIMB_TABLE.forceMax, 'force', units.force), FORCE_DECIMALS[units.force], -1))),
+  };
+}
+
+/**
+ * A typed value within 1e-9 relative of a bound of 0 to max, moved onto
+ * that bound; the display unit round trip leaves such a difference.
+ * @param {number} v
+ * @param {number} max
+ */
+function snapToBounds(v, max) {
+  const tol = 1e-9 * max;
+  if (v < 0 && v >= -tol) return 0;
+  if (v > max && v <= max + tol) return max;
+  return v;
+}
+
+/**
+ * Parse the text of limb table rows and check them. A cell whose text
+ * equals the formatted previous value keeps the previous SI value, so
+ * editing one cell does not round the others. A typed value within 1e-9
+ * relative of a bound is clamped to it.
+ * @param {LimbRowText[]} texts
+ * @param {Units} units
+ * @param {LimbRow[]} [previous] SI rows the texts were formatted from
+ * @returns {{ rows: LimbRow[], errors: LimbRowError[] }}
+ */
+export function parseLimbRows(texts, units, previous = []) {
+  const shown = formatLimbRows(previous, units);
+  const rows = texts.map((t, i) => ({
+    travel:
+      shown[i] && t.travel.trim() === shown[i].travel
+        ? previous[i].travel
+        : snapToBounds(parseQuantity(t.travel, 'length', units.dims), LIMB_TABLE.travelMax),
+    force:
+      shown[i] && t.force.trim() === shown[i].force
+        ? previous[i].force
+        : snapToBounds(parseQuantity(t.force, 'force', units.force), LIMB_TABLE.forceMax),
+  }));
+  return { rows, errors: validateLimbRows(rows, units) };
+}
+
+/**
+ * Starting table for the measured table mode: five rows over the axle
+ * travel of the limb, with the forces of the linear limb (stiffness times
+ * preload plus travel).
+ * @param {LimbState} limb
+ * @returns {LimbRow[]}
+ */
+export function seedLimbTable(limb) {
+  const travel = Math.min(limb.travel, LIMB_TABLE.travelMax);
+  /** @type {LimbRow[]} */
+  const rows = [];
+  for (let i = 0; i <= 4; i++) {
+    const t = (travel * i) / 4;
+    rows.push({ travel: t, force: Math.min(limb.stiffness * (limb.preloadTravel + t), LIMB_TABLE.forceMax) });
+  }
+  return rows;
+}
+
+/**
+ * Row to add after the last one: continues the last interval (10 mm of
+ * travel when there is none), limited to the ranges of LIMB_TABLE. Null
+ * when the table is full or the last travel is less than
+ * LIMB_TABLE.travelGapMin below its maximum.
+ * @param {LimbRow[]} rows
+ * @returns {LimbRow | null}
+ */
+export function nextLimbRow(rows) {
+  if (rows.length >= LIMB_TABLE.maxRows) return null;
+  const last = rows.at(-1);
+  if (!last) return { travel: 0, force: 0 };
+  const prev = rows.at(-2);
+  const dt = prev && last.travel > prev.travel ? last.travel - prev.travel : 0.01;
+  const dF = prev ? last.force - prev.force : 0;
+  if (!(LIMB_TABLE.travelMax - last.travel >= LIMB_TABLE.travelGapMin)) return null;
+  return {
+    travel: Math.min(last.travel + dt, LIMB_TABLE.travelMax),
+    force: Math.min(Math.max(last.force + dF, 0), LIMB_TABLE.forceMax),
+  };
 }
 
 /** @type {FieldDef[]} */
@@ -155,6 +446,26 @@ const GEOMETRY_FIELDS = [
       const u = s.units.draw;
       return `Draw length must be more than ${plain(fromSI(min, 'length', u))} ${u}: brace height + 1.75 in + 5 in of power stroke`;
     },
+  },
+  {
+    id: 'limb-length',
+    label: 'Limb lever length, pivot to axle',
+    path: 'geometry.limbLength',
+    kind: 'dims',
+    get: (s) => s.geometry.limbLength,
+    action: (v) => ({ type: 'setGeometry', geometry: { limbLength: v } }),
+    step: { mm: 5, in: 0.25 },
+    decimals: DIMS_DECIMALS,
+  },
+  {
+    id: 'limb-angle',
+    label: 'Limb lever angle at brace',
+    path: 'geometry.limbAngleBrace',
+    kind: 'angle',
+    get: (s) => s.geometry.limbAngleBrace,
+    action: (v) => ({ type: 'setGeometry', geometry: { limbAngleBrace: v } }),
+    step: { [DEGREE]: 1 },
+    decimals: { [DEGREE]: 1 },
   },
 ];
 
@@ -222,13 +533,240 @@ const FORCE_FIELDS = [
   },
 ];
 
+/**
+ * Steps and decimals of dimension and angle fields. Travel and track fields
+ * show the decimals of DIMS_DECIMALS; the fine fields (cords, body) show
+ * one more millimetre decimal for their 0.1 mm step.
+ */
+const TRAVEL = { step: { mm: 1, in: 0.05 }, decimals: DIMS_DECIMALS };
+const TRACK = { step: { mm: 0.5, in: 0.02 }, decimals: DIMS_DECIMALS };
+const FINE = { step: { mm: 0.1, in: 0.005 }, decimals: { mm: 2, in: 3 } };
+const ANGLE = { step: { [DEGREE]: 1 }, decimals: { [DEGREE]: 1 } };
+
+/** @type {FieldDef[]} */
+const LIMB_FIELDS = [
+  {
+    id: 'limb-stiffness',
+    label: 'Limb stiffness at the axle',
+    path: 'limb.stiffness',
+    kind: 'stiffness',
+    get: (s) => s.limb.stiffness,
+    action: (v) => ({ type: 'setLimb', limb: { stiffness: v } }),
+    step: { 'N/mm': 0.1, 'lbf/in': 1 },
+    decimals: { 'N/mm': 2, 'lbf/in': 1 },
+    visible: (s) => s.limb.mode === 'stiffness',
+  },
+  {
+    id: 'limb-travel',
+    label: 'Axle travel, brace to full draw',
+    path: 'limb.travel',
+    kind: 'dims',
+    get: (s) => s.limb.travel,
+    action: (v) => ({ type: 'setLimb', limb: { travel: v } }),
+    ...TRAVEL,
+    visible: (s) => s.limb.mode === 'travel',
+  },
+  {
+    id: 'limb-preload',
+    label: 'Preload travel, unstrung to brace',
+    path: 'limb.preloadTravel',
+    kind: 'dims',
+    get: (s) => s.limb.preloadTravel,
+    action: (v) => ({ type: 'setLimb', limb: { preloadTravel: v } }),
+    ...TRAVEL,
+  },
+  {
+    id: 'limb-rotation',
+    label: 'Maximum limb rotation from brace',
+    path: 'limb.maxRotation',
+    kind: 'angle',
+    get: (s) => s.limb.maxRotation,
+    action: (v) => ({ type: 'setLimb', limb: { maxRotation: v } }),
+    ...ANGLE,
+  },
+];
+
+/**
+ * @param {'radius' | 'offset' | 'semiMajor' | 'semiMinor'} key
+ * @returns {(v: number, s: ProjectState) => string | null}
+ */
+const trackExtra = (key) => (v, s) => stringTrackExtra(key, v, s);
+
+/** @type {FieldDef[]} */
+const TRACK_FIELDS = [
+  {
+    id: 'track-radius',
+    label: 'Radius',
+    path: 'stringTrack.radius',
+    kind: 'dims',
+    get: (s) => s.stringTrack.radius,
+    action: (v) => ({ type: 'setStringTrack', stringTrack: { radius: v } }),
+    ...TRACK,
+    extra: trackExtra('radius'),
+    visible: (s) => s.stringTrack.shape === 'eccentric',
+  },
+  {
+    id: 'track-semi-major',
+    label: 'Semi-major axis',
+    path: 'stringTrack.semiMajor',
+    kind: 'dims',
+    get: (s) => s.stringTrack.semiMajor,
+    action: (v) => ({ type: 'setStringTrack', stringTrack: { semiMajor: v } }),
+    ...TRACK,
+    extra: trackExtra('semiMajor'),
+    visible: (s) => s.stringTrack.shape === 'ellipse',
+  },
+  {
+    id: 'track-semi-minor',
+    label: 'Semi-minor axis',
+    path: 'stringTrack.semiMinor',
+    kind: 'dims',
+    get: (s) => s.stringTrack.semiMinor,
+    action: (v) => ({ type: 'setStringTrack', stringTrack: { semiMinor: v } }),
+    ...TRACK,
+    extra: trackExtra('semiMinor'),
+    visible: (s) => s.stringTrack.shape === 'ellipse',
+  },
+  {
+    id: 'track-offset',
+    label: 'Centre offset from the axle',
+    path: 'stringTrack.offset',
+    kind: 'dims',
+    get: (s) => s.stringTrack.offset,
+    action: (v) => ({ type: 'setStringTrack', stringTrack: { offset: v } }),
+    ...TRACK,
+    extra: trackExtra('offset'),
+  },
+  {
+    id: 'track-phase',
+    label: 'Phase',
+    path: 'stringTrack.phase',
+    kind: 'angle',
+    get: (s) => s.stringTrack.phase,
+    action: (v) => ({ type: 'setStringTrack', stringTrack: { phase: v } }),
+    ...ANGLE,
+  },
+];
+
+/** @type {FieldDef[]} */
+const CORD_FIELDS = [
+  {
+    id: 'string-diameter',
+    label: 'String diameter',
+    path: 'cords.stringDiameter',
+    kind: 'dims',
+    get: (s) => s.cords.stringDiameter,
+    action: (v) => ({ type: 'setCords', cords: { stringDiameter: v } }),
+    ...FINE,
+  },
+  {
+    id: 'cable-diameter',
+    label: 'Cable diameter',
+    path: 'cords.cableDiameter',
+    kind: 'dims',
+    get: (s) => s.cords.cableDiameter,
+    action: (v) => ({ type: 'setCords', cords: { cableDiameter: v } }),
+    ...FINE,
+  },
+  {
+    id: 'string-groove',
+    label: 'String groove depth',
+    path: 'cords.stringGrooveDepth',
+    kind: 'dims',
+    get: (s) => s.cords.stringGrooveDepth,
+    action: (v) => ({ type: 'setCords', cords: { stringGrooveDepth: v } }),
+    ...FINE,
+  },
+  {
+    id: 'cable-groove',
+    label: 'Cable groove depth',
+    path: 'cords.cableGrooveDepth',
+    kind: 'dims',
+    get: (s) => s.cords.cableGrooveDepth,
+    action: (v) => ({ type: 'setCords', cords: { cableGrooveDepth: v } }),
+    ...FINE,
+  },
+];
+
+/** @type {FieldDef[]} */
+const BODY_FIELDS = [
+  {
+    id: 'bore',
+    label: 'Axle bore diameter',
+    path: 'body.boreDiameter',
+    kind: 'dims',
+    get: (s) => s.body.boreDiameter,
+    action: (v) => ({ type: 'setBody', body: { boreDiameter: v } }),
+    ...FINE,
+  },
+  {
+    id: 'wall',
+    label: 'Minimum wall, groove bottom to bore',
+    path: 'body.minWall',
+    kind: 'dims',
+    get: (s) => s.body.minWall,
+    action: (v) => ({ type: 'setBody', body: { minWall: v } }),
+    ...FINE,
+  },
+  {
+    id: 'post',
+    label: 'Post diameter',
+    path: 'body.postDiameter',
+    kind: 'dims',
+    get: (s) => s.body.postDiameter,
+    action: (v) => ({ type: 'setBody', body: { postDiameter: v } }),
+    ...FINE,
+  },
+  {
+    id: 'bend-radius',
+    label: 'Minimum bend radius of a track',
+    path: 'body.minBendRadius',
+    kind: 'dims',
+    get: (s) => s.body.minBendRadius,
+    action: (v) => ({ type: 'setBody', body: { minBendRadius: v } }),
+    ...FINE,
+  },
+  {
+    id: 'lead-in',
+    label: 'Lead-in wrap of the cable at brace',
+    path: 'body.leadInWrap',
+    kind: 'angle',
+    get: (s) => s.body.leadInWrap,
+    action: (v) => ({ type: 'setBody', body: { leadInWrap: v } }),
+    ...ANGLE,
+  },
+  {
+    id: 'residual',
+    label: 'Residual wrap of the string at full draw',
+    path: 'body.residualWrap',
+    kind: 'angle',
+    get: (s) => s.body.residualWrap,
+    action: (v) => ({ type: 'setBody', body: { residualWrap: v } }),
+    ...ANGLE,
+  },
+];
+
+/** One-line hint under the limb input select, per limb mode. */
+export const LIMB_MODE_HINTS = Object.freeze({
+  stiffness: 'The limb stiffness and the preload travel set the limb; Results show the axle travel to full draw.',
+  travel: 'The axle travel from brace to full draw and the preload travel set the limb stiffness for the draw energy of the curve.',
+  table: 'Measured force at the axle against axle travel from brace; the preload travel places brace on the travel from the unstrung limb.',
+});
+
 const UNIT_SELECTS = /** @type {const} */ ([
   { id: 'draw', label: 'Draw length unit', key: 'draw', options: ['in', 'mm', 'cm'] },
   { id: 'force', label: 'Force unit', key: 'force', options: ['N', 'lbf'] },
+  { id: 'dims', label: 'Dimension unit', key: 'dims', options: ['mm', 'in'] },
   { id: 'energy', label: 'Energy unit', key: 'energy', options: ['J', 'ft·lbf'] },
+  { id: 'stiffness', label: 'Stiffness unit', key: 'stiffness', options: ['N/mm', 'lbf/in'] },
 ]);
 
 /**
+ * Settings panel. Groups: fieldsets "Bow geometry" (data-testid
+ * settings-geometry), "Draw force" (settings-force) and "Units"
+ * (settings-units); open details elements "Limbs" (settings-limbs),
+ * "String track" (settings-string-track), "Cords" (settings-cords) and "Cam body"
+ * (settings-cam-body).
  * @param {HTMLElement} panel element to fill
  * @param {Store} store
  * @returns {{ render: (state: ProjectState) => void }}
@@ -313,7 +851,7 @@ export function createSettings(panel, store) {
       const tol = 1e-9 * Math.max(Math.abs(spec.min), Math.abs(spec.max));
       if (value < spec.min - tol || value > spec.max + tol) {
         const { lo, hi } = boundsText(def, s.units);
-        say(`${def.label} must be between ${lo} and ${hi} ${u}`);
+        say(`${def.label} must be between ${lo} and ${withUnit(hi, u)}`);
         return false;
       }
       const v = Math.min(Math.max(value, spec.min), spec.max);
@@ -342,7 +880,7 @@ export function createSettings(panel, store) {
         say('');
         return;
       }
-      apply(parse(def, input.value, store.getState().units));
+      apply(parseField(def, input.value, store.getState().units));
       renderField(store.getState(), true);
     }
 
@@ -411,12 +949,13 @@ export function createSettings(panel, store) {
       const d = def.decimals[u];
       const value = toDisplay(def, def.get(s), s.units);
       const text = fixed(value, d);
+      wrap.hidden = def.visible ? !def.visible(s) : false;
       unit.textContent = u;
       const lo = toDisplay(def, spec.min, s.units);
       const hi = toDisplay(def, spec.max, s.units);
       const bounds = boundsText(def, s.units);
-      range.textContent = `${bounds.lo} to ${bounds.hi} ${u}, step ${plain(def.step[u])}`;
-      setAria(input, lo, hi, value, `${text} ${u}`);
+      range.textContent = `${bounds.lo} to ${withUnit(bounds.hi, u)}, step ${withUnit(plain(def.step[u]), u)}`;
+      setAria(input, lo, hi, value, withUnit(text, u));
       // Only a focused field keeps its text; a failed input was already
       // reverted by the forced render after it.
       if (force || document.activeElement !== input) {
@@ -442,7 +981,7 @@ export function createSettings(panel, store) {
         slider.max = String(max);
         slider.step = String((max - min) / count);
         slider.value = String(value);
-        slider.setAttribute('aria-valuetext', `${text} ${u}`);
+        slider.setAttribute('aria-valuetext', withUnit(text, u));
       }
     }
     renderers.push(renderField);
@@ -463,10 +1002,219 @@ export function createSettings(panel, store) {
     input.setAttribute('aria-valuetext', text);
   }
 
+  /**
+   * Select bound to an enumerated state value. A value the store refuses
+   * shows the reason under the select and reverts it.
+   * @param {{ id: string, label: string, options: { value: string, label: string }[],
+   *   get: (s: ProjectState) => string, action: (value: string, s: ProjectState) => Action,
+   *   extra?: (value: string, s: ProjectState) => string | null }} def
+   */
+  function choice(def) {
+    const selectId = `c-${def.id}`;
+    const msg = h('p', { class: 'field-msg', id: `${selectId}-msg`, 'data-testid': `choice-${def.id}-msg`, 'aria-live': 'polite' });
+    const select = h('select', { id: selectId, 'aria-describedby': `${selectId}-msg`, 'data-testid': `choice-${def.id}` });
+    for (const option of def.options) select.append(h('option', { value: option.value }, option.label));
+    let shown = '';
+    select.addEventListener('change', () => {
+      const s = store.getState();
+      const message = def.extra?.(select.value, s) ?? null;
+      const errors = message ? [{ message }] : store.dispatch(def.action(select.value, s));
+      msg.textContent = errors.length > 0 ? errors[0].message : '';
+      select.setAttribute('aria-invalid', String(errors.length > 0));
+      if (errors.length > 0) select.value = def.get(store.getState());
+    });
+    renderers.push((s) => {
+      const value = def.get(s);
+      if (value !== shown) {
+        // Changed elsewhere (undo, load): the old message no longer applies.
+        msg.textContent = '';
+        select.setAttribute('aria-invalid', 'false');
+      }
+      select.value = value;
+      shown = value;
+    });
+    return h('div', { class: 'field unit-field', 'data-field': def.id }, h('label', { for: selectId }, def.label), select, msg);
+  }
+
+  /**
+   * Editable table of the measured limb: travel from brace and force at
+   * the axle. A cell edit applies on Enter or blur when every row is valid.
+   */
+  function limbTable() {
+    const msg = h('p', { class: 'field-msg', id: 'limb-table-msg', 'data-testid': 'limb-table-msg', 'aria-live': 'polite' });
+    const travelHead = h('th', { scope: 'col' });
+    const forceHead = h('th', { scope: 'col' });
+    const body = h('tbody');
+    const table = h('table', { 'aria-describedby': 'limb-table-msg' },
+      h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Row'), travelHead, forceHead, h('th', { scope: 'col' }, h('span', { class: 'visually-hidden' }, 'Remove')))),
+      body);
+    const add = h('button', { type: 'button', class: 'limb-add', 'data-testid': 'limb-row-add' }, 'Add row');
+    const wrap = h('div', { class: 'point-table limb-table', 'data-testid': 'limb-table' },
+      h('p', { class: 'field-range' }, `Measured limb: ${LIMB_TABLE.minRows} to ${LIMB_TABLE.maxRows} rows with increasing travel.`),
+      h('div', { class: 'table-scroll' }, table), add, msg);
+
+    /** @type {{ travel: HTMLInputElement, force: HTMLInputElement, travelErr: HTMLSpanElement, forceErr: HTMLSpanElement, remove: HTMLButtonElement }[]} */
+    const cells = [];
+    /** SI rows and text the inputs were last filled from. */
+    /** @type {LimbRow[]} */
+    let shownRows = [];
+    let shownKey = '';
+
+    /** @returns {LimbRowText[]} */
+    const texts = () => cells.map((c) => ({ travel: c.travel.value, force: c.force.value }));
+
+    /** @param {LimbRowError[]} errors */
+    function showErrors(errors) {
+      cells.forEach((c, i) => {
+        const t = errors.find((e) => e.row === i && e.column === 'travel');
+        const f = errors.find((e) => e.row === i && e.column === 'force');
+        c.travelErr.textContent = t?.message ?? '';
+        c.forceErr.textContent = f?.message ?? '';
+        c.travel.setAttribute('aria-invalid', String(Boolean(t)));
+        c.force.setAttribute('aria-invalid', String(Boolean(f)));
+      });
+      // Messages of single cells show in their cells.
+      msg.textContent = errors.find((e) => e.row === -1)?.message ?? '';
+    }
+
+    /**
+     * Validate rows and dispatch them. Returns true when applied.
+     * @param {LimbRow[]} rows
+     * @param {LimbRowError[]} errors
+     */
+    function commitRows(rows, errors) {
+      if (errors.length > 0) {
+        showErrors(errors);
+        return false;
+      }
+      const storeErrors = store.dispatch({ type: 'setLimb', limb: { table: rows } });
+      if (storeErrors.length > 0) {
+        showErrors([{ row: -1, column: 'table', message: storeErrors[0].message }]);
+        return false;
+      }
+      showErrors([]);
+      return true;
+    }
+
+    function commitCells() {
+      const units = store.getState().units;
+      const now = texts();
+      const before = formatLimbRows(shownRows, units);
+      if (now.length === before.length && now.every((t, i) => t.travel === before[i].travel && t.force === before[i].force)) {
+        showErrors([]);
+        return;
+      }
+      const { rows, errors } = parseLimbRows(now, units, shownRows);
+      commitRows(rows, errors);
+    }
+
+    /**
+     * Remove a row. Focus moves to the remove button now at that index, or
+     * of the previous row, or to Add row when the table is at its fewest rows.
+     * @param {number} index
+     */
+    function removeRow(index) {
+      const units = store.getState().units;
+      const { rows } = parseLimbRows(texts(), units, shownRows);
+      rows.splice(index, 1);
+      if (!commitRows(rows, validateLimbRows(rows, units))) return;
+      if (rows.length <= LIMB_TABLE.minRows) add.focus();
+      else cells[Math.min(index, rows.length - 1)]?.remove.focus();
+    }
+
+    add.addEventListener('click', () => {
+      const units = store.getState().units;
+      const { rows, errors } = parseLimbRows(texts(), units, shownRows);
+      if (errors.some((e) => e.row >= 0)) {
+        showErrors(errors);
+        return;
+      }
+      const next = nextLimbRow(rows);
+      if (!next) {
+        showErrors([{ row: -1, column: 'table', message: `The limb table has ${LIMB_TABLE.maxRows} rows or its last travel is at the maximum` }]);
+        return;
+      }
+      rows.push(next);
+      commitRows(rows, validateLimbRows(rows, units));
+    });
+
+    /** @param {number} i */
+    function makeRow(i) {
+      /** @param {'travel' | 'force'} column */
+      const cell = (column) => {
+        const input = h('input', {
+          type: 'text',
+          inputmode: 'decimal',
+          autocomplete: 'off',
+          spellcheck: 'false',
+          'aria-describedby': `limb-row-${i}-${column}-msg`,
+          'data-testid': `limb-row-${i}-${column}`,
+        });
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commitCells();
+          } else if (e.key === 'Escape') {
+            // Back to the applied value of this cell.
+            const shown = formatLimbRows(shownRows, store.getState().units)[i];
+            if (shown) input.value = shown[column];
+            commitCells();
+          }
+        });
+        input.addEventListener('blur', commitCells);
+        return input;
+      };
+      const travel = cell('travel');
+      const force = cell('force');
+      const travelErr = h('span', { class: 'cell-error', id: `limb-row-${i}-travel-msg`, 'data-testid': `limb-row-${i}-travel-msg` });
+      const forceErr = h('span', { class: 'cell-error', id: `limb-row-${i}-force-msg`, 'data-testid': `limb-row-${i}-force-msg` });
+      const remove = h('button', { type: 'button', class: 'limb-remove', 'aria-label': `Remove row ${i + 1}`, 'data-testid': `limb-row-${i}-remove` }, '×');
+      remove.addEventListener('click', () => removeRow(i));
+      const tr = h('tr', {},
+        h('th', { scope: 'row' }, String(i + 1)),
+        h('td', {}, travel, travelErr),
+        h('td', {}, force, forceErr),
+        h('td', {}, remove));
+      body.append(tr);
+      cells.push({ travel, force, travelErr, forceErr, remove });
+    }
+
+    renderers.push((s) => {
+      wrap.hidden = s.limb.mode !== 'table';
+      const u = s.units;
+      travelHead.textContent = `Travel from brace (${u.dims})`;
+      forceHead.textContent = `Force at the axle (${u.force})`;
+      const rows = s.limb.table;
+      // The mode is part of the key: text left unapplied when the table was
+      // hidden is replaced by the store rows when it shows again.
+      const key = JSON.stringify([rows, u.dims, u.force, s.limb.mode]);
+      if (key === shownKey) return;
+      // Rows, units or mode changed: show the store rows.
+      while (cells.length < rows.length) makeRow(cells.length);
+      while (cells.length > rows.length) {
+        cells.pop();
+        body.lastElementChild?.remove();
+      }
+      const text = formatLimbRows(rows, u);
+      cells.forEach((c, i) => {
+        c.travel.value = text[i].travel;
+        c.force.value = text[i].force;
+        c.travel.setAttribute('aria-label', `Row ${i + 1} travel from brace in ${u.dims}`);
+        c.force.setAttribute('aria-label', `Row ${i + 1} force at the axle in ${u.force}`);
+        c.remove.disabled = rows.length <= LIMB_TABLE.minRows;
+      });
+      add.disabled = rows.length >= LIMB_TABLE.maxRows;
+      showErrors([]);
+      shownRows = rows;
+      shownKey = key;
+    });
+    return wrap;
+  }
+
   const customHint = h('p', { class: 'hint', 'data-testid': 'custom-hint' },
     'The curve is custom: rise and valley width apply after Reset curve. Peak and let-off rescale the points.');
 
-  const units = h('fieldset', { class: 'group' }, h('legend', {}, 'Units'));
+  const units = h('fieldset', { class: 'group', 'data-testid': 'settings-units' }, h('legend', {}, 'Units'));
   const unitRow = h('div', { class: 'unit-row' });
   for (const def of UNIT_SELECTS) {
     const select = h('select', { id: `u-${def.id}`, 'data-testid': `unit-${def.id}` });
@@ -481,9 +1229,61 @@ export function createSettings(panel, store) {
   }
   units.append(unitRow);
 
+  const limbMode = choice({
+    id: 'limb-mode',
+    label: 'Limb input',
+    options: [
+      { value: 'stiffness', label: 'Stiffness and preload' },
+      { value: 'travel', label: 'Axle travel and preload' },
+      { value: 'table', label: 'Measured table' },
+    ],
+    get: (s) => s.limb.mode,
+    action: (value, s) => {
+      const mode = /** @type {LimbState['mode']} */ (value);
+      // The table mode needs rows: start from the linear limb when there are too few.
+      if (mode === 'table' && s.limb.table.length < LIMB_TABLE.minRows) {
+        return { type: 'setLimb', limb: { mode, table: seedLimbTable(s.limb) } };
+      }
+      return { type: 'setLimb', limb: { mode } };
+    },
+  });
+
+  // The hint says which inputs set the limb in the selected mode, since the
+  // fields of the other modes are hidden.
+  const limbModeHint = h('p', { class: 'hint', id: 'limb-mode-hint', 'data-testid': 'limb-mode-hint' });
+  limbMode.querySelector('select')?.setAttribute('aria-describedby', 'c-limb-mode-msg limb-mode-hint');
+  renderers.push((s) => {
+    limbModeHint.textContent = LIMB_MODE_HINTS[s.limb.mode] ?? '';
+  });
+
+  const trackShape = choice({
+    id: 'track-shape',
+    label: 'Shape',
+    options: [
+      { value: 'eccentric', label: 'Eccentric circle' },
+      { value: 'ellipse', label: 'Ellipse' },
+    ],
+    get: (s) => s.stringTrack.shape,
+    action: (value) => ({ type: 'setStringTrack', stringTrack: { shape: /** @type {StringTrack['shape']} */ (value) } }),
+    extra: (value, s) => stringTrackExtra('shape', /** @type {StringTrack['shape']} */ (value), s),
+  });
+
+  /**
+   * @param {string} id
+   * @param {string} title
+   * @param {...Node} children
+   */
+  const group = (id, title, ...children) =>
+    h('details', { class: 'group settings-group', open: true, 'data-testid': `settings-${id}` },
+      h('summary', {}, title), ...children);
+
   panel.append(
-    h('fieldset', { class: 'group' }, h('legend', {}, 'Bow geometry'), ...GEOMETRY_FIELDS.map(field)),
-    h('fieldset', { class: 'group' }, h('legend', {}, 'Draw force'), ...FORCE_FIELDS.map(field), customHint),
+    h('fieldset', { class: 'group', 'data-testid': 'settings-geometry' }, h('legend', {}, 'Bow geometry'), ...GEOMETRY_FIELDS.map(field)),
+    h('fieldset', { class: 'group', 'data-testid': 'settings-force' }, h('legend', {}, 'Draw force'), ...FORCE_FIELDS.map(field), customHint),
+    group('limbs', 'Limbs', limbMode, limbModeHint, ...LIMB_FIELDS.map(field), limbTable()),
+    group('string-track', 'String track', trackShape, ...TRACK_FIELDS.map(field)),
+    group('cords', 'Cords', ...CORD_FIELDS.map(field)),
+    group('cam-body', 'Cam body', ...BODY_FIELDS.map(field)),
     units,
   );
 

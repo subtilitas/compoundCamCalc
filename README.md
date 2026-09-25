@@ -7,12 +7,14 @@ and cam plate files for CAD and CNC work (DXF and STEP). It runs in the
 browser without a server and is hosted on GitHub Pages:
 <https://subtilitas.github.io/compoundCamCalc/>.
 
-Status: in development. The live page contains the force curve editor
-([user guide](docs/user-guide.md)). The forward model, which computes the
-draw force curve of given cam tracks, is in `src/core` and described in
-[docs/model.md](docs/model.md); the inverse solver, the cam views and the
-exports follow in the stages listed in [docs/PLAN.md](docs/PLAN.md). Changes
-are recorded in [CHANGELOG.md](CHANGELOG.md).
+Status: in development. The live page contains the force curve editor, the
+settings of the bow and the cam, the solver running in a Web Worker, the
+results with the problems and their suggestions, the achieved force curve
+and a cam view ([user guide](docs/user-guide.md)). The model is in
+`src/core` and described in [docs/model.md](docs/model.md); the string plan,
+the loads and the exports follow in the stages listed in
+[docs/PLAN.md](docs/PLAN.md). Changes are recorded in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Coverage
 
@@ -43,8 +45,10 @@ Chromium executable.
 
 ```
 src/core/     model code in SI units, no DOM access: units, force curve,
-              support functions, contact, geometry, limb, forward model
+              support functions, contact, geometry, limb, forward and
+              inverse model, constrained fit, outline, solve
 src/state/    project state: schema, presets, validation, store, no DOM access
+src/worker/   solver worker
 src/ui/       user interface
 scripts/      tooling
 tests/unit/   Vitest

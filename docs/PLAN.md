@@ -550,6 +550,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 2 | Support functions, contact solver, limb model, forward model, `docs/model.md` |
 | 3 | Inverse solver, brace conditions, diagnostics, constrained fit, closed outline, achieved-curve overlay (needs the cable track from the inverse solver), cam view, results card, worker |
 | 3a | Model code of slice 3 in `src/core` (inverse, fit, QP solver, outline, diagnostics, `solve`) and the tuned default preset; no user interface |
+| 3b | User interface of slice 3: solver worker (latest request wins, coarse while dragging, full on release), results card with diagnostics, achieved-curve overlay, cam view, settings for limbs, string track, cords and cam body |
 | 4 | String plan layout, build lengths, loads chart, draw-position scrubber |
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export |
 | 6 | STEP export |

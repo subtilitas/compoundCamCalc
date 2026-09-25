@@ -52,13 +52,25 @@
           </div>
         </details>
       </section>
+      <section class="panel panel-results" aria-labelledby="results-title">
+        <h2 id="results-title">Results</h2>
+        <div id="results-body" data-testid="results"></div>
+        <p class="hint">Static model: string stretch, cam timing and dynamics are not modelled.</p>
+      </section>
+      <section class="panel panel-cam" aria-labelledby="cam-title">
+        <h2 id="cam-title">Cam</h2>
+        <p class="hint">
+          One cam at brace in the cam frame. The buttons, Ctrl and the wheel, or the plus and minus keys zoom; dragging or the arrow keys pan once zoomed in.
+        </p>
+        <div id="cam-body" class="cam-body"></div>
+      </section>
       <section class="panel panel-settings" aria-labelledby="settings-title">
         <h2 id="settings-title">Settings</h2>
+        <a id="solve-chip" class="solve-chip" href="#results-title" data-testid="solve-chip" aria-live="polite"></a>
         <div id="settings-body"></div>
       </section>
     </main>
     <footer class="app-footer">
-      <span>Static model: string stretch, cam timing and dynamics are not modelled.</span>
       <span id="app-version"></span>
     </footer>
     <script type="module" src="./src/main.js"></script>
