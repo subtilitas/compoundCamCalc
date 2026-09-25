@@ -799,6 +799,63 @@ export const LIMB_MODE_HINTS = Object.freeze({
   table: 'Measured force at the axle against axle travel from brace; the preload travel places brace on the travel from the unstrung limb.',
 });
 
+/** Options of the limb input select. */
+const LIMB_MODES = Object.freeze([
+  { value: 'stiffness', label: 'Stiffness and preload' },
+  { value: 'travel', label: 'Axle travel and preload' },
+  { value: 'table', label: 'Measured table' },
+]);
+
+/** Options of the string track shape select. */
+const TRACK_SHAPES = Object.freeze([
+  { value: 'eccentric', label: 'Eccentric circle' },
+  { value: 'ellipse', label: 'Ellipse' },
+]);
+
+/**
+ * @typedef {object} InputGroup
+ * @property {string} title group title as in the panel
+ * @property {{ label: string, text: string }[]} rows value with unit, in the
+ *   display units of the state
+ */
+
+/**
+ * Inputs of a state as label and text, grouped and labelled as in the
+ * panel. Fields hidden in the panel for the selected limb mode or track
+ * shape are left out; a measured limb lists its rows.
+ * @param {ProjectState} s
+ * @returns {InputGroup[]}
+ */
+export function inputGroups(s) {
+  /** @param {FieldDef[]} defs */
+  const rows = (defs) => defs.filter((def) => !def.visible || def.visible(s)).map((def) => {
+    const u = unitOf(def, s.units);
+    return { label: def.label, text: withUnit(fixed(toDisplay(def, def.get(s), s.units), def.decimals[u]), u) };
+  });
+  /**
+   * @param {readonly { value: string, label: string }[]} options
+   * @param {string} value
+   */
+  const option = (options, value) => options.find((o) => o.value === value)?.label ?? value;
+  const table = s.limb.mode === 'table'
+    ? formatLimbRows(s.limb.table, s.units).map((r, i) => ({
+        label: `Row ${i + 1}: travel from brace, force at the axle`,
+        text: `${r.travel} ${s.units.dims}, ${r.force} ${s.units.force}`,
+      }))
+    : [];
+  return [
+    { title: 'Bow geometry', rows: rows(GEOMETRY_FIELDS) },
+    {
+      title: 'Draw force',
+      rows: [{ label: 'Curve', text: s.curve.mode === 'custom' ? 'Custom' : 'Parametric' }, ...rows(FORCE_FIELDS)],
+    },
+    { title: 'Limbs', rows: [{ label: 'Limb input', text: option(LIMB_MODES, s.limb.mode) }, ...rows(LIMB_FIELDS), ...table] },
+    { title: 'String track', rows: [{ label: 'Shape', text: option(TRACK_SHAPES, s.stringTrack.shape) }, ...rows(TRACK_FIELDS)] },
+    { title: 'Cords', rows: rows(CORD_FIELDS) },
+    { title: 'Cam body', rows: rows(BODY_FIELDS) },
+  ];
+}
+
 const UNIT_SELECTS = /** @type {const} */ ([
   { id: 'draw', label: 'Draw length unit', key: 'draw', options: ['in', 'mm', 'cm'] },
   { id: 'force', label: 'Force unit', key: 'force', options: ['N', 'lbf'] },
@@ -1051,7 +1108,7 @@ export function createSettings(panel, store) {
   /**
    * Select bound to an enumerated state value. A value the store refuses
    * shows the reason under the select and reverts it.
-   * @param {{ id: string, label: string, options: { value: string, label: string }[],
+   * @param {{ id: string, label: string, options: readonly { value: string, label: string }[],
    *   get: (s: ProjectState) => string, action: (value: string, s: ProjectState) => Action,
    *   extra?: (value: string, s: ProjectState) => string | null }} def
    */
@@ -1278,11 +1335,7 @@ export function createSettings(panel, store) {
   const limbMode = choice({
     id: 'limb-mode',
     label: 'Limb input',
-    options: [
-      { value: 'stiffness', label: 'Stiffness and preload' },
-      { value: 'travel', label: 'Axle travel and preload' },
-      { value: 'table', label: 'Measured table' },
-    ],
+    options: LIMB_MODES,
     get: (s) => s.limb.mode,
     action: (value, s) => {
       const mode = /** @type {LimbState['mode']} */ (value);
@@ -1305,10 +1358,7 @@ export function createSettings(panel, store) {
   const trackShape = choice({
     id: 'track-shape',
     label: 'Shape',
-    options: [
-      { value: 'eccentric', label: 'Eccentric circle' },
-      { value: 'ellipse', label: 'Ellipse' },
-    ],
+    options: TRACK_SHAPES,
     get: (s) => s.stringTrack.shape,
     action: (value) => ({ type: 'setStringTrack', stringTrack: { shape: /** @type {StringTrack['shape']} */ (value) } }),
     extra: (value, s) => stringTrackExtra('shape', /** @type {StringTrack['shape']} */ (value), s),

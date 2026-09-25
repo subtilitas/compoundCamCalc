@@ -25,6 +25,17 @@ const ITEMS = [
 ];
 
 /**
+ * Statistics of the target curve of a state as label and text, in the
+ * display units of the state.
+ * @param {ProjectState} s
+ * @returns {{ key: string, label: string, text: string }[]}
+ */
+export function statItems(s) {
+  const m = metricsOf(s.curve.points);
+  return ITEMS.map((item) => ({ key: item.key, label: item.label, text: item.text(m, s.units) }));
+}
+
+/**
  * @param {HTMLDListElement} list
  * @returns {{ render: (state: ProjectState) => void }}
  */
@@ -36,9 +47,8 @@ export function createStats(list) {
   });
   return {
     render(s) {
-      const m = metricsOf(s.curve.points);
-      ITEMS.forEach((item, i) => {
-        values[i].textContent = item.text(m, s.units);
+      statItems(s).forEach((item, i) => {
+        values[i].textContent = item.text;
       });
     },
   };

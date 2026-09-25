@@ -414,6 +414,19 @@ Independent set; everything else is derived and shown read-only.
   and the layout pose.
 - Exports: cam plate DXF files, reference DXF, string-plan DXF, STEP, CSV of
   draw, force, θ, T_s, T_c; JSON project; shareable URL.
+- Print report (`src/ui/report.js`): the last cam that met every check and
+  its inputs, as the exports use them, in the current display units. It
+  lists the design name, date and time, app version and the export status
+  sentence; the inputs; the target statistics; the results metrics and
+  diagnostics; a static force chart (`src/ui/staticchart.js`, fixed size,
+  no ids); the cam and the string plan at brace from fresh view instances;
+  the build lengths; the loads chart at a fixed width with the load maxima;
+  a force table at 10 % steps of the draw; the static-model footnote. The
+  report is built on `beforeprint` and removed on `afterprint`, so the
+  print command of the browser prints it too; without such a cam the page
+  prints unchanged. A print style sheet forces the light colours, keeps
+  figures and table rows on one page, repeats table headers and sets 12 mm
+  page margins without a page size, so A4 and Letter both work.
 
 ## User interface rules
 

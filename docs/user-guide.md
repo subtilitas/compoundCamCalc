@@ -18,7 +18,7 @@ results, the draw position, the cam view, the string plan and the loads.
 - **Loads** panel: string tension, cable tension and limb tip load against
   the draw.
 - **Export** panel: cut files of the cam plates, drawings and the force
-  table.
+  table, and the print report.
 - **Settings** panel: bow geometry, draw force, limbs, string track, cords,
   cam body and display units.
 
@@ -380,6 +380,42 @@ comma, open it with the text import and choose comma as the separator.
 
 On a phone, some in-app browsers block downloads; open the page in the
 browser app instead.
+
+## Print report
+
+**Print report** in the Export panel opens the print dialog of the browser
+with a report of the cam. The print command of the browser (Ctrl+P, or
+Cmd+P on a Mac) prints the same report. To keep a PDF (Portable Document
+Format) file, choose **Save as PDF** as the printer in the print dialog.
+
+The report describes the same cam as the export files: the last cam that
+met every check, with the inputs it was solved for. Values show in the
+display units selected now. The report contains:
+
+- the design name, the date and time of printing, the app version and the
+  status sentence of the Export panel; when the inputs changed after that
+  cam, the sentence ends with "later edits are not included";
+- the inputs, grouped and labelled as in Settings: bow geometry, draw force
+  with the curve mode, limbs, string track, cords and cam body;
+- the statistics of the target curve and the values of the Results panel,
+  with its problems and suggestions;
+- the force chart with the target and the achieved curve, and lines at
+  brace and full draw;
+- the cam and the string plan at brace;
+- the build lengths of the string plan;
+- the loads chart and the largest loads;
+- a force table at 10 % steps of the draw from brace to full draw: draw
+  force, string tension, cable tension, limb tip load and cam rotation;
+- the note that the model is static.
+
+The report prints in light colours, also when the screen uses a dark
+colour scheme. Page margins are 12 mm; the page size comes from the print
+dialog, so A4 and Letter both work. Figures and table rows do not split
+across pages, and the force table repeats its header on each page.
+
+Before any cam meets every check, the button does nothing and the status
+line says why; the print command of the browser then prints the page as
+it is.
 
 ## Parametric and custom curves
 

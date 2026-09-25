@@ -237,6 +237,7 @@ function placePose(g, p, r) {
  *   check, outdated while newer inputs are being solved; the same arguments
  *   again do nothing
  * @property {(pose: BowPose | null, units: Units) => void} setPose move the solid pose
+ * @property {() => void} destroy remove the elements and with them their listeners
  */
 
 /**
@@ -403,6 +404,10 @@ export function createStringPlan(container) {
         ? `Load on each limb tip: ${forceText(p.axleLoad, units, true)} ${units.force}${dir ? `, ${dir}` : ''}`
         : '';
       if (load.textContent !== text) load.textContent = text;
+    },
+    destroy() {
+      viewport.destroy();
+      for (const el of [root, load, legend, dims, caption]) el.remove();
     },
   };
 }

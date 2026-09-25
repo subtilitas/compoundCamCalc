@@ -6,6 +6,13 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Print report: a Print report button in the Export panel and the print
+  command of the browser print the last cam that met every check with its
+  inputs, target statistics, results, diagnostics, force chart, cam at
+  brace, string plan, build lengths, loads and a force table at 10 % steps,
+  in the current display units and light colours (`src/ui/report.js`,
+  `src/ui/staticchart.js`). Save as PDF through the print dialog of the
+  browser.
 - File menu in the page header: Save, Save as…, Open… (with Rename and
   Delete), Open sample…, Reset to default, Save to file (.json) and Open
   from file…; named designs in the browser (`src/state/library.js`), an

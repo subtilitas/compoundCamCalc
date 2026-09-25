@@ -1,7 +1,7 @@
 /**
  * Application wiring: store, editor, chart, table, settings, stats,
  * solver, results, cam view, toolbar, keyboard shortcuts, notices,
- * autosave and the File menu.
+ * autosave, the File menu and the print report.
  * @module ui/app
  */
 
@@ -23,6 +23,7 @@ import { createExportPanel } from './exportpanel.js';
 import { createLoadChart } from './loadchart.js';
 import { createScrubber } from './scrubber.js';
 import { createStringPlan } from './stringplan.js';
+import { attachReport } from './report.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
@@ -371,6 +372,17 @@ export function startApp() {
   });
   showSolve();
   requestSolve(store.getState());
+  // The report shows what the exports use: the last cam that met every check.
+  attachReport(() => (lastGood
+    ? {
+        result: lastGood.result,
+        state: lastGood.state,
+        now: store.getState(),
+        name: fileMenu.current().name,
+        version: __APP_VERSION__,
+        date: new Date(),
+      }
+    : null));
 
   if (saved.notice) showNotice(notices, saved.notice);
   let storageWarned = false;

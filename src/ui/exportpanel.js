@@ -1,6 +1,6 @@
 /**
- * Export panel: a ZIP of all files, one button per file, the source of the
- * export and its warnings. Exports always use the last cam that met every
+ * Export panel: a ZIP of all files, one button per file, a print report
+ * button, the source of the export and its warnings. Exports always use the last cam that met every
  * check (a full solve without problems) and the state it was solved for.
  * The files are built once per cam, draw and force unit and calendar day:
  * in idle time while the panel is on screen, or at the first click.
@@ -21,6 +21,9 @@ const IDLE_DELAY = 800;
 
 /** Longest wait for idle time after IDLE_DELAY (ms). */
 const IDLE_TIMEOUT = 2000;
+
+/** Title of the print button while no cam meets every check. */
+export const PRINT_OFF_TITLE = 'No cam meets every check yet; the report needs a full solve without problems';
 
 /** Parts of the single-file buttons, grouped. */
 const GROUPS = Object.freeze([
@@ -109,6 +112,12 @@ export function createExportPanel(container, { version, date = () => new Date() 
     }
     return h('div', { class: 'export-group' }, h('h3', { class: 'export-heading', id: headingId }, g.title), list);
   });
+  // The report itself is built on beforeprint (ui/report), so the print
+  // command of the browser prints it too.
+  const print = h('button', { type: 'button', class: 'export-btn', 'data-testid': 'export-print' }, 'Print report');
+  groups.push(h('div', { class: 'export-group' },
+    h('h3', { class: 'export-heading', id: 'export-group-report' }, 'Report'),
+    h('div', { class: 'export-buttons', role: 'group', 'aria-labelledby': 'export-group-report' }, print)));
   const warnings = h('ul', { class: 'export-warnings', 'data-testid': 'export-warnings' });
   warnings.hidden = true;
   const alert = h('div', { 'data-testid': 'export-alert' });
@@ -232,6 +241,14 @@ export function createExportPanel(container, { version, date = () => new Date() 
     download(out.name, out.bytes, 'application/zip');
     say(`Saved ${out.name}`);
   }));
+  print.addEventListener('click', () => {
+    alert.replaceChildren();
+    if (!view?.lastGood) {
+      say(exportStatus({ hasCam: false, busy: view?.busy ?? false, pending: false, current: false, id: '' }));
+      return;
+    }
+    window.print();
+  });
   for (const [part, b] of buttons) {
     b.addEventListener('click', () => run((set) => {
       const f = set.files.find((file) => file.part === part);
@@ -249,6 +266,7 @@ export function createExportPanel(container, { version, date = () => new Date() 
       view = next;
       const has = next.lastGood !== null;
       for (const b of [zip, ...buttons.values()]) setAttrs(b, { 'aria-disabled': has ? null : 'true' });
+      setAttrs(print, { 'aria-disabled': has ? null : 'true', title: has ? null : PRINT_OFF_TITLE });
       container.classList.toggle('export-off', !has);
       let id = '';
       let current = false;
