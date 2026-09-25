@@ -509,12 +509,22 @@ export function createFileMenu(container, store, options) {
         rename.addEventListener('click', async () => {
           const r = await askName('Rename', e.name, e.id, rename);
           if (!r) return;
+          // Check both designs again inside the lock: another tab may have
+          // deleted the one renamed, or the clash, since the dialog opened.
           const done2 = await withLibrary((lib) => {
-            const next = r.replaceId ? deleteDesign(lib, r.replaceId) : lib;
+            if (!lib.designs.some((d) => d.id === e.id)) return null;
+            const clash = findByName(lib, r.name);
+            if (clash && clash.id !== e.id && clash.id !== r.replaceId) return null;
+            const next = r.replaceId && lib.designs.some((d) => d.id === r.replaceId) ? deleteDesign(lib, r.replaceId) : lib;
             return { library: renameDesign(next, e.id, r.name), value: true };
           });
           if (!done2.ok || !done2.before) {
             say(STORAGE_FULL);
+            return;
+          }
+          if (done2.value !== true) {
+            say(`"${e.name}" was not renamed: another tab changed the designs. Try again.`);
+            fill();
             return;
           }
           if (current.id === e.id) setCurrent({ ...current, name: r.name });
@@ -566,10 +576,13 @@ export function createFileMenu(container, store, options) {
   sampleBtn.addEventListener('click', async () => {
     close();
     if (!(await mayDiscard(menuButton))) return;
+    // As in Open: ask again when the inputs changed or lost their saved copy meanwhile.
+    const asked = dirty() || current.orphan === true;
     await dialog('Open a sample design', (_d, done) => {
       const rows = SAMPLES.map((sample) => {
         const open = h('button', { type: 'button', 'aria-label': `Open ${sample.name}`, 'data-testid': `sample-${sample.id}` }, 'Open');
-        open.addEventListener('click', () => {
+        open.addEventListener('click', async () => {
+          if (!asked && !(await mayDiscard(open))) return;
           const state = sample.state();
           done(true);
           switchTo(state, { id: null, name: sample.name, source: 'unsaved', baseline: state }, `Opened the sample "${sample.name}"`);

@@ -304,6 +304,53 @@ test.describe('File menu storage failures', () => {
   });
 });
 
+test.describe('File menu with two tabs', () => {
+  /**
+   * Delete a design in a second page of the same browser and wait for it.
+   * @param {import('@playwright/test').BrowserContext} context
+   * @param {string} name
+   */
+  async function deleteElsewhere(context, name) {
+    const other = await context.newPage();
+    await other.goto('./');
+    await other.getByTestId('file-menu').click();
+    await other.getByTestId('file-open').click();
+    const dialog = other.getByTestId('file-dialog').last();
+    if (await dialog.getByTestId('dialog-yes').isVisible()) await dialog.getByTestId('dialog-yes').click();
+    await other.getByRole('button', { name: `Delete ${name}` }).click();
+    await other.getByTestId('dialog-yes').click();
+    await expect(other.locator('dialog').filter({ has: other.getByTestId('design-list') }).getByTestId('dialog-status')).toHaveText(`Deleted "${name}"`);
+    await other.close();
+  }
+
+  test('Rename with Replace does nothing when the renamed design is gone meanwhile', async ({ page, context }) => {
+    await page.goto('./');
+    await saveAs(page, 'Bow A');
+    await changeAta(page, '34');
+    await saveAs(page, 'Bow B');
+    await menu(page, 'open');
+    await page.getByRole('button', { name: 'Rename Bow A' }).click();
+    await page.getByTestId('dialog-name').fill('Bow B');
+    await page.getByTestId('dialog-ok').click();
+    await expect(page.getByTestId('dialog-replace')).toBeVisible();
+    await deleteElsewhere(context, 'Bow A');
+    await page.getByTestId('dialog-replace').click();
+    const openDialog = page.locator('dialog').filter({ has: page.getByTestId('design-list') });
+    await expect(openDialog.getByTestId('dialog-status')).toHaveText('"Bow A" was not renamed: another tab changed the designs. Try again.');
+    await expect(openDialog.getByRole('button', { name: 'Open Bow B' })).toBeVisible();
+  });
+
+  test('Open sample asks again when another tab deletes the open design meanwhile', async ({ page, context }) => {
+    await page.goto('./');
+    await saveAs(page, 'Bow A');
+    await menu(page, 'sample');
+    await deleteElsewhere(context, 'Bow A');
+    await expect(page.getByTestId('design-marker')).toHaveText('(not saved)');
+    await page.getByTestId('sample-crossbow').click();
+    await expect(page.getByTestId('file-dialog').last()).toContainText('"Bow A" is not saved. Discard them?');
+  });
+});
+
 test.describe('File menu with full storage', () => {
   test('keeps Open for deleting designs and turns Save off', async ({ page }) => {
     await page.goto('./');
