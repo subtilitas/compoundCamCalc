@@ -394,6 +394,10 @@ export function createSettings(panel, store) {
       };
       s0.addEventListener('change', end);
       s0.addEventListener('pointerup', end);
+      // A gesture taken over by the browser or the system ends without
+      // pointerup or change.
+      s0.addEventListener('pointercancel', end);
+      s0.addEventListener('lostpointercapture', end);
       s0.addEventListener('blur', end);
     }
 
@@ -428,12 +432,15 @@ export function createSettings(panel, store) {
       note = def.note?.(s, def) ?? '';
       showMessage();
       if (slider && def.sliderStep) {
-        const st = def.sliderStep[u];
-        const min = Math.ceil(lo / st - 1e-9) * st;
-        const max = Math.floor(hi / st + 1e-9) * st;
+        // The slider spans the same bounds as the field. The step is the
+        // nominal step adjusted so that it divides the range, which keeps
+        // both bounds reachable (Home, End, and the ends of a drag).
+        const min = Number(bounds.lo);
+        const max = Number(bounds.hi);
+        const count = Math.max(1, Math.round((max - min) / def.sliderStep[u]));
         slider.min = String(min);
         slider.max = String(max);
-        slider.step = String(st);
+        slider.step = String((max - min) / count);
         slider.value = String(value);
         slider.setAttribute('aria-valuetext', `${text} ${u}`);
       }

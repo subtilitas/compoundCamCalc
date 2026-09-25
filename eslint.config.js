@@ -5,7 +5,7 @@ const pureDirs = ['src/core/**/*.js', 'src/state/**/*.js', 'src/export/**/*.js']
 
 export default [
   {
-    ignores: ['dist/**', 'coverage/**', 'playwright-report/**', 'test-results/**'],
+    ignores: ['dist/**', 'coverage/**', 'playwright-report/**', 'test-results/**', '.claude/**'],
   },
   js.configs.recommended,
   {

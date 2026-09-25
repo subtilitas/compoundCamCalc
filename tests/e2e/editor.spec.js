@@ -171,6 +171,32 @@ test('settings fields validate and sliders update the curve live', async ({ page
   await expect(page.getByTestId('stat-letoff')).toHaveText('80.0 %');
 });
 
+test('the peak slider reaches the bounds of its field in lbf', async ({ page }) => {
+  await page.getByTestId('unit-force').selectOption('lbf');
+  const slider = page.getByTestId('slider-peak');
+  await expect(slider).toHaveAttribute('min', '11.3');
+  await expect(slider).toHaveAttribute('max', '202.3');
+  await slider.focus();
+  await page.keyboard.press('End');
+  await expect(page.getByTestId('field-peak')).toHaveValue('202.3');
+  await page.keyboard.press('Home');
+  await expect(page.getByTestId('field-peak')).toHaveValue('11.3');
+});
+
+test('a cancelled slider gesture ends its undo entry', async ({ page }) => {
+  const slider = page.getByTestId('slider-peak');
+  await slider.evaluate((el) => {
+    const input = /** @type {HTMLInputElement} */ (el);
+    input.value = '300';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }));
+  });
+  await expect(page.getByTestId('stat-peak')).toHaveText('300 N');
+  await expect(page.getByTestId('btn-undo')).toBeEnabled();
+  await page.getByTestId('btn-undo').click();
+  await expect(page.getByTestId('stat-peak')).toHaveText('267 N');
+});
+
 test('Reset curve regenerates a custom curve and keeps keyboard focus in the toolbar', async ({ page }) => {
   await page.getByTestId('chart-point-3').focus();
   await page.keyboard.press('ArrowDown');
