@@ -306,7 +306,7 @@ each run of affected samples.
 
 | Code | Condition |
 |---|---|
-| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, unknown limb kind, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not a non-empty array, not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace (for example a NaN preload) |
+| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, unknown limb kind, limb data with a non-positive stiffness or a negative preload rotation, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not a non-empty array, not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace, or any exception while reading the input |
 | `brace` | the string cannot leave its track at ψ = 0 towards the nock, the anchor lies inside the cable track, or det = 0 at brace |
 | `no-convergence` | a sample does not close within 30 iterations, or a contact is lost; later samples are NaN |
 | `slack-string` | T_s ≤ 0 |

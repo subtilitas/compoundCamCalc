@@ -132,11 +132,8 @@ describe('table limb', () => {
       expect(limb.stiffness(NaN)).toBeNaN();
       expect(limb.inverse(NaN)).toBeNaN();
     }
-    // A NaN preload makes every rotation NaN.
-    const noPreload = createLimb({ ...table, alpha0: NaN });
-    expect(noPreload.moment(0)).toBeNaN();
-    expect(noPreload.energy(0)).toBeNaN();
-    expect(noPreload.stiffness(0)).toBeNaN();
+    // A NaN preload is invalid limb data.
+    expect(() => createLimb({ ...table, alpha0: NaN })).toThrow(/alpha0/);
   });
 
   it('rejects invalid tables with a message', () => {
@@ -200,5 +197,13 @@ describe('createLimb', () => {
     const data = /** @type {any} */ ({ kind: 'spring', torsionalStiffness: 100, alpha0: 0.1 });
     expect(() => createLimb(data)).toThrow(/Unknown limb kind/);
     expect(() => createLimb(/** @type {any} */ (null))).toThrow(/Unknown limb kind/);
+  });
+
+  it('rejects serialized limb data with a non-positive stiffness or a negative preload', () => {
+    expect(() => createLimb({ kind: 'linear', torsionalStiffness: -1000, alpha0: -0.2 })).toThrow(RangeError);
+    expect(() => createLimb({ kind: 'linear', torsionalStiffness: 0, alpha0: 0.1 })).toThrow(/stiffness/);
+    expect(() => createLimb({ kind: 'linear', torsionalStiffness: 1000, alpha0: -0.01 })).toThrow(/alpha0/);
+    expect(() => createLimb({ kind: 'linear', torsionalStiffness: Infinity, alpha0: 0.1 })).toThrow(/stiffness/);
+    expect(tableLimb({ rotation: [0, 0.2], moment: [0, 100], alpha0: -0.05 }).error).toMatch(/preload/);
   });
 });

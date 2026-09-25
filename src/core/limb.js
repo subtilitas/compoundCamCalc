@@ -101,7 +101,7 @@ export function tableLimb({ rotation, moment, alpha0 }) {
     points.push({ x: q, F: m });
   }
   if (points[0].x > 0) points.unshift({ x: 0, F: 0 });
-  if (!Number.isFinite(alpha0)) return { limb: null, error: 'The limb preload must be a finite number' };
+  if (!(Number.isFinite(alpha0) && alpha0 >= 0)) return { limb: null, error: 'The limb preload must be a finite number of at least 0' };
   return { limb: { kind: 'table', curve: buildCurveData(points), alpha0 }, error: null };
 }
 
@@ -226,9 +226,15 @@ function tableMethods(d) {
  */
 export function createLimb(data) {
   const kind = /** @type {{ kind?: unknown } | null | undefined} */ (data)?.kind;
+  if (kind !== 'table' && kind !== 'linear') throw new RangeError(`Unknown limb kind "${String(kind)}"`);
+  const { alpha0 } = data;
+  if (!(Number.isFinite(alpha0) && alpha0 >= 0)) {
+    throw new RangeError('The limb preload rotation alpha0 must be a finite number of at least 0');
+  }
   if (kind === 'table') return { ...data, ...tableMethods(/** @type {TableLimbData} */ (data)) };
-  if (kind === 'linear') return { ...data, ...linearMethods(/** @type {LinearLimbData} */ (data)) };
-  throw new RangeError(`Unknown limb kind "${String(kind)}"`);
+  const k = /** @type {LinearLimbData} */ (data).torsionalStiffness;
+  if (!(Number.isFinite(k) && k > 0)) throw new RangeError('The limb torsional stiffness must be a finite positive number');
+  return { ...data, ...linearMethods(/** @type {LinearLimbData} */ (data)) };
 }
 
 /**

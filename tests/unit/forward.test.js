@@ -1,3 +1,4 @@
+import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { CLOSURE_TOLERANCE, DEFAULT_WRAP, FULL_SAMPLES, MAX_SAMPLES, drawGrid, solveForward } from '../../src/core/forward.js';
 import { axle, bowGeometry } from '../../src/core/geometry.js';
@@ -657,6 +658,8 @@ describe('forward model: diagnostics', () => {
       input({ x: /** @type {any} */ ({ length: Number.MAX_SAFE_INTEGER }) }),
       input({ x: /** @type {any} */ ({ length: -1 }) }),
       input({ x: /** @type {any} */ (0.3) }),
+      input({ x: /** @type {any} */ ([geometry.braceHeight, Symbol('x')]) }),
+      input({ limb: { kind: 'linear', torsionalStiffness: -1000, alpha0: -0.2 } }),
       input({ maxIterations: 0 }),
       input({ maxIterations: 1.5 }),
       input({ maxIterations: 1e9 }),
@@ -683,6 +686,22 @@ describe('forward model: diagnostics', () => {
     const huge = solveForward(input({ limb: { kind: 'linear', torsionalStiffness: 1e307, alpha0: 17 }, samples: 20 }));
     expect(huge.status).toBe('infeasible');
     expect(codes(huge)).toContain('non-finite');
+  });
+
+  it('never throws on malformed input (property test)', () => {
+    const field = fc.oneof(fc.anything(), fc.double(), fc.constant(undefined), fc.constant(null));
+    fc.assert(
+      fc.property(
+        fc.record({ geometry: field, stringTrack: field, cableTrack: field, limb: field, x: field, samples: field, maxIterations: field }, { requiredKeys: [] }),
+        fc.boolean(),
+        (overrides, keepValid) => {
+          const base = keepValid ? input({ samples: 20 }) : {};
+          const r = solveForward(/** @type {any} */ ({ ...base, ...overrides }));
+          expect(['ok', 'infeasible', 'no-convergence']).toContain(r.status);
+        },
+      ),
+      { numRuns: 300 },
+    );
   });
 
   it('brace: the cable anchor lies inside the cable track', () => {

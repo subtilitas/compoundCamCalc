@@ -246,10 +246,25 @@ function gridFor(input, xBrace, xFull) {
 
 /**
  * Run the forward model. Never throws; problems come back as diagnostics.
+ * Any exception while reading the input (for example a grid value that does
+ * not convert to a number) becomes an invalid-input diagnostic.
  * @param {ForwardInput} input
  * @returns {ForwardResult}
  */
 export function solveForward(input) {
+  try {
+    return solveForwardChecked(input);
+  } catch (err) {
+    return failed('invalid-input', err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * Forward model body; solveForward guards it.
+ * @param {ForwardInput} input
+ * @returns {ForwardResult}
+ */
+function solveForwardChecked(input) {
   if (typeof input !== 'object' || input === null) return failed('invalid-input', 'the input is not an object');
   let stringSupport;
   let cableSupport;
