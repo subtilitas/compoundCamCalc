@@ -4,9 +4,8 @@
  * @module ui/stats
  */
 
-import { pointMetrics } from '../core/curve.js';
 import { fromSI } from '../core/units.js';
-import { fixed, forceText, lengthLabel } from './display.js';
+import { fixed, forceText, lengthLabel, metricsOf } from './display.js';
 import { h } from './dom.js';
 import { infoButton } from './glossary.js';
 
@@ -37,7 +36,7 @@ export function createStats(list) {
   });
   return {
     render(s) {
-      const m = pointMetrics(s.curve.points);
+      const m = metricsOf(s.curve.points);
       ITEMS.forEach((item, i) => {
         values[i].textContent = item.text(m, s.units);
       });

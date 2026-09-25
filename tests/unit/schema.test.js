@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { MAX_POINTS, pointMetrics } from '../../src/core/curve.js';
+import { MAX_POINTS, MIN_GAP, pointMetrics } from '../../src/core/curve.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
 import {
@@ -174,6 +174,14 @@ describe('validatePoints', () => {
       'Point 5: force must be between 1 and 5000 N',
     ]);
   });
+
+  it('reports points closer than 0.1 in, within a rounding tolerance', () => {
+    const close = structuredClone(points);
+    close[3].x = close[2].x + MIN_GAP / 2;
+    expect(validatePoints(close, g).map((e) => e.message)).toEqual(['Point 4 must be at least 0.1 in from point 3']);
+    close[3].x = close[2].x + MIN_GAP * (1 - 1e-12);
+    expect(validatePoints(close, g)).toEqual([]);
+  });
 });
 
 describe('field helpers', () => {
@@ -221,6 +229,51 @@ describe('JSON codec', () => {
       }),
       { numRuns: 200 },
     );
+  });
+
+  it('never throws on the default project with changed or removed fields (property)', () => {
+    // Every path of the default state, including array entries.
+    /** @type {string[][]} */
+    const paths = [];
+    /**
+     * @param {any} v
+     * @param {string[]} path
+     */
+    const walk = (v, path) => {
+      if (path.length > 0) paths.push(path);
+      if (v !== null && typeof v === 'object') for (const key of Object.keys(v)) walk(v[key], [...path, key]);
+    };
+    const base = defaultState();
+    walk(base, []);
+    const edit = fc.record({ path: fc.constantFrom(...paths), value: fc.option(fc.jsonValue(), { nil: undefined }) });
+    fc.assert(
+      fc.property(fc.array(edit, { minLength: 1, maxLength: 3 }), (edits) => {
+        /** @type {any} */
+        const data = structuredClone(base);
+        for (const { path, value } of edits) {
+          let parent = data;
+          for (const key of path.slice(0, -1)) parent = parent !== null && typeof parent === 'object' ? parent[key] : undefined;
+          if (parent === null || typeof parent !== 'object') continue;
+          if (value === undefined) delete parent[path[path.length - 1]];
+          else parent[path[path.length - 1]] = value;
+        }
+        const text = JSON.stringify(data);
+        const r = fromJSON(text);
+        expect(validate(r.state)).toEqual([]);
+        if (r.errors.length === 0) expect(r.state).toEqual(migrate(JSON.parse(text)).state);
+        else expect(r.state).toEqual(base);
+      }),
+      { numRuns: 2000 },
+    );
+  }, 60_000);
+
+  it('reports fields that are objects with a toString that is not a function', () => {
+    for (const [section, key] of [['stringTrack', 'radius'], ['stringTrack', 'semiMajor'], ['geometry', 'drawLength']]) {
+      const text = JSON.stringify(modified((s) => (s[section][key] = { toString: {} })));
+      const r = fromJSON(text);
+      expect(r.state).toEqual(defaultState());
+      expect(r.errors.map((e) => e.path)).toContain(`${section}.${key}`);
+    }
   });
 });
 

@@ -1,30 +1,21 @@
 /**
  * Point table: draw length and force of every point as editable text
  * fields. Values apply on Enter or blur; invalid or out-of-range input
- * shows a message next to the field and is not applied.
+ * shows a message next to the field and is not applied. A focused field
+ * selects its point.
  * @module ui/table
  */
 
 import { MAX_FORCE, MIN_FORCE, MIN_GAP } from '../core/curve.js';
 import { AMO_OFFSET, fromSI, parseQuantity } from '../core/units.js';
-import { DRAW_DECIMALS, amo, drawText, forceText } from './display.js';
+import { DRAW_DECIMALS, amo, drawText, forceText, inward } from './display.js';
 import { h } from './dom.js';
 
 /** @typedef {import('./editor.js').Editor} Editor */
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 
-/**
- * A bound rounded towards the inside of its range, so the printed value is
- * itself valid.
- * @param {number} value
- * @param {number} decimals
- * @param {1 | -1} direction 1 rounds up (lower bound), −1 rounds down
- */
-function inward(value, decimals, direction) {
-  const f = 10 ** decimals;
-  const r = direction > 0 ? Math.ceil(value * f - 1e-9) / f : Math.floor(value * f + 1e-9) / f;
-  return r.toFixed(decimals);
-}
+/** Tolerance of the draw length range check, in m: typed bounds round-trip through the display unit. */
+const X_TOLERANCE = 1e-9;
 
 /**
  * @param {HTMLTableSectionElement} tbody
@@ -52,13 +43,13 @@ export function createPointTable(tbody, drawHead, forceHead, editor) {
       if (Number.isNaN(value)) return { error: 'Enter a number, for example 24.5 or 24,5' };
       const lo = pts[i - 1].x + MIN_GAP;
       const hi = pts[i + 1].x - MIN_GAP;
-      if (value < lo || value > hi) {
+      if (value < lo - X_TOLERANCE || value > hi + X_TOLERANCE) {
         const d = DRAW_DECIMALS[units.draw];
         return {
           error: `Enter a draw length between ${inward(amo(lo, units), d, 1)} and ${inward(amo(hi, units), d, -1)} ${units.draw}`,
         };
       }
-      return { value };
+      return { value: Math.min(Math.max(value, lo), hi) };
     }
     const value = parseQuantity(text, 'force', units.force);
     if (Number.isNaN(value)) return { error: 'Enter a number, for example 250 or 250,5' };
@@ -77,7 +68,6 @@ export function createPointTable(tbody, drawHead, forceHead, editor) {
    */
   function showError(input, message, text) {
     message.textContent = text;
-    message.hidden = text === '';
     input.setAttribute('aria-invalid', String(text !== ''));
   }
 
@@ -89,8 +79,13 @@ export function createPointTable(tbody, drawHead, forceHead, editor) {
   function cell(key, i, label) {
     const n = i + 1;
     const id = `pt-${key}-${n}`;
-    const message = h('span', { class: 'cell-error', id: `${id}-msg`, 'data-testid': `point-${key.toLowerCase()}-${n}-msg` });
-    message.hidden = true;
+    // Always rendered (empty when valid), so the live region announces errors.
+    const message = h('span', {
+      class: 'cell-error',
+      id: `${id}-msg`,
+      'aria-live': 'polite',
+      'data-testid': `point-${key.toLowerCase()}-${n}-msg`,
+    });
     const input = h('input', {
       id,
       type: 'text',
@@ -114,7 +109,6 @@ export function createPointTable(tbody, drawHead, forceHead, editor) {
       }
       showError(input, message, '');
       editor.move(i, key === 'x' ? { x: r.value } : { F: r.value });
-      editor.select(i);
       // Show the stored value in the field that still has focus.
       const s = store.getState();
       const p = s.curve.points[i];
@@ -132,6 +126,9 @@ export function createPointTable(tbody, drawHead, forceHead, editor) {
       }
     });
     input.addEventListener('blur', commit);
+    // Select on focus, not on commit: the highlighted point is always the
+    // one Delete point removes, also when a blur commits a value.
+    input.addEventListener('focus', () => editor.select(i));
     return h('td', {}, input, message);
   }
 
@@ -174,8 +171,14 @@ export function createPointTable(tbody, drawHead, forceHead, editor) {
       for (const [key, text] of /** @type {const} */ ([['x', drawText(p.x, units)], ['f', forceText(p.F, units)]])) {
         const el = row.querySelector(`[data-testid="point-${key}-${i + 1}"]`);
         if (el instanceof HTMLInputElement) {
-          // Leave a field alone while it is being edited or shows an error.
-          if (document.activeElement === el || el.getAttribute('aria-invalid') === 'true') continue;
+          // Leave a field alone while it is being edited. A field with an
+          // error keeps the typed text only while its point is unchanged.
+          if (document.activeElement === el) continue;
+          if (el.getAttribute('aria-invalid') === 'true') {
+            if (text === el.dataset.rendered) continue;
+            const message = row.querySelector(`#${el.id}-msg`);
+            if (message instanceof HTMLElement) showError(el, message, '');
+          }
           el.value = text;
           el.dataset.rendered = text;
         } else if (el) {

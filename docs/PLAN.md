@@ -156,16 +156,41 @@ Explicit per sample, no marching:
   knots of a violating interval are set to d = s = 0. Result: each interval
   is monotone between its end values, local extrema sit at knots, flat data
   stay flat.
+- Prescribed F'(x_b) or F''(x_b) (options of the interpolant, from the brace
+  conditions) can exclude d = s = 0 at knot 0. When the first interval then
+  stays non-monotone, a deep-cut ellipsoid method maximises the smallest
+  scaled slope of intervals 0 and 1 over the free values at knots 0 and 1,
+  with d = s = 0 at the later knots (a concave problem in at most 3
+  variables, at most 1000 steps). A setting with slope ≥ 0 becomes the
+  target: the shrinking above runs again towards it instead of towards 0,
+  and terminates for the same reason. `shapePreserved = false` means that
+  no such setting exists; a monotone curve that needs non-zero values at
+  knot 2 or later is not searched for. Non-finite prescribed values are
+  rejected.
 - Definitions: F_hold = min F on [x_peak, x_f]; let-off =
   (F_peak − F_hold) / F_peak; valley width = length of the interval around the
   minimum where F ≤ F_hold + 0.05·F_peak.
 - Peak slider scales all interior points. Let-off slider applies an affine map
-  to the points after the peak. Points stay ≥ 1 N.
+  to the points after the peak; the holding weight stays at least
+  10⁻⁶·F_peak below the peak, so the map stays invertible and let-off 0 %
+  can be undone by a later let-off. One slider gesture applies each value to
+  the points at its start (no compounding). Points stay ≥ 1 N. In custom
+  mode the peak and let-off parameters follow the measured values, clamped
+  to their field ranges; a field note names a custom curve outside them.
+- Custom points keep a gap of ≥ 0.1 in, also after a geometry change: points
+  closer than that after the linear rescaling move apart (a power stroke
+  over 5 in has room for 49 gaps of 0.1 in). Validation rejects smaller
+  gaps (tolerance 10⁻⁹ m). A move never goes towards a neighbour that is
+  already closer.
 - Parametric generator: brace, ramp point (40 % of the rise, 70 % of the
   peak), peak start (rise fraction of the power stroke), peak end (60 % of
   the way to the valley), let-off transition point (halfway, half the drop),
   valley start and full draw; the flat part at full draw is adjusted until
-  the measured valley width matches the requested one.
+  the measured valley width matches the requested one as closely as the
+  let-off, rise and power stroke allow (the let-off transition sets a
+  smallest width, about 1.03 in at 80 % let-off on the default bow; at a
+  let-off ≤ 5 % the valley spans peak to full draw). The valley field names
+  the reached width when it differs by more than 1 %.
 - Walls are vertical in the rigid model; the wall position is x_f. A cable
   stop post is placed on the cable span at θ(x_f).
 
@@ -258,9 +283,11 @@ Independent set; everything else is derived and shown read-only.
 - On an infeasible result the last valid cam stays visible, dimmed; the
   diagnostic names the draw range, the constraint and the input to change.
 - Undo/redo for all edits (Ctrl+Z, Ctrl+Shift+Z), one entry per drag, capped
-  at 100.
-- Autosave to localStorage (guarded by try/catch); schemaVersion in saved
-  data.
+  at 100; undo and redo are refused while a drag or slider gesture is open.
+- Autosave to localStorage (guarded by try/catch), debounced 300 ms and
+  flushed on `pagehide` and when the page is hidden; schemaVersion in saved
+  data. Unreadable saved data is copied to a backup key before the next
+  change replaces it.
 - Glossary tooltips for let-off, holding weight, valley, wall, brace height,
   ATA, AMO draw length, power stroke, lever arm, radius of curvature.
 - Footnote under results: static model; string stretch, cam timing and

@@ -44,7 +44,6 @@ export function startApp() {
   const stats = createStats(byId('stats', HTMLDListElement));
   const status = byId('edit-status', HTMLParagraphElement);
   const modeBadge = byId('curve-mode', HTMLSpanElement);
-  const regenerate = byId('btn-regenerate', HTMLButtonElement);
   const addButton = byId('btn-add-point', HTMLButtonElement);
   const deleteButton = byId('btn-delete-point', HTMLButtonElement);
   const undoButton = byId('btn-undo', HTMLButtonElement);
@@ -54,6 +53,7 @@ export function startApp() {
   if (window.matchMedia('(min-width: 960px)').matches) details.open = true;
 
   let rev = 0;
+  let shownCount = 0;
   function render() {
     const s = store.getState();
     chart.render(s);
@@ -63,14 +63,24 @@ export function startApp() {
     const custom = s.curve.mode === 'custom';
     modeBadge.textContent = custom ? 'Custom' : 'Parametric';
     modeBadge.dataset.mode = s.curve.mode;
-    // Hidden without collapsing, so the chart does not shift mid-drag.
-    regenerate.classList.toggle('invisible', !custom);
     resetButton.disabled = !custom;
     const selected = editor.selected();
     deleteButton.disabled = !editor.canRemove(selected);
     undoButton.disabled = !store.canUndo();
     redoButton.disabled = !store.canRedo();
-    if (status.textContent !== editor.message()) status.textContent = editor.message();
+    const text = editor.message();
+    const count = editor.messageCount();
+    if (count !== shownCount && text !== '' && status.textContent === text) {
+      // The same message again: clear it and set it in the next frame, so
+      // the status region announces it again.
+      status.textContent = '';
+      requestAnimationFrame(() => {
+        if (editor.message() === text) status.textContent = text;
+      });
+    } else if (status.textContent !== text) {
+      status.textContent = text;
+    }
+    shownCount = count;
     root.dataset.pointCount = String(s.curve.points.length);
     root.dataset.selected = selected >= 0 ? String(selected + 1) : '';
     root.dataset.curveMode = s.curve.mode;
@@ -82,14 +92,28 @@ export function startApp() {
     const hadFocus = document.activeElement === deleteButton;
     if (editor.remove(editor.selected()) && hadFocus) addButton.focus();
   });
-  undoButton.addEventListener('click', () => store.undo());
-  redoButton.addEventListener('click', () => store.redo());
-  const regenerateCurve = () => {
-    store.dispatch({ type: 'regenerateCurve' });
-    editor.say('Curve regenerated from the parameters');
-  };
-  resetButton.addEventListener('click', regenerateCurve);
-  regenerate.addEventListener('click', regenerateCurve);
+  /**
+   * Run a toolbar action and keep keyboard focus in the toolbar when the
+   * action disables the focused button. Chromium moves focus to the body as
+   * soon as the focused button is disabled, so focus is read before.
+   * @param {HTMLButtonElement} button
+   * @param {() => void} action
+   * @param {() => HTMLButtonElement} fallback
+   */
+  function keepFocus(button, action, fallback) {
+    const hadFocus = document.activeElement === button;
+    action();
+    if (hadFocus && button.disabled) fallback().focus();
+  }
+  undoButton.addEventListener('click', () =>
+    keepFocus(undoButton, () => store.undo(), () => (redoButton.disabled ? addButton : redoButton)));
+  redoButton.addEventListener('click', () =>
+    keepFocus(redoButton, () => store.redo(), () => (undoButton.disabled ? addButton : undoButton)));
+  resetButton.addEventListener('click', () =>
+    keepFocus(resetButton, () => {
+      store.dispatch({ type: 'regenerateCurve' });
+      editor.say('Curve regenerated from the parameters');
+    }, () => addButton));
 
   document.addEventListener('keydown', (e) => {
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;

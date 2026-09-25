@@ -13,6 +13,11 @@
  *    interval shrinks towards 0; if s = 0 is not enough, the slopes shrink.
  *    Neighbours are re-checked. d = s = 0 at both knots gives the monotone
  *    quintic smoothstep, so the process terminates.
+ * 4. A prescribed start slope or second derivative can rule out d = s = 0 at
+ *    knot 0. When step 3 then fails on the first interval, a search finds
+ *    monotone target values for the free values at knots 0 and 1, with the
+ *    later knots at d = s = 0, and step 3 runs again with the values
+ *    shrinking towards these targets instead of towards 0.
  *
  * Because d and s are shared per knot the result stays C2. Each interval is
  * monotone between its end values, so the curve never leaves the range of
@@ -27,6 +32,8 @@ export const RANGE_TOLERANCE = 1e-12;
 const MONOTONE_TOLERANCE = 1e-12;
 /** Bisection steps when searching the largest admissible shrink factor. */
 const SHRINK_STEPS = 40;
+/** Iteration limit of the target search for prescribed start values. */
+const ANCHOR_STEPS = 1000;
 
 /**
  * @typedef {object} CurvePoint
@@ -51,7 +58,10 @@ const SHRINK_STEPS = 40;
  *   first, of q(t) = F(x_i + t·h_i) with t in [0, 1] and h_i = x_(i+1) − x_i
  * @property {Float64Array} cumulative integral of F from x_0 to x_i (J)
  * @property {boolean} shapePreserved false only when prescribed start
- *   conditions make a monotone first interval impossible
+ *   conditions leave the first interval non-monotone: no monotone setting
+ *   of the free values at knots 0 and 1 exists with d = s = 0 at the later
+ *   knots. The search for that setting holds the later knots at 0, so a
+ *   monotone curve that needs other values there is not found.
  */
 
 /**
@@ -180,17 +190,18 @@ function quadraticRootsInUnit(a, b, c) {
 }
 
 /**
- * Minimum and maximum of a quartic on [0, 1]. Candidates: the ends, the roots
- * of the cubic derivative (isolated on intervals where the cubic is monotone
- * and refined by bisection), and 16 uniform samples as a safeguard.
+ * Minimum and maximum of a quartic on [0, 1] and where they occur.
+ * Candidates: the ends, the roots of the cubic derivative (isolated on
+ * intervals where the cubic is monotone and refined by bisection), and 16
+ * uniform samples as a safeguard.
  * @param {number} a0
  * @param {number} a1
  * @param {number} a2
  * @param {number} a3
  * @param {number} a4
- * @returns {{ min: number, max: number }}
+ * @returns {{ min: number, tMin: number, max: number, tMax: number }}
  */
-export function quarticRangeOnUnit(a0, a1, a2, a3, a4) {
+function quarticExtrema(a0, a1, a2, a3, a4) {
   const b0 = a1;
   const b1 = 2 * a2;
   const b2 = 3 * a3;
@@ -220,17 +231,40 @@ export function quarticRangeOnUnit(a0, a1, a2, a3, a4) {
   for (let k = 1; k < 16; k++) candidates.push(k / 16);
   let min = Infinity;
   let max = -Infinity;
+  let tMin = 0;
+  let tMax = 0;
   for (const t of candidates) {
     const v = quartic(t, a0, a1, a2, a3, a4);
-    if (v < min) min = v;
-    if (v > max) max = v;
+    if (v < min) {
+      min = v;
+      tMin = t;
+    }
+    if (v > max) {
+      max = v;
+      tMax = t;
+    }
   }
-  return { min, max };
+  return { min, tMin, max, tMax };
+}
+
+/**
+ * Minimum and maximum of a quartic on [0, 1], see {@link quarticExtrema}.
+ * @param {number} a0
+ * @param {number} a1
+ * @param {number} a2
+ * @param {number} a3
+ * @param {number} a4
+ * @returns {{ min: number, max: number }}
+ */
+export function quarticRangeOnUnit(a0, a1, a2, a3, a4) {
+  const r = quarticExtrema(a0, a1, a2, a3, a4);
+  return { min: r.min, max: r.max };
 }
 
 /**
  * True when the quintic on one interval is monotone in the direction of its
- * data (y1 − y0), or constant when y1 = y0.
+ * data (y1 − y0), or constant when y1 = y0. False for non-finite
+ * coefficients.
  * @param {number} h
  * @param {number} y0
  * @param {number} y1
@@ -243,9 +277,10 @@ export function quarticRangeOnUnit(a0, a1, a2, a3, a4) {
  */
 function isMonotone(h, y0, y1, d0, d1, s0, s1, scale, work) {
   quinticCoeffs(h, y0, y1, d0, d1, s0, s1, work);
+  for (let i = 0; i < 6; i++) if (!Number.isFinite(work[i])) return false;
   const delta = y1 - y0;
   const tol = MONOTONE_TOLERANCE * (delta !== 0 ? Math.abs(delta) : scale);
-  const r = quarticRangeOnUnit(work[1], 2 * work[2], 3 * work[3], 4 * work[4], 5 * work[5]);
+  const r = quarticExtrema(work[1], 2 * work[2], 3 * work[3], 4 * work[4], 5 * work[5]);
   if (delta > 0) return r.min >= -tol;
   if (delta < 0) return r.max <= tol;
   return r.min >= -tol && r.max <= tol;
@@ -270,6 +305,18 @@ function checkPoints(points) {
 }
 
 /**
+ * @param {CurveOptions} options
+ */
+function checkOptions(options) {
+  for (const key of /** @type {const} */ (['startSlope', 'startSecondDerivative'])) {
+    const v = options[key];
+    if (v !== undefined && !Number.isFinite(v)) {
+      throw new RangeError(`${key} must be a finite number`);
+    }
+  }
+}
+
+/**
  * Build the interpolant data for a set of points.
  * @param {ReadonlyArray<CurvePoint>} points strictly increasing x
  * @param {CurveOptions} [options]
@@ -277,6 +324,7 @@ function checkPoints(points) {
  */
 export function buildCurveData(points, options = {}) {
   checkPoints(points);
+  checkOptions(options);
   const n = points.length;
   const x = Float64Array.from(points, (p) => p.x);
   const y = Float64Array.from(points, (p) => p.F);
@@ -301,7 +349,18 @@ export function buildCurveData(points, options = {}) {
     yMin = Math.min(yMin, v);
     yMax = Math.max(yMax, v);
   }
-  const shapePreserved = enforceShape(x, y, d, s, fixedStart, yMax - yMin);
+  const prescribed = fixedStart.slope || fixedStart.second;
+  const dStart = prescribed ? Float64Array.from(d) : d;
+  const sStart = prescribed ? Float64Array.from(s) : s;
+  let shapePreserved = enforceShape(x, y, d, s, fixedStart, yMax - yMin, null);
+  if (!shapePreserved && prescribed) {
+    const anchor = findAnchor(x, y, dStart, sStart, fixedStart, yMax - yMin);
+    if (anchor) {
+      d.set(dStart);
+      s.set(sStart);
+      shapePreserved = enforceShape(x, y, d, s, fixedStart, yMax - yMin, anchor);
+    }
+  }
 
   const coeffs = new Float64Array(6 * (n - 1));
   const cumulative = new Float64Array(n);
@@ -314,7 +373,15 @@ export function buildCurveData(points, options = {}) {
 }
 
 /**
- * Shrink s, then d, per interval until every interval is monotone.
+ * @typedef {object} Targets
+ * @property {Float64Array} d slope per knot
+ * @property {Float64Array} s second derivative per knot
+ */
+
+/**
+ * Shrink s, then d, per interval towards the targets until every interval
+ * is monotone. The targets are 0 unless a search for prescribed start
+ * values supplies them; they must be monotone on every interval.
  * Modifies d and s in place.
  * @param {Float64Array} x
  * @param {Float64Array} y
@@ -322,10 +389,13 @@ export function buildCurveData(points, options = {}) {
  * @param {Float64Array} s
  * @param {{ slope: boolean, second: boolean }} fixedStart prescribed values at knot 0
  * @param {number} range max(y) − min(y)
+ * @param {Targets | null} targets null for d = s = 0 at every knot
  * @returns {boolean} true when every interval is monotone
  */
-function enforceShape(x, y, d, s, fixedStart, range) {
+function enforceShape(x, y, d, s, fixedStart, range, targets) {
   const n = x.length;
+  const td = targets ? targets.d : new Float64Array(n);
+  const ts = targets ? targets.s : td;
   const work = new Float64Array(6);
   const scale = range;
   /**
@@ -354,13 +424,13 @@ function enforceShape(x, y, d, s, fixedStart, range) {
     const free = { d: !(k === 0 && fixedStart.slope), s: !(k === 0 && fixedStart.second) };
     fixes++;
     if (fixes > fixLimit) {
-      // Fallback that always terminates: d = s = 0 at the free knots gives
-      // the smoothstep, and zeroed knots stay zero.
-      if (free.d) d[k] = 0;
-      if (free.s) s[k] = 0;
-      d[k + 1] = 0;
-      s[k + 1] = 0;
-    } else if (!shrinkInterval(k, free, d, s, ok, y[k] === y[k + 1])) {
+      // Fallback that always terminates: the targets at both knots are
+      // monotone, and knots set to their targets stay there.
+      if (free.d) d[k] = td[k];
+      if (free.s) s[k] = ts[k];
+      d[k + 1] = td[k + 1];
+      s[k + 1] = ts[k + 1];
+    } else if (!shrinkInterval(k, free, d, s, ok, y[k] === y[k + 1], td, ts)) {
       continue;
     }
     for (const j of [k - 1, k + 1]) {
@@ -377,9 +447,10 @@ function enforceShape(x, y, d, s, fixedStart, range) {
 }
 
 /**
- * Largest common shrink factor for s at the free knots of interval k; if even
- * s = 0 is not monotone, s = 0 and the largest shrink factor for d. A flat
- * interval gets d = s = 0 at its free knots, so it is exactly constant.
+ * Largest common shrink factor f for s at the free knots of interval k,
+ * with s = target + f·(s − target); if even s = target is not monotone,
+ * s = target and the largest shrink factor for d. A flat interval gets its
+ * targets (d = s = 0) at its free knots, so it is exactly constant.
  * @param {number} k
  * @param {{ d: boolean, s: boolean }} free which values at knot k may change
  *   (false for prescribed start values)
@@ -387,32 +458,39 @@ function enforceShape(x, y, d, s, fixedStart, range) {
  * @param {Float64Array} s
  * @param {(k: number, dk: number, dk1: number, sk: number, sk1: number) => boolean} ok
  * @param {boolean} flat the interval has equal end values
- * @returns {boolean} false when no monotone setting exists (prescribed knot)
+ * @param {Float64Array} td target slopes
+ * @param {Float64Array} ts target second derivatives
+ * @returns {boolean} false when the targets are not monotone on this
+ *   interval (prescribed knot without a found target)
  */
-function shrinkInterval(k, free, d, s, ok, flat) {
+function shrinkInterval(k, free, d, s, ok, flat, td, ts) {
   const [d0, d1, s0, s1] = [d[k], d[k + 1], s[k], s[k + 1]];
   /** @param {number} f */
-  const sAt0 = (f) => (free.s ? f * s0 : s0);
+  const sAt0 = (f) => (free.s ? ts[k] + f * (s0 - ts[k]) : s0);
   /** @param {number} f */
-  const dAt0 = (f) => (free.d ? f * d0 : d0);
+  const dAt0 = (f) => (free.d ? td[k] + f * (d0 - td[k]) : d0);
+  /** @param {number} f */
+  const sAt1 = (f) => ts[k + 1] + f * (s1 - ts[k + 1]);
+  /** @param {number} f */
+  const dAt1 = (f) => td[k + 1] + f * (d1 - td[k + 1]);
 
   if (flat) {
-    if (!ok(k, dAt0(0), 0, sAt0(0), 0)) return false;
-    [d[k], d[k + 1], s[k], s[k + 1]] = [dAt0(0), 0, sAt0(0), 0];
+    if (!ok(k, dAt0(0), dAt1(0), sAt0(0), sAt1(0))) return false;
+    [d[k], d[k + 1], s[k], s[k + 1]] = [dAt0(0), dAt1(0), sAt0(0), sAt1(0)];
     return true;
   }
-  if (ok(k, d0, d1, sAt0(0), 0)) {
-    const lam = largestFactor((f) => ok(k, d0, d1, sAt0(f), f * s1));
+  if (ok(k, d0, d1, sAt0(0), sAt1(0))) {
+    const lam = largestFactor((f) => ok(k, d0, d1, sAt0(f), sAt1(f)));
     s[k] = sAt0(lam);
-    s[k + 1] = lam * s1;
+    s[k + 1] = sAt1(lam);
     return true;
   }
-  if (ok(k, dAt0(0), 0, sAt0(0), 0)) {
-    const mu = largestFactor((f) => ok(k, dAt0(f), f * d1, sAt0(0), 0));
+  if (ok(k, dAt0(0), dAt1(0), sAt0(0), sAt1(0))) {
+    const mu = largestFactor((f) => ok(k, dAt0(f), dAt1(f), sAt0(0), sAt1(0)));
     s[k] = sAt0(0);
-    s[k + 1] = 0;
+    s[k + 1] = sAt1(0);
     d[k] = dAt0(mu);
-    d[k + 1] = mu * d1;
+    d[k + 1] = dAt1(mu);
     return true;
   }
   return false;
@@ -433,6 +511,157 @@ function largestFactor(test) {
     else hi = mid;
   }
   return lo;
+}
+
+/**
+ * Coefficients of the quintic Hermite basis on [0, 1] for unit values of
+ * d0, s0, d1 and s1 (six each, in that order), with zero end values.
+ */
+const BASIS = new Float64Array(24);
+quinticCoeffs(1, 0, 0, 1, 0, 0, 0, BASIS, 0);
+quinticCoeffs(1, 0, 0, 0, 0, 1, 0, BASIS, 6);
+quinticCoeffs(1, 0, 0, 0, 1, 0, 0, BASIS, 12);
+quinticCoeffs(1, 0, 0, 0, 0, 0, 1, BASIS, 18);
+
+/**
+ * Derivative at t of the quintic with coefficients c[o] … c[o + 5].
+ * @param {Float64Array} c
+ * @param {number} o
+ * @param {number} t
+ */
+function quinticSlope(c, o, t) {
+  return c[o + 1] + t * (2 * c[o + 2] + t * (3 * c[o + 3] + t * (4 * c[o + 4] + t * 5 * c[o + 5])));
+}
+
+/** Centre and half-width of the search box per normalised knot value. */
+const ANCHOR_CENTRE = [12.5, 0, 12.5, 0];
+const ANCHOR_HALF_WIDTH = [15, 1000, 15, 1000];
+
+/**
+ * Monotone targets for prescribed start values: the free values at knots 0
+ * and 1 such that interval 0 is monotone and interval 1 is monotone with
+ * d = s = 0 at knot 2; every later knot gets d = s = 0.
+ *
+ * In units of interval 0 (t in [0, 1], data from 0 to 1) the knot values are
+ * u = (h·d0, h²·s0, h·d1, h²·s1) / Δy. The objective, the smallest scaled
+ * slope q'(t)·h / Δy of both intervals, is concave in u (a minimum of
+ * linear functions); with a second interval its maximum is at most 0,
+ * because q' = 0 at knot 2, so an objective of 0 is the goal.
+ * On a monotone interval 0, p(t) = q'(t)·h / Δy is a non-negative quartic
+ * with unit integral, so 0 ≤ p ≤ 9 (Christoffel bound) and
+ * |p'| ≤ 2·4²·9 = 288 (Markov): the box of ANCHOR_CENTRE and
+ * ANCHOR_HALF_WIDTH holds every monotone setting. A deep-cut ellipsoid
+ * method maximises the objective over the 0 to 3 free values; it stops at
+ * 0, or when its upper bound shows that no monotone setting exists.
+ * @param {Float64Array} x
+ * @param {Float64Array} y
+ * @param {Float64Array} d start values: the prescribed slope at knot 0
+ * @param {Float64Array} s start values: the prescribed second derivative at knot 0
+ * @param {{ slope: boolean, second: boolean }} fixedStart
+ * @param {number} range max(y) − min(y)
+ * @returns {Targets | null} null when no monotone setting was found
+ */
+function findAnchor(x, y, d, s, fixedStart, range) {
+  const n = x.length;
+  const h0 = x[1] - x[0];
+  const delta0 = y[1] - y[0];
+  if (delta0 === 0) return null;
+  const second = n > 2;
+  const h1 = second ? x[2] - x[1] : 1;
+  const delta1 = second ? y[2] - y[1] : 1;
+  // Knot 1 values in units of interval 1; a flat interval 1 needs d1 = s1 = 0.
+  const kc = (h1 * delta0) / (h0 * delta1);
+  const ke = (h1 * h1 * delta0) / (h0 * h0 * delta1);
+  const u = [(h0 * d[0]) / delta0, (h0 * h0 * s[0]) / delta0, 0, 0];
+  /** @type {number[]} */
+  const free = [];
+  if (!fixedStart.slope) free.push(0);
+  if (!fixedStart.second) free.push(1);
+  if (!second || delta1 !== 0) free.push(2, 3);
+  for (const i of free) u[i] = ANCHOR_CENTRE[i];
+
+  const work = new Float64Array(6);
+  const grad = [0, 0, 0, 0];
+  /** Objective at u; fills grad with a supergradient. */
+  const objective = () => {
+    quinticCoeffs(1, 0, 1, u[0], u[2], u[1], u[3], work);
+    const r0 = quarticExtrema(work[1], 2 * work[2], 3 * work[3], 4 * work[4], 5 * work[5]);
+    let f = r0.min;
+    for (let j = 0; j < 4; j++) grad[j] = quinticSlope(BASIS, 6 * j, r0.tMin);
+    if (second && delta1 !== 0) {
+      quinticCoeffs(1, 0, 1, kc * u[2], 0, ke * u[3], 0, work);
+      const r1 = quarticExtrema(work[1], 2 * work[2], 3 * work[3], 4 * work[4], 5 * work[5]);
+      if (r1.min < f) {
+        f = r1.min;
+        grad[0] = 0;
+        grad[1] = 0;
+        grad[2] = kc * quinticSlope(BASIS, 0, r1.tMin);
+        grad[3] = ke * quinticSlope(BASIS, 6, r1.tMin);
+      }
+    }
+    return f;
+  };
+
+  const m = free.length;
+  const P = new Float64Array(m * m);
+  free.forEach((i, j) => {
+    P[j * m + j] = m * ANCHOR_HALF_WIDTH[i] ** 2;
+  });
+  const g = new Float64Array(m);
+  const Pg = new Float64Array(m);
+  let best = -Infinity;
+  const bestU = u.slice();
+  for (let it = 0; it < ANCHOR_STEPS; it++) {
+    const f = objective();
+    if (f > best) {
+      best = f;
+      for (let j = 0; j < 4; j++) bestU[j] = u[j];
+    }
+    // An objective of 0 is monotone; stop there within rounding.
+    if (best >= -1e-2 * MONOTONE_TOLERANCE || m === 0) break;
+    let gPg = 0;
+    for (let r = 0; r < m; r++) g[r] = grad[free[r]];
+    for (let r = 0; r < m; r++) {
+      let v = 0;
+      for (let c = 0; c < m; c++) v += P[r * m + c] * g[c];
+      Pg[r] = v;
+      gPg += g[r] * v;
+    }
+    if (!(gPg > 0)) break;
+    const gamma = Math.sqrt(gPg);
+    // Upper bound of the objective in the ellipsoid: no monotone setting.
+    if (f + gamma < -MONOTONE_TOLERANCE) break;
+    // Deep cut: keep the part of the ellipsoid where the objective can reach best.
+    const alpha = (best - f) / gamma;
+    if (alpha >= 1) break;
+    const step = (1 + m * alpha) / (m + 1);
+    for (let r = 0; r < m; r++) u[free[r]] += (step * Pg[r]) / gamma;
+    if (m === 1) {
+      P[0] *= ((1 - alpha) / 2) ** 2;
+    } else {
+      const scale = (m * m * (1 - alpha * alpha)) / (m * m - 1);
+      const w = (2 * (1 + m * alpha)) / ((m + 1) * (1 + alpha) * gPg);
+      for (let r = 0; r < m; r++) {
+        for (let c = 0; c <= r; c++) {
+          const v = scale * (P[r * m + c] - w * Pg[r] * Pg[c]);
+          P[r * m + c] = v;
+          P[c * m + r] = v;
+        }
+      }
+    }
+  }
+  if (!(best >= -MONOTONE_TOLERANCE)) return null;
+
+  const td = new Float64Array(n);
+  const ts = new Float64Array(n);
+  td[0] = fixedStart.slope ? d[0] : (bestU[0] * delta0) / h0;
+  ts[0] = fixedStart.second ? s[0] : (bestU[1] * delta0) / (h0 * h0);
+  td[1] = (bestU[2] * delta0) / h0;
+  ts[1] = (bestU[3] * delta0) / (h0 * h0);
+  // Check in the units of the curve, with the tolerance of the shape check.
+  if (!isMonotone(h0, y[0], y[1], td[0], td[1], ts[0], ts[1], range, work)) return null;
+  if (second && !isMonotone(h1, y[1], y[2], td[1], 0, ts[1], 0, range, work)) return null;
+  return { d: td, s: ts };
 }
 
 /**

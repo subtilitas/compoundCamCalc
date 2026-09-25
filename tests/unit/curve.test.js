@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GENERATOR_DEFAULTS, MAX_FORCE, MAX_POINTS, MIN_FORCE, MIN_GAP, VALLEY_BAND,
+  GENERATOR_DEFAULTS, MAX_FORCE, MAX_POINTS, MIN_FORCE, MIN_GAP, MIN_LET_OFF, VALLEY_BAND,
   addPoint, addPointInWidestGap, curveMetrics, drawRange, generateCurve, movePoint, pointMetrics,
   removePoint, removeRefusal, scalePeak, setLetOff,
 } from '../../src/core/curve.js';
@@ -137,6 +137,18 @@ describe('generateCurve', () => {
     expect(points[6].x - points[5].x).toBeCloseTo(MIN_GAP, 12);
   });
 
+  it('keeps the minimum gap at the shortest valid power stroke', () => {
+    const short = { ...defaults, xFull: xBrace + 5 * INCH + 1e-9 };
+    for (const riseFraction of [0.1, 0.3, 0.6]) {
+      for (const valleyWidth of [0.1 * INCH, 1.25 * INCH, 6 * INCH]) {
+        for (const letOff of [0, 0.5, 0.95]) {
+          const points = generateCurve({ ...short, riseFraction, valleyWidth, letOff });
+          for (let i = 1; i < points.length; i++) expect(points[i].x - points[i - 1].x).toBeGreaterThanOrEqual(MIN_GAP - 1e-12);
+        }
+      }
+    }
+  });
+
   it('rejects a short stroke or out-of-range forces', () => {
     expect(() => generateCurve({ ...defaults, xFull: xBrace + INCH })).toThrow(RangeError);
     expect(() => generateCurve({ ...defaults, xFull: NaN })).toThrow(RangeError);
@@ -175,7 +187,7 @@ describe('movePoint', () => {
     expect(movePoint(points, 9, { F: 10 })).toEqual(points);
   });
 
-  it('centres a point whose neighbours are closer than twice the gap', () => {
+  it('never moves a point towards a neighbour closer than the gap', () => {
     /** @type {CurvePoint[]} */
     const tight = [
       { x: 0, F: 0 },
@@ -183,6 +195,17 @@ describe('movePoint', () => {
       { x: 0.002, F: 20 },
     ];
     expect(movePoint(tight, 1, { x: 0.0015 })[1].x).toBe(0.001);
+    expect(movePoint(tight, 1, { x: 0.0005 })[1].x).toBe(0.001);
+    /** @type {CurvePoint[]} */
+    const squeezed = [
+      { x: 0, F: 0 },
+      { x: 0.1, F: 10 },
+      { x: 0.1 + MIN_GAP / 2, F: 20 },
+      { x: 0.2, F: 30 },
+    ];
+    // Too close on the left: a move to the left keeps x, a move to the right works.
+    expect(movePoint(squeezed, 2, { x: 0.1, F: 25 })[2]).toEqual({ x: 0.1 + MIN_GAP / 2, F: 25 });
+    expect(movePoint(squeezed, 2, { x: 0.15 })[2].x).toBe(0.15);
   });
 
   it('does not mutate its input', () => {
@@ -294,6 +317,19 @@ describe('setLetOff', () => {
     const r = setLetOff(points, 1);
     expect(Math.min(...r.points.slice(1).map((p) => p.F))).toBeGreaterThanOrEqual(MIN_FORCE);
     expect(r.letOff).toBeCloseTo((267 - 1) / 267, 9);
+  });
+
+  it('restores the points after a let-off of 0 %', () => {
+    const points = generateCurve(defaults);
+    const flat = setLetOff(points, 0);
+    expect(flat.letOff).toBeCloseTo(MIN_LET_OFF, 9);
+    for (const p of flat.points.slice(4)) expect(p.F).toBeLessThan(267);
+    const back = setLetOff(flat.points, 0.8);
+    expect(back.letOff).toBeCloseTo(0.8, 9);
+    back.points.forEach((p, i) => {
+      expect(p.x).toBe(points[i].x);
+      expect(Math.abs(p.F - points[i].F)).toBeLessThan(1e-6);
+    });
   });
 
   it('leaves a curve that peaks at full draw unchanged', () => {

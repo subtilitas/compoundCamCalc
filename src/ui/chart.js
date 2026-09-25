@@ -1,18 +1,21 @@
 /**
  * Force curve chart: SVG axes, target curve and draggable control points.
  * Pointer Events with pointer capture for mouse, pen and touch; one drag is
- * one undo entry. Points are focusable buttons moved with the arrow keys.
+ * one undo entry. Points are focusable buttons moved with the arrow keys;
+ * a keyboard move reports the new position, or why it was refused, in the
+ * status line.
  * @module ui/chart
  */
 
-import { MIN_FORCE } from '../core/curve.js';
+import { MAX_FORCE, MIN_FORCE, MIN_GAP, movePoint } from '../core/curve.js';
 import { createCurve } from '../core/interp.js';
 import { AMO_OFFSET, fromSI, toSI } from '../core/units.js';
-import { DRAW_STEP, FORCE_STEP, amo, fixed, pointLabel } from './display.js';
+import { DRAW_STEP, FORCE_STEP, amo, fixed, plain, pointLabel } from './display.js';
 import { h, setAttrs, svg } from './dom.js';
 
 /** @typedef {import('./editor.js').Editor} Editor */
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
+/** @typedef {import('../state/schema.js').Units} Units */
 
 /** Radius of the pointer hit area around a point: 22 px (44 px target). */
 export const HIT_RADIUS = 22;
@@ -40,6 +43,23 @@ export function ticks(lo, hi, count) {
   const values = [];
   for (let k = Math.ceil(lo / step - 1e-9); k * step <= hi + 1e-9 * step; k++) values.push(k * step);
   return { values, step, decimals: Math.max(0, -Math.floor(Math.log10(step) + 1e-9)) };
+}
+
+/**
+ * Why an arrow key cannot move point i (fully or at all).
+ * @param {number} i
+ * @param {number} last index of the full-draw point
+ * @param {string} key
+ * @param {Units} units
+ */
+export function moveLimitMessage(i, last, key, units) {
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    if (i === last) return 'The full-draw point moves only up and down';
+    const gap = `${plain(fromSI(MIN_GAP, 'length', units.draw), 3)} ${units.draw}`;
+    return `Point ${i + 1} stays at least ${gap} from point ${key === 'ArrowLeft' ? i : i + 2}`;
+  }
+  const u = units.force;
+  return `Forces stay between ${plain(fromSI(MIN_FORCE, 'force', u), 4)} ${u} and ${plain(fromSI(MAX_FORCE, 'force', u), 4)} ${u}`;
 }
 
 /**
@@ -77,7 +97,16 @@ export function createChart(wrap, editor) {
   const curvePath = svg('path', { class: 'chart-curve', 'aria-hidden': 'true' });
   const axes = svg('g', { class: 'chart-axes', 'aria-hidden': 'true' });
   const pointLayer = svg('g', { class: 'chart-points' });
-  root.append(plotBg, grid, refs, curvePath, axes, pointLayer);
+  // Copy of the selected point drawn above all points, so a neighbour never
+  // covers it; the focusable points keep their order.
+  const selectedMark = svg('g', {
+    class: 'pt pt-mark selected',
+    'aria-hidden': 'true',
+    'pointer-events': 'none',
+    'data-testid': 'chart-selected-mark',
+  });
+  selectedMark.append(svg('circle', { class: 'pt-ring', r: 11 }), svg('circle', { class: 'pt-dot', r: 6.5 }));
+  root.append(plotBg, grid, refs, curvePath, axes, pointLayer, selectedMark);
   const readout = h('div', { class: 'chart-readout', 'data-testid': 'chart-readout', 'aria-hidden': 'true' });
   readout.hidden = true;
   wrap.append(root, readout);
@@ -88,9 +117,10 @@ export function createChart(wrap, editor) {
   let frozenYMax = null;
   /**
    * Active drag: start of the pointer in client coordinates and of the point
-   * in chart coordinates. Moves follow the pointer displacement, so a layout
-   * shift during the drag does not move the point.
-   * @type {{ index: number, pointerId: number, cx: number, cy: number, px: number, py: number, moved: boolean } | null}
+   * in model units (m, N). Moves follow the pointer displacement at the
+   * current scale, so neither a layout shift nor a change of the chart
+   * width during the drag moves the point sideways.
+   * @type {{ index: number, pointerId: number, cx: number, cy: number, x0: number, F0: number, moved: boolean } | null}
    */
   let drag = null;
   let lastPointerType = 'mouse';
@@ -234,6 +264,13 @@ export function createChart(wrap, editor) {
         g.setAttribute('aria-label', `${where}: ${pointLabel(p, s.units)}. ${how}`);
       }
     });
+    if (selected > 0 && selected < pts.length) {
+      const p = pts[selected];
+      selectedMark.setAttribute('transform', `translate(${L.px(p.x).toFixed(2)} ${L.py(p.F).toFixed(2)})`);
+      selectedMark.style.display = '';
+    } else {
+      selectedMark.style.display = 'none';
+    }
     const focus = editor.takeFocusRequest();
     if (focus > 0 && pointEls[focus]) pointEls[focus].focus({ preventScroll: true });
   }
@@ -242,12 +279,15 @@ export function createChart(wrap, editor) {
   function showReadout(i) {
     const p = state.curve.points[i];
     if (!layout || !p) return;
-    readout.textContent = pointLabel(p, state.units);
+    readout.textContent = `Point ${i + 1}: ${pointLabel(p, state.units)}`;
     readout.hidden = false;
     const half = readout.offsetWidth / 2;
     const X = Math.min(Math.max(layout.px(p.x), half + 2), layout.W - half - 2);
     readout.style.left = `${X}px`;
-    readout.style.top = `${Math.max(layout.py(p.F) - 16, 0)}px`;
+    // Above the point, higher during a touch drag so the finger does not
+    // cover it; the label's bottom edge sits at top and stays in the chart.
+    const lift = drag && lastPointerType === 'touch' ? 48 : 16;
+    readout.style.top = `${Math.max(layout.py(p.F) - lift, readout.offsetHeight)}px`;
   }
 
   /** @param {ProjectState} s */
@@ -318,7 +358,7 @@ export function createChart(wrap, editor) {
     pointEls[i].focus({ preventScroll: true });
     editor.select(i);
     const p = state.curve.points[i];
-    drag = { index: i, pointerId: e.pointerId, cx: e.clientX, cy: e.clientY, px: layout.px(p.x), py: layout.py(p.F), moved: false };
+    drag = { index: i, pointerId: e.pointerId, cx: e.clientX, cy: e.clientY, x0: p.x, F0: p.F, moved: false };
     frozenYMax = layout.yMax;
     root.setPointerCapture(e.pointerId);
     store.beginTransaction();
@@ -332,7 +372,9 @@ export function createChart(wrap, editor) {
     if (!drag.moved && Math.hypot(dx, dy) < 3) return;
     drag.moved = true;
     root.dataset.dragging = 'true';
-    editor.move(drag.index, { x: layout.xOf(drag.px + dx), F: layout.fOf(drag.py + dy) });
+    // The y scale is frozen during the drag: the force stops at its top.
+    const F = Math.min(layout.fOf(layout.py(drag.F0) + dy), layout.yMax);
+    editor.move(drag.index, { x: layout.xOf(layout.px(drag.x0) + dx), F });
     showReadout(drag.index);
   });
 
@@ -379,18 +421,20 @@ export function createChart(wrap, editor) {
     const dx = toSI(DRAW_STEP[units.draw] * k, 'length', units.draw);
     const dF = toSI(FORCE_STEP[units.force] * k, 'force', units.force);
     const last = curve.points.length - 1;
+    /** @type {{ x?: number, F?: number }} */
+    let target;
     switch (e.key) {
       case 'ArrowLeft':
-        editor.move(i, { x: p.x - dx });
+        target = { x: p.x - dx };
         break;
       case 'ArrowRight':
-        editor.move(i, { x: p.x + dx });
+        target = { x: p.x + dx };
         break;
       case 'ArrowUp':
-        editor.move(i, { F: p.F + dF });
+        target = { F: p.F + dF };
         break;
       case 'ArrowDown':
-        editor.move(i, { F: p.F - dF });
+        target = { F: p.F - dF };
         break;
       case 'Delete':
       case 'Backspace':
@@ -408,6 +452,16 @@ export function createChart(wrap, editor) {
         return;
     }
     e.preventDefault();
+    const q = movePoint(curve.points, i, target)[i];
+    const limit = moveLimitMessage(i, last, e.key, units);
+    if (q.x === p.x && q.F === p.F) {
+      // Refused: nothing changes, so nothing is dispatched.
+      editor.say(limit);
+    } else {
+      editor.move(i, target);
+      const clamped = (target.x !== undefined && q.x !== target.x) || (target.F !== undefined && q.F !== target.F);
+      editor.say(`Point ${i + 1}: ${pointLabel(q, units)}${clamped ? `; ${limit}` : ''}`);
+    }
     showReadout(i);
   });
 

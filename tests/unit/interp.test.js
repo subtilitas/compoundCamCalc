@@ -293,6 +293,80 @@ describe('createCurve', () => {
     const curve = createCurve(forceCurve, { startSlope: -1000 });
     expect(curve.derivative(forceCurve[0].x)).toBeCloseTo(-1000, 8);
     expect(curve.shapePreserved).toBe(false);
+    // Flat second interval: d1 = s1 = 0, so nothing is left to choose.
+    expect(createCurve(pts([0, 1, 2], [0, 1, 1]), { startSlope: 5, startSecondDerivative: 0 }).shapePreserved).toBe(false);
+    // A flat first interval cannot start with a slope.
+    expect(createCurve(pts([0, 1, 2], [1, 1, 2]), { startSlope: 1 }).shapePreserved).toBe(false);
+  });
+
+  it('finds a monotone first interval when shrinking towards 0 does not', () => {
+    // Each case has a monotone solution; shrinking the free values towards 0 misses it.
+    const unit = pts([0, 1], [0, 1]);
+    // A flat second interval needs d = s = 0 at knot 1: one free value remains.
+    const plateau = pts([0, 1, 2], [0, 1, 1]);
+    /** @type {[CurvePoint[], import('../../src/core/interp.js').CurveOptions][]} */
+    const cases = [
+      [unit, { startSecondDerivative: -30 }],
+      [unit, { startSlope: 5 }],
+      [unit, { startSlope: 3, startSecondDerivative: 0 }],
+      [forceCurve, { startSlope: 22691.566, startSecondDerivative: -121500 }],
+      [plateau, { startSlope: 5 }],
+      [plateau, { startSecondDerivative: -30 }],
+    ];
+    for (const [data, options] of cases) {
+      const curve = createCurve(data, options);
+      expect(curve.shapePreserved).toBe(true);
+      expect(shapeReport(curve, 2000).slope).toBeLessThan(1e-9);
+      expect(shapeReport(curve, 2000).overshoot).toBeLessThan(1e-12);
+      if (options.startSlope !== undefined) expect(curve.derivative(data[0].x)).toBeCloseTo(options.startSlope, 8);
+      if (options.startSecondDerivative !== undefined) {
+        expect(curve.derivative(data[0].x, 2)).toBeCloseTo(options.startSecondDerivative, 6);
+      }
+      for (const p of data) expect(curve.evaluate(p.x)).toBeCloseTo(p.F, 10);
+    }
+  });
+
+  it('reports shape preservation only for monotone curves with prescribed start values (property)', () => {
+    const dy = fc.oneof(
+      fc.constant(0),
+      fc.double({ min: 1e-3, max: 100, noNaN: true }),
+      fc.double({ min: -100, max: -1e-3, noNaN: true }),
+    );
+    fc.assert(
+      fc.property(
+        steps(dy),
+        fc.double({ min: -2, max: 10, noNaN: true }),
+        fc.double({ min: -60, max: 60, noNaN: true }),
+        fc.integer({ min: 0, max: 2 }),
+        (s, slopeFactor, secondFactor, mode) => {
+          const data = build(s);
+          const h = data[1].x - data[0].x;
+          const secant = (data[1].F - data[0].F) / h;
+          const startSlope = slopeFactor * secant;
+          const startSecondDerivative = (secondFactor * secant) / h;
+          const options = mode === 0 ? { startSlope } : mode === 1 ? { startSecondDerivative } : { startSlope, startSecondDerivative };
+          const curve = createCurve(data, options);
+          if (curve.shapePreserved) {
+            const r = shapeReport(curve, 64);
+            expect(r.slope).toBeLessThan(1e-9);
+            expect(r.overshoot).toBeLessThan(1e-12);
+          }
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it('rejects non-finite prescribed start values', () => {
+    for (const options of [{ startSlope: NaN }, { startSecondDerivative: Infinity }, { startSlope: /** @type {any} */ (null) }]) {
+      expect(() => createCurve(forceCurve, options)).toThrow(RangeError);
+    }
+  });
+
+  it('treats non-finite coefficients as not monotone', () => {
+    // h·d0 overflows to Infinity: the first interval cannot be checked.
+    const curve = createCurve(pts([0, 2, 3], [0, 1, 2]), { startSlope: 1e308 });
+    expect(curve.shapePreserved).toBe(false);
   });
 
   it('reproduces linear data exactly', () => {

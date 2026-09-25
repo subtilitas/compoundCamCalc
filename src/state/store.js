@@ -5,7 +5,7 @@
  * @module state/store
  */
 
-import { drawRange, generateCurve, pointMetrics, scalePeak, setLetOff } from '../core/curve.js';
+import { MIN_GAP, drawRange, generateCurve, pointMetrics, scalePeak, setLetOff } from '../core/curve.js';
 import { FIELDS, drawLengthMessage, validate, validateField, validatePoints } from './schema.js';
 
 /** @typedef {import('./schema.js').ProjectState} ProjectState */
@@ -23,10 +23,14 @@ import { FIELDS, drawLengthMessage, validate, validateField, validatePoints } fr
 export const HISTORY_LIMIT = 100;
 
 /**
+ * Store actions. setCurveParams on a custom curve rescales the current
+ * points, or basePoints when given: a slider gesture passes the points from
+ * its start, so every value applies to the same points and the steps of the
+ * gesture do not compound.
  * @typedef {{ type: 'setUnits', units: Partial<Units> }
  *   | { type: 'setGeometry', geometry: Partial<Geometry> }
  *   | { type: 'setCurvePoints', points: CurvePoint[] }
- *   | { type: 'setCurveParams', params: Partial<CurveParams> }
+ *   | { type: 'setCurveParams', params: Partial<CurveParams>, basePoints?: CurvePoint[] }
  *   | { type: 'regenerateCurve' }
  *   | { type: 'setLimb', limb: Partial<LimbState> }
  *   | { type: 'setStringTrack', stringTrack: Partial<StringTrack> }
@@ -46,8 +50,10 @@ export const HISTORY_LIMIT = 100;
  *   action when the resulting state is valid; returns the validation errors
  *   otherwise and keeps the state
  * @property {(listener: Listener) => () => void} subscribe returns the unsubscribe function
- * @property {() => boolean} undo
- * @property {() => boolean} redo
+ * @property {() => boolean} undo false when there is nothing to undo or a
+ *   transaction is open
+ * @property {() => boolean} redo false when there is nothing to redo or a
+ *   transaction is open
  * @property {() => boolean} canUndo
  * @property {() => boolean} canRedo
  * @property {() => boolean} beginTransaction
@@ -115,7 +121,10 @@ function syncParams(params, points) {
 }
 
 /**
- * Map point x linearly from one brace/full-draw range to another.
+ * Map point x linearly from one brace/full-draw range to another, then move
+ * points apart where a gap fell below {@link MIN_GAP}. The power stroke of a
+ * valid geometry (more than 5 in) exceeds 49 gaps of 0.1 in, so this always
+ * succeeds; order and forces stay.
  * @param {CurvePoint[]} points
  * @param {{ xBrace: number, xFull: number }} from
  * @param {{ xBrace: number, xFull: number }} to
@@ -124,10 +133,21 @@ function syncParams(params, points) {
 function rescalePoints(points, from, to) {
   const k = (to.xFull - to.xBrace) / (from.xFull - from.xBrace);
   const last = points.length - 1;
-  return points.map((p, i) => ({
+  const out = points.map((p, i) => ({
     x: i === 0 ? to.xBrace : i === last ? to.xFull : to.xBrace + (p.x - from.xBrace) * k,
     F: p.F,
   }));
+  for (let i = 1; i < last; i++) out[i].x = Math.max(out[i].x, out[i - 1].x + MIN_GAP);
+  for (let i = last - 1; i > 0; i--) out[i].x = Math.min(out[i].x, out[i + 1].x - MIN_GAP);
+  return out;
+}
+
+/**
+ * @param {ReadonlyArray<CurvePoint>} a
+ * @param {ReadonlyArray<CurvePoint>} b
+ */
+function samePoints(a, b) {
+  return a.length === b.length && a.every((p, i) => p.x === b[i].x && p.F === b[i].F);
 }
 
 /**
@@ -151,6 +171,8 @@ export function reduce(state, action) {
       return { ...state, geometry, curve: { ...curve, points } };
     }
     case 'setCurvePoints': {
+      // An edit that changes nothing keeps the mode and records nothing.
+      if (samePoints(action.points, curve.points)) return state;
       const points = action.points.map((p) => ({ x: p.x, F: p.F }));
       const valid = validatePoints(points, state.geometry).length === 0;
       const params = valid ? syncParams(curve.params, points) : curve.params;
@@ -162,7 +184,7 @@ export function reduce(state, action) {
       if (curve.mode === 'parametric') {
         return { ...state, curve: { ...curve, params, points: regenerate(state.geometry, params) } };
       }
-      let points = curve.points;
+      let points = action.basePoints ?? curve.points;
       if (action.params.peak !== undefined) points = scalePeak(points, params.peak);
       if (action.params.letOff !== undefined) points = setLetOff(points, params.letOff).points;
       params = syncParams(params, points);
@@ -252,7 +274,8 @@ export function createStore(initial, options = {}) {
       };
     },
     undo() {
-      commitTransaction();
+      // A gesture in progress keeps its one history entry.
+      if (txStart !== null) return false;
       const previous = past.pop();
       if (!previous) return false;
       future.push(state);
@@ -262,7 +285,7 @@ export function createStore(initial, options = {}) {
       return true;
     },
     redo() {
-      commitTransaction();
+      if (txStart !== null) return false;
       const next = future.pop();
       if (!next) return false;
       past.push(state);
@@ -271,8 +294,8 @@ export function createStore(initial, options = {}) {
       emit(current);
       return true;
     },
-    canUndo: () => past.length > 0 || (txStart !== null && !sameState(txStart, state)),
-    canRedo: () => future.length > 0,
+    canUndo: () => txStart === null && past.length > 0,
+    canRedo: () => txStart === null && future.length > 0,
     beginTransaction() {
       if (txStart !== null) return false;
       txStart = state;

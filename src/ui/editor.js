@@ -24,7 +24,10 @@ import { addPoint, addPointInWidestGap, movePoint, removePoint, removeRefusal } 
  * @property {(text: string) => void} say show a status message
  * @property {(listener: () => void) => () => void} onChange selection and
  *   message changes
- * @property {() => string} message current status message
+ * @property {() => string} message current status message; every store
+ *   change clears it, so it describes the last edit only
+ * @property {() => number} messageCount number of say() calls, so a
+ *   repeated message can be announced again
  */
 
 /**
@@ -35,6 +38,7 @@ export function createEditor(store) {
   let selected = -1;
   let focusRequest = -1;
   let message = '';
+  let messageCount = 0;
   /** @type {Set<() => void>} */
   const listeners = new Set();
   const notify = () => listeners.forEach((l) => l());
@@ -48,6 +52,7 @@ export function createEditor(store) {
   /** @param {string} text */
   function say(text) {
     message = text;
+    messageCount++;
     notify();
   }
 
@@ -65,8 +70,11 @@ export function createEditor(store) {
     }
   }
 
-  // Keep the selection valid after undo, redo and loads.
+  // Every store change clears the message: editor actions say() after they
+  // dispatch, so undo, redo, drags and settings leave no stale text. Keep
+  // the selection valid after undo, redo and loads.
   store.subscribe((state) => {
+    message = '';
     if (selected >= state.curve.points.length) {
       selected = -1;
       notify();
@@ -128,5 +136,6 @@ export function createEditor(store) {
       };
     },
     message: () => message,
+    messageCount: () => messageCount,
   };
 }

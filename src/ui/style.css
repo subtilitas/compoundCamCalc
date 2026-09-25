@@ -234,14 +234,6 @@ button:disabled {
   outline-offset: 2px;
 }
 
-.link-button {
-  border-color: transparent;
-  background: none;
-  color: var(--accent);
-  text-decoration: underline;
-  padding: 0 4px;
-}
-
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -347,7 +339,8 @@ button:disabled {
   stroke-width: 2;
 }
 
-.pt:focus-visible .pt-ring {
+.pt:focus-visible .pt-ring,
+.chart:has(.chart-points .pt:focus-visible) .pt-mark .pt-ring {
   stroke: var(--focus);
   stroke-width: 3;
 }
@@ -634,10 +627,6 @@ input[aria-invalid='true'] {
 
 [hidden] {
   display: none !important;
-}
-
-.invisible {
-  visibility: hidden;
 }
 
 .app-footer {

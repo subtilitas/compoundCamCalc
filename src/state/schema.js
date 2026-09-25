@@ -4,7 +4,7 @@
  * @module state/schema
  */
 
-import { MAX_FORCE, MAX_POINTS, MIN_FORCE, drawRange } from '../core/curve.js';
+import { MAX_FORCE, MAX_POINTS, MIN_FORCE, MIN_GAP, drawRange } from '../core/curve.js';
 import { INCH, fromSI } from '../core/units.js';
 import { defaultState } from './presets.js';
 
@@ -174,7 +174,7 @@ export const ENUMS = Object.freeze({
 
 /** Minimum power stroke x_f − x_b required by validation: 5 in. */
 export const MIN_POWER_STROKE = 5 * INCH;
-/** Tolerance for the brace and full-draw point positions, in m. */
+/** Tolerance for the brace and full-draw point positions and the minimum gap, in m. */
 const POSITION_TOLERANCE = 1e-9;
 
 /**
@@ -201,6 +201,14 @@ export function specValue(spec, value) {
  */
 export function rangeMessage(spec) {
   return `${spec.label} must be between ${plain(specValue(spec, spec.min))} and ${plain(specValue(spec, spec.max))} ${spec.unit}`;
+}
+
+/**
+ * @param {unknown} v
+ * @returns {v is number}
+ */
+function isNumber(v) {
+  return typeof v === 'number' && Number.isFinite(v);
 }
 
 /**
@@ -273,11 +281,16 @@ export function validatePoints(points, geometry) {
     }
   }
   for (let i = 1; i < points.length; i++) {
-    if (!(points[i].x > points[i - 1].x)) {
+    const gap = points[i].x - points[i - 1].x;
+    if (!(gap > 0)) {
       errors.push({ path: `${path}[${i}].x`, message: `Point ${i + 1} must be at a longer draw length than point ${i}` });
+    } else if (gap < MIN_GAP - POSITION_TOLERANCE) {
+      errors.push({ path: `${path}[${i}].x`, message: `Point ${i + 1} must be at least ${plain(MIN_GAP / INCH)} in from point ${i}` });
     }
   }
-  const { xBrace, xFull } = drawRange(geometry.braceHeight, geometry.drawLength);
+  const { xBrace, xFull } = isNumber(geometry.braceHeight) && isNumber(geometry.drawLength)
+    ? drawRange(geometry.braceHeight, geometry.drawLength)
+    : { xBrace: NaN, xFull: NaN };
   if (Number.isFinite(xBrace) && Math.abs(points[0].x - xBrace) > POSITION_TOLERANCE) {
     errors.push({ path: `${path}[0].x`, message: 'Point 1 must be at brace height' });
   }
@@ -329,14 +342,17 @@ export function validate(state) {
     const message = drawLengthMessage(g.braceHeight, g.drawLength);
     if (message) errors.push({ path: 'geometry.drawLength', message });
   }
+  // Cross-field checks compare numbers only: validateField reports the
+  // others, and comparing an object can call its (possibly invalid) toString.
   const track = state.stringTrack;
-  if (track.shape === 'eccentric' && track.offset >= track.radius) {
+  const { offset, radius, semiMinor, semiMajor } = track;
+  if (track.shape === 'eccentric' && isNumber(offset) && isNumber(radius) && offset >= radius) {
     errors.push({ path: 'stringTrack.offset', message: 'String track offset must be smaller than the radius' });
   }
-  if (track.shape === 'ellipse' && track.offset >= track.semiMinor) {
+  if (track.shape === 'ellipse' && isNumber(offset) && isNumber(semiMinor) && offset >= semiMinor) {
     errors.push({ path: 'stringTrack.offset', message: 'String track offset must be smaller than the semi-minor axis' });
   }
-  if (track.semiMinor > track.semiMajor) {
+  if (isNumber(semiMinor) && isNumber(semiMajor) && semiMinor > semiMajor) {
     errors.push({ path: 'stringTrack.semiMinor', message: 'String track semi-minor axis must not exceed the semi-major axis' });
   }
   const table = state.limb.table;

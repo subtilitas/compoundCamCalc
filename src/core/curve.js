@@ -20,6 +20,12 @@ export const MAX_FORCE = 5000;
 export const MAX_POINTS = 50;
 /** Valley band above the holding weight, as a fraction of the peak (5 %). */
 export const VALLEY_BAND = 0.05;
+/**
+ * Smallest let-off set by {@link setLetOff}: the holding weight stays this
+ * fraction of the peak below the peak, so the points after the peak stay
+ * below it and a later let-off change can restore their shape.
+ */
+export const MIN_LET_OFF = 1e-6;
 
 /**
  * Fractions used by the parametric generator.
@@ -358,7 +364,8 @@ function copy(points) {
 /**
  * Move a point, clamped to the editing limits. Point 0 (brace) does not move.
  * The last point keeps its x. Interior points stay at least minGap from
- * their neighbours. Forces stay within [minForce, maxForce].
+ * their neighbours; a point that is already closer to a neighbour does not
+ * move towards it. Forces stay within [minForce, maxForce].
  * @param {ReadonlyArray<CurvePoint>} points
  * @param {number} index
  * @param {{ x?: number, F?: number }} target
@@ -375,9 +382,9 @@ export function movePoint(points, index, target, limits) {
     p.F = clamp(target.F, minForce, maxForce);
   }
   if (index < last && target.x !== undefined && Number.isFinite(target.x)) {
-    const lo = points[index - 1].x + minGap;
-    const hi = points[index + 1].x - minGap;
-    p.x = lo <= hi ? clamp(target.x, lo, hi) : 0.5 * (points[index - 1].x + points[index + 1].x);
+    const lo = Math.min(points[index - 1].x + minGap, p.x);
+    const hi = Math.max(points[index + 1].x - minGap, p.x);
+    p.x = clamp(target.x, lo, hi);
   }
   return next;
 }
@@ -472,9 +479,10 @@ export function scalePeak(points, newPeak, limits) {
 /**
  * Set the let-off with an affine map F → peak − (peak − F)·c applied to the
  * points after the last peak point, so the holding weight becomes
- * peak·(1 − letOff). Forces stay ≥ minForce, which limits the let-off. A
- * curve whose last point is the peak has no points to map and keeps its
- * let-off of 0.
+ * peak·(1 − letOff). Forces stay ≥ minForce, which limits the let-off. The
+ * let-off is at least {@link MIN_LET_OFF}, so c > 0 and the map can be
+ * undone by a later call. A curve whose last point is the peak has no
+ * points to map and keeps its let-off of 0.
  * @param {ReadonlyArray<CurvePoint>} points
  * @param {number} newLetOff 0 to 1
  * @param {EditLimits} [limits]
@@ -491,7 +499,7 @@ export function setLetOff(points, newLetOff, limits) {
   const after = next.slice(k + 1);
   if (after.length > 0 && Number.isFinite(newLetOff)) {
     const oldHold = Math.min(...after.map((p) => p.F));
-    const newHold = Math.max(peak * (1 - clamp(newLetOff, 0, 1)), minForce);
+    const newHold = Math.min(Math.max(peak * (1 - clamp(newLetOff, 0, 1)), minForce), peak * (1 - MIN_LET_OFF));
     const c = (peak - newHold) / (peak - oldHold);
     for (const p of after) p.F = Math.max(peak - (peak - p.F) * c, minForce);
   }

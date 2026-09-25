@@ -98,8 +98,10 @@ describe('transactions', () => {
     expect(store.beginTransaction()).toBe(false);
     expect(store.inTransaction()).toBe(true);
     for (const F of [260, 250, 240]) store.dispatch({ type: 'setCurvePoints', points: withForce(store.getState(), 3, F) });
-    expect(store.canUndo()).toBe(true);
+    // Undo waits for the end of the gesture.
+    expect(store.canUndo()).toBe(false);
     expect(store.commitTransaction()).toBe(true);
+    expect(store.canUndo()).toBe(true);
     expect(store.inTransaction()).toBe(false);
     expect(store.getState().curve.points[3].F).toBe(240);
     store.undo();
@@ -129,16 +131,25 @@ describe('transactions', () => {
     expect(store.canUndo()).toBe(false);
   });
 
-  it('commits an open gesture before undo', () => {
+  it('refuses undo and redo during an open gesture', () => {
     const store = createStore(defaultState());
     const initial = store.getState();
+    store.dispatch({ type: 'setUnits', units: { force: 'lbf' } });
+    store.undo();
     store.beginTransaction();
     store.dispatch({ type: 'setCurvePoints', points: withForce(store.getState(), 3, 100) });
+    const during = store.getState();
+    expect(store.undo()).toBe(false);
+    expect(store.redo()).toBe(false);
+    expect(store.canRedo()).toBe(false);
+    expect(store.getState()).toBe(during);
+    expect(store.inTransaction()).toBe(true);
+    // Later moves of the gesture stay in the same entry.
+    store.dispatch({ type: 'setCurvePoints', points: withForce(store.getState(), 3, 90) });
+    store.commitTransaction();
     expect(store.undo()).toBe(true);
     expect(store.getState()).toBe(initial);
-    expect(store.inTransaction()).toBe(false);
-    expect(store.redo()).toBe(true);
-    expect(store.getState().curve.points[3].F).toBe(100);
+    expect(store.canUndo()).toBe(false);
   });
 });
 
@@ -150,6 +161,15 @@ describe('curve actions', () => {
     expect(s.curve.mode).toBe('custom');
     expect(s.curve.params.peak).toBeCloseTo(300, 9);
     expect(s.curve.params.letOff).toBeCloseTo(1 - (0.2 * 267) / 300, 9);
+  });
+
+  it('keeps the mode and the history when the points do not change', () => {
+    const store = createStore(defaultState());
+    const before = store.getState();
+    expect(store.dispatch({ type: 'setCurvePoints', points: withForce(before, 6, before.curve.points[6].F) })).toEqual([]);
+    expect(store.getState()).toBe(before);
+    expect(store.getState().curve.mode).toBe('parametric');
+    expect(store.canUndo()).toBe(false);
   });
 
   it('clamps synced parameters to their ranges', () => {
@@ -185,6 +205,38 @@ describe('curve actions', () => {
     expect(store.getState().curve.points).toEqual(s.curve.points);
     expect(store.getState().curve.params.riseFraction).toBe(0.4);
     expect(before).not.toBe(s.curve.points);
+  });
+
+  it('restores a custom curve after let-off 0 %', () => {
+    const store = createStore(defaultState());
+    store.dispatch({ type: 'setCurvePoints', points: withForce(store.getState(), 5, 54.4) });
+    const start = store.getState().curve;
+    store.dispatch({ type: 'setCurveParams', params: { letOff: 0 } });
+    expect(pointMetrics(store.getState().curve.points).letOff).toBeLessThan(1e-5);
+    store.dispatch({ type: 'setCurveParams', params: { letOff: start.params.letOff } });
+    const end = store.getState().curve;
+    expect(end.params.letOff).toBeCloseTo(start.params.letOff, 9);
+    end.points.forEach((p, i) => expect(p.F).toBeCloseTo(start.points[i].F, 6));
+  });
+
+  it('applies the values of one slider gesture to the points at its start', () => {
+    const store = createStore(defaultState());
+    store.dispatch({ type: 'setCurvePoints', points: withForce(store.getState(), 5, 60) });
+    let base = store.getState().curve.points;
+    const letOff = store.getState().curve.params.letOff;
+    store.beginTransaction();
+    for (const v of [0.5, 0, 0.3, letOff]) store.dispatch({ type: 'setCurveParams', params: { letOff: v }, basePoints: base });
+    store.commitTransaction();
+    store.getState().curve.points.forEach((p, i) => expect(p.F).toBeCloseTo(base[i].F, 9));
+
+    // A 3 N point clamped to 1 N at a 50 N peak comes back at 3 N.
+    store.dispatch({ type: 'setCurvePoints', points: withForce(store.getState(), 1, 3) });
+    base = store.getState().curve.points;
+    store.beginTransaction();
+    for (const peak of [100, 50, 267]) store.dispatch({ type: 'setCurveParams', params: { peak }, basePoints: base });
+    store.commitTransaction();
+    expect(store.getState().curve.points[1].F).toBe(3);
+    store.getState().curve.points.forEach((p, i) => expect(p.F).toBeCloseTo(base[i].F, 9));
   });
 
   it('regenerates from parameters on request', () => {
@@ -224,6 +276,21 @@ describe('geometry actions', () => {
       expect(next[i].x - next[i - 1].x).toBeGreaterThan(MIN_GAP / 2);
     }
     expect(store.getState().curve.mode).toBe('custom');
+  });
+
+  it('keeps the minimum gap when a shorter stroke squeezes the points', () => {
+    const store = createStore(defaultState());
+    store.dispatch({ type: 'setCurveParams', params: { valleyWidth: 0.5 * INCH } });
+    const generated = store.getState().curve.points;
+    expect(generated[6].x - generated[5].x).toBeCloseTo(MIN_GAP, 12);
+    store.dispatch({ type: 'setCurvePoints', points: withForce(store.getState(), 3, 260) });
+    expect(store.dispatch({ type: 'setGeometry', geometry: { drawLength: 22 * INCH } })).toEqual([]);
+    const next = store.getState().curve.points;
+    expect(next.at(-1)?.x).toBeCloseTo(22 * INCH - AMO_OFFSET, 15);
+    for (let i = 1; i < next.length; i++) {
+      expect(next[i].x - next[i - 1].x).toBeGreaterThanOrEqual(MIN_GAP - 1e-12);
+      expect(next[i].F).toBe(i === 3 ? 260 : generated[i].F);
+    }
   });
 
   it('keeps the curve when only the ATA changes', () => {

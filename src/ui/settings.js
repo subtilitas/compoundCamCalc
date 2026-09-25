@@ -1,13 +1,14 @@
 /**
  * Settings panel: bow geometry, draw force parameters and display units.
  * Text fields validate on Enter, blur and the stepper buttons; sliders apply
- * live, and one slider gesture is one undo entry.
+ * live, and one slider gesture is one undo entry. A note under a field says
+ * when the curve cannot follow its value.
  * @module ui/settings
  */
 
 import { AMO_OFFSET, fromSI, parseNumber, parseQuantity, toSI } from '../core/units.js';
 import { FIELDS, MIN_POWER_STROKE } from '../state/schema.js';
-import { fixed } from './display.js';
+import { fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
 import { h } from './dom.js';
 import { infoButton } from './glossary.js';
 
@@ -15,6 +16,7 @@ import { infoButton } from './glossary.js';
 /** @typedef {import('../state/schema.js').Units} Units */
 /** @typedef {import('../state/store.js').Store} Store */
 /** @typedef {import('../state/store.js').Action} Action */
+/** @typedef {import('../core/interp.js').CurvePoint} CurvePoint */
 /** @typedef {keyof typeof import('./glossary.js').GLOSSARY} GlossaryKey */
 
 /**
@@ -25,11 +27,14 @@ import { infoButton } from './glossary.js';
  * @property {string} path key of the range in FIELDS
  * @property {'draw' | 'force' | 'percent'} kind
  * @property {(s: ProjectState) => number} get SI value
- * @property {(v: number) => Action} action
+ * @property {(v: number, basePoints?: CurvePoint[]) => Action} action
+ *   basePoints: custom points at the start of a slider gesture
  * @property {Record<string, number>} step per display unit
  * @property {Record<string, number>} decimals per display unit
  * @property {Record<string, number>} [sliderStep] per display unit; adds a slider
  * @property {(v: number, s: ProjectState) => string | null} [extra] cross-field check
+ * @property {(s: ProjectState, def: FieldDef) => string} [note] information
+ *   about the curve and this field, '' for none
  */
 
 /**
@@ -70,9 +75,38 @@ function parse(def, text, units) {
   return parseQuantity(text, def.kind === 'draw' ? 'length' : 'force', unitOf(def, units));
 }
 
-/** @param {number} v */
-function plain(v) {
-  return String(Number(v.toPrecision(6)));
+/**
+ * Range bounds of a field in the display unit, rounded inwards at the
+ * field's decimals so that typing a printed bound is accepted.
+ * @param {FieldDef} def
+ * @param {Units} units
+ */
+function boundsText(def, units) {
+  const spec = FIELDS[def.path];
+  const d = def.decimals[unitOf(def, units)];
+  return {
+    lo: plain(Number(inward(toDisplay(def, spec.min, units), d, 1))),
+    hi: plain(Number(inward(toDisplay(def, spec.max, units), d, -1))),
+  };
+}
+
+/**
+ * Note for a custom curve whose measured value lies outside the range of
+ * the field, so the parameter shows the nearest bound.
+ * @param {FieldDef} def
+ * @param {ProjectState} s
+ * @param {number} measured SI value of the custom curve
+ * @param {string} what "peaks at" or "has a let-off of"
+ * @param {string} shown measured value as text with unit
+ */
+function outsideNote(def, s, measured, what, shown) {
+  const spec = FIELDS[def.path];
+  // Tolerance: the measured value of a curve set to a bound differs from it by rounding.
+  const tol = 1e-6 * Math.max(Math.abs(spec.min), Math.abs(spec.max));
+  if (s.curve.mode !== 'custom' || (measured >= spec.min - tol && measured <= spec.max + tol)) return '';
+  const u = unitOf(def, s.units);
+  const used = plain(toDisplay(def, measured < spec.min ? spec.min : spec.max, s.units));
+  return `The custom curve ${what} ${shown}, outside this range; Reset curve uses ${used} ${u}`;
 }
 
 /** @type {FieldDef[]} */
@@ -133,10 +167,14 @@ const FORCE_FIELDS = [
     path: 'curve.params.peak',
     kind: 'force',
     get: (s) => s.curve.params.peak,
-    action: (v) => ({ type: 'setCurveParams', params: { peak: v } }),
+    action: (v, basePoints) => ({ type: 'setCurveParams', params: { peak: v }, basePoints }),
     step: { N: 1, lbf: 0.5 },
     decimals: { N: 1, lbf: 1 },
     sliderStep: { N: 1, lbf: 0.5 },
+    note: (s, def) => {
+      const peak = metricsOf(s.curve.points).peak;
+      return outsideNote(def, s, peak, 'peaks at', `${forceText(peak, s.units, true)} ${s.units.force}`);
+    },
   },
   {
     id: 'letoff',
@@ -145,10 +183,14 @@ const FORCE_FIELDS = [
     path: 'curve.params.letOff',
     kind: 'percent',
     get: (s) => s.curve.params.letOff,
-    action: (v) => ({ type: 'setCurveParams', params: { letOff: v } }),
+    action: (v, basePoints) => ({ type: 'setCurveParams', params: { letOff: v }, basePoints }),
     step: { '%': 1 },
     decimals: { '%': 1 },
     sliderStep: { '%': 1 },
+    note: (s, def) => {
+      const letOff = metricsOf(s.curve.points).letOff;
+      return outsideNote(def, s, letOff, 'has a let-off of', `${fixed(letOff * 100, 1)} %`);
+    },
   },
   {
     id: 'rise',
@@ -170,6 +212,13 @@ const FORCE_FIELDS = [
     action: (v) => ({ type: 'setCurveParams', params: { valleyWidth: v } }),
     step: { in: 0.1, mm: 2.5, cm: 0.25 },
     decimals: { in: 2, mm: 1, cm: 2 },
+    note: (s) => {
+      if (s.curve.mode !== 'parametric') return '';
+      const target = s.curve.params.valleyWidth;
+      const width = metricsOf(s.curve.points).valleyWidth;
+      if (Math.abs(width - target) <= 0.01 * target) return '';
+      return `Valley width is limited to ${lengthLabel(width, s.units)} by the let-off, rise and power stroke`;
+    },
   },
 ];
 
@@ -223,18 +272,35 @@ export function createSettings(panel, store) {
     if (slider) wrap.append(slider);
     wrap.append(row, range, msg);
     let rendered = '';
+    let renderedUnit = '';
+    // Message of the last input (an error, or a limit of the applied value);
+    // it stays until the value changes. The note describes the state and
+    // shows when there is no such message.
+    let said = '';
+    let invalid = false;
+    let note = '';
 
-    /** @param {string} text */
-    const say = (text) => {
-      msg.textContent = text;
-      input.setAttribute('aria-invalid', String(text !== ''));
+    function showMessage() {
+      msg.textContent = said || note;
+      input.setAttribute('aria-invalid', String(invalid));
+    }
+
+    /**
+     * @param {string} text
+     * @param {boolean} [isError] marks the field invalid; default: text is not empty
+     */
+    const say = (text, isError = text !== '') => {
+      said = text;
+      invalid = isError && text !== '';
+      showMessage();
     };
 
     /**
      * Validate and apply an SI value. Returns true when applied.
      * @param {number} value
+     * @param {CurvePoint[]} [basePoints] custom points at the start of a slider gesture
      */
-    function apply(value) {
+    function apply(value, basePoints) {
       const s = store.getState();
       const spec = FIELDS[def.path];
       const u = unitOf(def, s.units);
@@ -242,16 +308,21 @@ export function createSettings(panel, store) {
         say(`${def.label} must be a number`);
         return false;
       }
-      if (value < spec.min - 1e-12 || value > spec.max + 1e-12) {
-        say(`${def.label} must be between ${plain(toDisplay(def, spec.min, s.units))} and ${plain(toDisplay(def, spec.max, s.units))} ${u}`);
+      // A typed bound round-trips through the display unit: allow rounding,
+      // then clamp so the store accepts it.
+      const tol = 1e-9 * Math.max(Math.abs(spec.min), Math.abs(spec.max));
+      if (value < spec.min - tol || value > spec.max + tol) {
+        const { lo, hi } = boundsText(def, s.units);
+        say(`${def.label} must be between ${lo} and ${hi} ${u}`);
         return false;
       }
-      const extra = def.extra?.(value, s);
+      const v = Math.min(Math.max(value, spec.min), spec.max);
+      const extra = def.extra?.(v, s);
       if (extra) {
         say(extra);
         return false;
       }
-      const errors = store.dispatch(def.action(value));
+      const errors = store.dispatch(def.action(v, basePoints));
       if (errors.length > 0) {
         say(errors[0].message);
         return false;
@@ -259,8 +330,8 @@ export function createSettings(panel, store) {
       say('');
       if (def.id === 'letoff') {
         const achieved = store.getState().curve.params.letOff;
-        if (Math.abs(achieved - value) > 0.001) {
-          say(`Let-off is limited to ${fixed(achieved * 100, 1)} % by the points after the peak`);
+        if (Math.abs(achieved - v) > 0.001) {
+          say(`Let-off is limited to ${fixed(achieved * 100, 1)} % by the points after the peak`, false);
         }
       }
       return true;
@@ -304,11 +375,21 @@ export function createSettings(panel, store) {
 
     if (slider) {
       const s0 = slider;
+      /**
+       * Points at the start of the gesture: every value of the gesture
+       * applies to them, so moving back restores the curve.
+       * @type {CurvePoint[] | undefined}
+       */
+      let base;
       s0.addEventListener('input', () => {
-        if (!store.inTransaction()) store.beginTransaction();
-        apply(fromDisplay(def, Number(s0.value), store.getState().units));
+        if (!store.inTransaction()) {
+          store.beginTransaction();
+          base = store.getState().curve.points;
+        }
+        apply(fromDisplay(def, Number(s0.value), store.getState().units), base);
       });
       const end = () => {
+        base = undefined;
         if (store.inTransaction()) store.commitTransaction();
       };
       s0.addEventListener('change', end);
@@ -329,12 +410,23 @@ export function createSettings(panel, store) {
       unit.textContent = u;
       const lo = toDisplay(def, spec.min, s.units);
       const hi = toDisplay(def, spec.max, s.units);
-      range.textContent = `${plain(lo)} to ${plain(hi)} ${u}, step ${plain(def.step[u])}`;
+      const bounds = boundsText(def, s.units);
+      range.textContent = `${bounds.lo} to ${bounds.hi} ${u}, step ${plain(def.step[u])}`;
       setAria(input, lo, hi, value, `${text} ${u}`);
-      if (force || (document.activeElement !== input && input.getAttribute('aria-invalid') !== 'true')) {
+      // Only a focused field keeps its text; a failed input was already
+      // reverted by the forced render after it.
+      if (force || document.activeElement !== input) {
+        if (!force && (text !== rendered || u !== renderedUnit)) {
+          // Changed elsewhere (undo, units, slider): the old message no longer applies.
+          said = '';
+          invalid = false;
+        }
         input.value = text;
         rendered = text;
+        renderedUnit = u;
       }
+      note = def.note?.(s, def) ?? '';
+      showMessage();
       if (slider && def.sliderStep) {
         const st = def.sliderStep[u];
         const min = Math.ceil(lo / st - 1e-9) * st;
@@ -365,7 +457,7 @@ export function createSettings(panel, store) {
   }
 
   const customHint = h('p', { class: 'hint', 'data-testid': 'custom-hint' },
-    'The curve is custom: rise and valley width apply when it is regenerated from parameters. Peak and let-off rescale the points.');
+    'The curve is custom: rise and valley width apply after Reset curve. Peak and let-off rescale the points.');
 
   const units = h('fieldset', { class: 'group' }, h('legend', {}, 'Units'));
   const unitRow = h('div', { class: 'unit-row' });

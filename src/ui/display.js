@@ -3,9 +3,12 @@
  * @module ui/display
  */
 
+import { pointMetrics } from '../core/curve.js';
 import { AMO_OFFSET, fromSI } from '../core/units.js';
 
 /** @typedef {import('../state/schema.js').Units} Units */
+/** @typedef {import('../core/curve.js').CurveMetrics} CurveMetrics */
+/** @typedef {import('../core/interp.js').CurvePoint} CurvePoint */
 
 /** Decimals of draw lengths in tables and fields, per unit. */
 export const DRAW_DECIMALS = Object.freeze({ in: 2, mm: 1, cm: 2 });
@@ -74,4 +77,44 @@ export function lengthLabel(value, units) {
  */
 export function pointLabel(p, units) {
   return `${drawText(p.x, units, true)} ${units.draw}, ${forceText(p.F, units, true)} ${units.force}`;
+}
+
+/**
+ * A range bound rounded towards the inside of its range, so the printed
+ * value is itself inside the range.
+ * @param {number} value
+ * @param {number} decimals
+ * @param {1 | -1} direction 1 rounds up (lower bound), −1 rounds down
+ */
+export function inward(value, decimals, direction) {
+  const f = 10 ** decimals;
+  const r = direction > 0 ? Math.ceil(value * f - 1e-9) / f : Math.floor(value * f + 1e-9) / f;
+  return fixed(r, decimals);
+}
+
+/**
+ * A number with at most `digits` significant digits and no trailing zeros.
+ * @param {number} v
+ * @param {number} [digits]
+ */
+export function plain(v, digits = 6) {
+  return String(Number(v.toPrecision(digits)));
+}
+
+/** @type {WeakMap<ReadonlyArray<CurvePoint>, CurveMetrics>} */
+const metricsCache = new WeakMap();
+
+/**
+ * Metrics of the curve through the points, computed once per points array.
+ * State arrays are never modified, so the array identifies its curve.
+ * @param {ReadonlyArray<CurvePoint>} points
+ * @returns {CurveMetrics}
+ */
+export function metricsOf(points) {
+  let m = metricsCache.get(points);
+  if (!m) {
+    m = pointMetrics(points);
+    metricsCache.set(points, m);
+  }
+  return m;
 }

@@ -1,28 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
-
-/** @typedef {import('@playwright/test').Page} Page */
-
-/** @param {Page} page */
-async function openTable(page) {
-  const details = page.getByTestId('point-table');
-  if (!(await details.evaluate((el) => /** @type {HTMLDetailsElement} */ (el).open))) {
-    await details.locator('summary').click();
-  }
-  await expect(details).toHaveAttribute('open', '');
-}
-
-/**
- * Centre of a chart point in page coordinates.
- * @param {Page} page
- * @param {number} n 1-based point number
- */
-async function pointCentre(page, n) {
-  await page.getByTestId('force-chart').scrollIntoViewIfNeeded();
-  const box = await page.getByTestId(`chart-point-${n}`).boundingBox();
-  if (!box) throw new Error(`point ${n} is not visible`);
-  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-}
+import { openTable, pointCentre } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
   await page.goto('./');
@@ -40,7 +18,7 @@ test('dragging a point with the mouse moves it, undo restores it', async ({ page
   await page.mouse.move(c.x, c.y + 30, { steps: 6 });
   const readout = page.getByTestId('chart-readout');
   await expect(readout).toBeVisible();
-  await expect(readout).toHaveText(/^\d+\.\d in, \d+ N$/);
+  await expect(readout).toHaveText(/^Point 4: \d+\.\d in, \d+ N$/);
   await expect(readout).not.toHaveText(/ 267 N$/);
   await page.mouse.up();
   await expect(readout).toBeHidden();
@@ -193,14 +171,30 @@ test('settings fields validate and sliders update the curve live', async ({ page
   await expect(page.getByTestId('stat-letoff')).toHaveText('80.0 %');
 });
 
-test('a custom curve can be regenerated from the parameters', async ({ page }) => {
+test('Reset curve regenerates a custom curve and keeps keyboard focus in the toolbar', async ({ page }) => {
   await page.getByTestId('chart-point-3').focus();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByTestId('curve-mode')).toHaveText('Custom');
-  await page.getByTestId('btn-regenerate').click();
+  const reset = page.getByTestId('btn-reset-curve');
+  await reset.focus();
+  await page.keyboard.press('Enter');
   await expect(page.getByTestId('curve-mode')).toHaveText('Parametric');
-  await expect(page.getByTestId('btn-regenerate')).toBeHidden();
-  await expect(page.getByTestId('btn-reset-curve')).toBeDisabled();
+  await expect(reset).toBeDisabled();
+  await expect(page.getByTestId('btn-add-point')).toBeFocused();
+  await expect(page.getByTestId('edit-status')).toHaveText('Curve regenerated from the parameters');
+});
+
+test('Undo that empties the history moves keyboard focus to Redo', async ({ page }) => {
+  await page.getByTestId('chart-point-3').focus();
+  await page.keyboard.press('ArrowUp');
+  const undo = page.getByTestId('btn-undo');
+  await undo.focus();
+  await page.keyboard.press('Enter');
+  await expect(undo).toBeDisabled();
+  await expect(page.getByTestId('btn-redo')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('btn-redo')).toBeDisabled();
+  await expect(undo).toBeFocused();
 });
 
 test('glossary buttons show a definition', async ({ page }) => {

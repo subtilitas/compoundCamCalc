@@ -1,7 +1,10 @@
 /**
  * Glossary terms and info buttons that show a one-sentence definition in a
  * popover. Uses the popover attribute where supported and a toggled
- * element otherwise; both work with mouse, touch and keyboard.
+ * element otherwise; both work with mouse, touch and keyboard and close with
+ * Escape or a click outside. A popover opens below its button, or above it
+ * near the bottom of the window, and closes when the page scrolls or the
+ * window is resized.
  * @module ui/glossary
  */
 
@@ -52,17 +55,25 @@ let counter = 0;
 const supportsPopover = typeof HTMLElement !== 'undefined' && Object.hasOwn(HTMLElement.prototype, 'popover');
 
 /**
- * Place a popover below its button, inside the viewport.
+ * Place a popover below its button, or above it when there is no room
+ * below, inside the viewport. The height is known only while the popover
+ * is shown.
  * @param {HTMLElement} pop
  * @param {HTMLElement} button
  */
 function place(pop, button) {
   const r = button.getBoundingClientRect();
-  const width = Math.min(320, document.documentElement.clientWidth - 16);
-  const left = Math.max(8, Math.min(r.left + r.width / 2 - width / 2, document.documentElement.clientWidth - width - 8));
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
+  const width = Math.min(320, vw - 16);
+  const left = Math.max(8, Math.min(r.left + r.width / 2 - width / 2, vw - width - 8));
   pop.style.width = `${width}px`;
   pop.style.left = `${left}px`;
-  pop.style.top = `${r.bottom + 6}px`;
+  const h = pop.offsetHeight;
+  const below = r.bottom + 6;
+  const above = r.top - 6 - h;
+  const top = below + h > vh - 8 && above >= 8 ? above : Math.max(8, Math.min(below, vh - 8 - h));
+  pop.style.top = `${top}px`;
 }
 
 /**
@@ -83,28 +94,60 @@ export function infoButton(key) {
     'data-testid': `info-${key}`,
   }, 'i');
   const pop = h('span', { id, class: 'glossary-pop', 'data-testid': `glossary-${key}` }, entry.text);
+  const wrap = h('span', { class: 'info-wrap' }, button, pop);
   if (supportsPopover) {
     pop.setAttribute('popover', 'auto');
     button.setAttribute('popovertarget', id);
+    // A popover at a fixed position does not follow its button: close it on
+    // scroll and resize.
+    const close = () => {
+      if (pop.matches(':popover-open')) pop.hidePopover();
+    };
     pop.addEventListener('beforetoggle', (event) => {
       const open = /** @type {ToggleEvent} */ (event).newState === 'open';
       if (open) place(pop, button);
       button.setAttribute('aria-expanded', String(open));
     });
+    pop.addEventListener('toggle', (event) => {
+      if (/** @type {ToggleEvent} */ (event).newState === 'open') {
+        place(pop, button);
+        window.addEventListener('scroll', close, { capture: true, passive: true });
+        window.addEventListener('resize', close, { passive: true });
+      } else {
+        window.removeEventListener('scroll', close, { capture: true });
+        window.removeEventListener('resize', close);
+      }
+    });
   } else {
     pop.hidden = true;
     pop.classList.add('glossary-inline');
-    button.addEventListener('click', () => {
-      pop.hidden = !pop.hidden;
-      button.setAttribute('aria-expanded', String(!pop.hidden));
-    });
-    pop.addEventListener('keydown', (event) => {
+    /** @param {KeyboardEvent} event */
+    const onKey = (event) => {
       if (event.key === 'Escape') {
-        pop.hidden = true;
-        button.setAttribute('aria-expanded', 'false');
+        close();
         button.focus();
       }
+    };
+    /** @param {PointerEvent} event */
+    const onDown = (event) => {
+      if (!wrap.contains(/** @type {Node} */ (event.target))) close();
+    };
+    const close = () => {
+      pop.hidden = true;
+      button.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onDown);
+    };
+    button.addEventListener('click', () => {
+      if (!pop.hidden) {
+        close();
+        return;
+      }
+      pop.hidden = false;
+      button.setAttribute('aria-expanded', 'true');
+      document.addEventListener('keydown', onKey);
+      document.addEventListener('pointerdown', onDown);
     });
   }
-  return h('span', { class: 'info-wrap' }, button, pop);
+  return wrap;
 }
