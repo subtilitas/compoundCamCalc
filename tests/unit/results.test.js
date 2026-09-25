@@ -159,6 +159,16 @@ describe('metricItems', () => {
     expect(metricItems(r, si).filter((i) => i.key !== 'fit').every((i) => !i.warn)).toBe(true);
   });
 
+  it('names the draw energy when only the energy misses its tolerance', () => {
+    const r = fake();
+    r.fit.used = true;
+    r.fit.maxForceDifference = 3.84;
+    r.fit.withinTolerance = false;
+    const item = metricItems(r, si).find((i) => i.key === 'fit');
+    expect(item?.text).toBe('Largest force difference 3.8 N, within the tolerance of 9.0 N; the draw energy differs by more than 0.5 %');
+    expect(item?.warn).toBe(true);
+  });
+
   it('uses the force floor for a low target', () => {
     const r = fake({ target: { x: new Float64Array([0.1]), F: new Float64Array([10]) } });
     expect(fitTolerance(r)).toBe(2);

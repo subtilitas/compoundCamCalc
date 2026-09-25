@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCurve, pointMetrics } from '../../src/core/curve.js';
 import { INCH, toSI } from '../../src/core/units.js';
-import { chipText, solveView } from '../../src/ui/app.js';
+import { chipText, meetsEveryCheck, solveView } from '../../src/ui/app.js';
 import { moveLimitMessage, niceStep, ticks } from '../../src/ui/chart.js';
 import { amo, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain, pointLabel } from '../../src/ui/display.js';
 
@@ -121,5 +121,15 @@ describe('solve view selection', () => {
     expect(solveView(good, good, 'error')).toEqual({ current: null, stale: true, status: 'error', shown: good, withCurve: good });
     expect(solveView(bad, good, 'error')).toEqual({ current: null, stale: true, status: 'error', shown: good, withCurve: good });
     expect(solveView(bad, null, 'error')).toEqual({ current: null, stale: false, status: 'error', shown: null, withCurve: null });
+  });
+});
+
+describe('last cam that met every check', () => {
+  it('takes only full solves without problems', () => {
+    /** @param {string} status @param {string} resolution */
+    const r = (status, resolution) => /** @type {import('../../src/core/solve.js').SolveResult} */ (/** @type {unknown} */ ({ status, resolution }));
+    expect(meetsEveryCheck(r('ok', 'full'))).toBe(true);
+    expect(meetsEveryCheck(r('ok', 'coarse'))).toBe(false);
+    expect(meetsEveryCheck(r('infeasible', 'full'))).toBe(false);
   });
 });

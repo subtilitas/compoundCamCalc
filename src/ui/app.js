@@ -75,6 +75,15 @@ export function solveView(latest, lastGood, solverStatus) {
   return { current, stale, status, shown, withCurve };
 }
 
+/**
+ * Whether a result may stand in as the last cam that met every check: only
+ * a full solve checks every sample, a coarse one can miss a violation.
+ * @param {SolveResult} result
+ */
+export function meetsEveryCheck(result) {
+  return result.status === 'ok' && result.resolution === 'full';
+}
+
 /** Start the application on the page. */
 export function startApp() {
   const root = byId('app', HTMLElement);
@@ -227,7 +236,7 @@ export function startApp() {
   const solver = createSolver({
     onResult(result, _resolution, state) {
       latest = { result, state };
-      if (result.status === 'ok') lastGood = latest;
+      if (meetsEveryCheck(result)) lastGood = latest;
       showSolve();
     },
     onStatus(status) {

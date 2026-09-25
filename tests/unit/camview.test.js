@@ -11,6 +11,7 @@ import {
   outlineBounds,
   panView,
   pathOf,
+  staleCaption,
   viewBoxFor,
   zoomView,
 } from '../../src/ui/camview.js';
@@ -195,5 +196,13 @@ describe('panView', () => {
   it('stays inside the fitted box', () => {
     expect(panView({ x: 0.02, y: -0.05, size: 0.02 }, base, 0.5, -0.5)).toEqual({ x: expect.closeTo(0.03, 12), y: -0.05, size: 0.02 });
     expect(panView(base, base, 0.5, 0.5)).toEqual(base);
+  });
+});
+
+describe('staleCaption', () => {
+  it('does not call inputs failing while they are being solved', () => {
+    expect(staleCaption('busy')).toBe('Last cam that met every check; solving the current inputs');
+    expect(staleCaption('error')).toMatch(/solver stopped with an error/);
+    expect(staleCaption('idle')).toMatch(/the current inputs fail the checks/);
   });
 });

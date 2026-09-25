@@ -4,7 +4,7 @@
  * @module ui/results
  */
 
-import { FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE } from '../core/solve.js';
+import { FIT_ENERGY_TOLERANCE, FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE } from '../core/solve.js';
 import { fromSI } from '../core/units.js';
 import { angleText, dimsText, fixed, forceText } from './display.js';
 import { h } from './dom.js';
@@ -165,13 +165,18 @@ export function metricItems(result, units) {
   /** @type {MetricItem[]} */
   const items = METRICS.map((item) => ({ key: item.key, label: item.label, text: m ? item.text(m, units) : MISSING }));
   if (result && m && result.fit.used) {
-    const within = result.fit.withinTolerance;
+    // The fit meets its tolerance when both the force and the draw energy
+    // agree; with the force within its own tolerance, the energy failed.
+    const tolerance = fitTolerance(result);
+    const forceOk = result.fit.maxForceDifference <= tolerance;
+    const energyFailed = forceOk && !result.fit.withinTolerance;
     items.push({
       key: FIT_ROW.key,
       label: FIT_ROW.label,
       text: `Largest force difference ${force(result.fit.maxForceDifference, units)}, ` +
-        `${within ? 'within' : 'more than'} the tolerance of ${force(fitTolerance(result), units)}`,
-      warn: !within,
+        `${forceOk ? 'within' : 'more than'} the tolerance of ${force(tolerance, units)}` +
+        (energyFailed ? `; the draw energy differs by more than ${fixed(FIT_ENERGY_TOLERANCE * 100, 1)} %` : ''),
+      warn: !result.fit.withinTolerance,
     });
   }
   return items;
