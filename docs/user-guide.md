@@ -17,6 +17,8 @@ results, the draw position, the cam view, the string plan and the loads.
 - **String plan** panel: the whole bow from the side, with the cord lengths.
 - **Loads** panel: string tension, cable tension and limb tip load against
   the draw.
+- **Export** panel: cut files of the cam plates, drawings and the force
+  table.
 - **Settings** panel: bow geometry, draw force, limbs, string track, cords,
   cam body and display units.
 
@@ -295,6 +297,70 @@ the last cam that met every check and say so. While a solve takes longer
 than 250 ms, they dim and say that they belong to the previous inputs. When
 the solve stopped before full draw, the string plan has no full-draw
 outline.
+
+## Export
+
+The export files always describe the last cam that met every check: a full
+solve (1500 samples) without problems. The status line says whether that
+cam belongs to the current inputs or to earlier ones, and gives its design
+id. A solve that runs for 250 ms or longer shows "Solving… exports use
+design <id> until the new cam meets every check"; a shorter one leaves the
+line unchanged. Before any cam meets every check, the buttons do nothing and
+the status line says why.
+
+The files are built in idle time 0.8 s after a cam settles, once the panel
+is on screen, or at the first click. File names and title blocks carry the
+date of the click: a set built the day before is built again.
+
+**All files (ZIP)** saves every file below plus a README with the design
+data, the file list and the warnings. Each file also has its own button.
+
+| File | Contents |
+|---|---|
+| Plates 1 to 5 (DXF) | Cut outline of one plate (layer OUTLINE), the axle bore (BORE) and post holes (POSTS, STOP): closed polylines and circles only |
+| Reference drawing (DXF) | Pitch line, groove bottom and flange of both tracks as splines or circles, the middle-flange outline, all holes, timing marks and a title block |
+| String plan (DXF) | The whole bow at brace (layer BRACE) and full draw (FULL) with limbs, cams, string and cables, and the cord lengths as text |
+| Force table (CSV) | One row per solved draw position, in this column order: draw length (AMO), nock to pivot point, target draw force, achieved draw force, cam rotation from brace, limb rotation, string tension, tension of each cable, load on each limb tip. Each header carries its unit |
+
+File names read `cam-<date>-<design id>-<part>`, for example
+`cam-20260925-187dd8-plate1-string-flange.dxf`. The design id changes with
+every input except the display units, so files of one design share it.
+
+**Plates.** The plates stack from the string side (+Z towards the viewer):
+
+1. flange, string side;
+2. string groove;
+3. middle flange, the convex hull of both flanges;
+4. cable groove;
+5. flange, cable side.
+
+Plate thicknesses are not part of the project yet; a groove plate needs at
+least the cord diameter plus clearance. Top and bottom cams use the same
+plates: cut each plate twice and turn the bottom set over.
+
+Post holes go only into the flange plates next to the groove of their cord:
+the string post into plates 1 and 3, the cable post and the cable stop into
+plates 3 and 5. The cable stop peg reaches past the cable flange whenever
+the cable groove is shallower than the peg diameter (2.5 mm against 5 mm on
+the default preset). Plates 3 and 5 then carry a boss: the outline grows
+around the peg by the minimum wall. Any other hole that reaches past a plate
+outline is left out. A warning under the buttons names the plate and the
+plates that still hold the post, for example "Plate 1 (flange, string
+side): the string post reaches past the outline, so this plate has no hole
+for it; plate 3 still holds it".
+
+**Units and accuracy.** DXF files are in millimetres at 1:1, with the origin
+at the axle centre and the cam at brace, +X towards the archer and +Y up.
+Some programs ignore the unit setting of a DXF file: after import, check that
+the axle bore has the diameter the panel gives. Every curve lies within
+0.01 mm of the model. Kerf compensation is left to the cutting software.
+
+The CSV uses a comma between values and a point as decimal separator, with
+the draw and force units of the display. In a spreadsheet with a decimal
+comma, open it with the text import and choose comma as the separator.
+
+On a phone, some in-app browsers block downloads; open the page in the
+browser app instead.
 
 ## Parametric and custom curves
 

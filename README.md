@@ -11,9 +11,10 @@ Status: in development. The live page contains the force curve editor, the
 settings of the bow and the cam, the solver running in a Web Worker, the
 results with the problems and their suggestions, the achieved force curve,
 a cam view that turns with the draw position, the string plan with the
-build lengths and a loads chart ([user guide](docs/user-guide.md)). The
-model is in `src/core` and described in [docs/model.md](docs/model.md); the
-exports follow in the stages listed in [docs/PLAN.md](docs/PLAN.md). Changes are recorded in
+build lengths, a loads chart, and exports of the cam plates, drawings (DXF)
+and the force table (CSV) ([user guide](docs/user-guide.md)). The model is
+in `src/core` and described in [docs/model.md](docs/model.md); STEP export
+and the remaining stages are listed in [docs/PLAN.md](docs/PLAN.md). Changes are recorded in
 [CHANGELOG.md](CHANGELOG.md).
 
 ## Coverage
@@ -49,6 +50,7 @@ src/core/     model code in SI units, no DOM access: units, force curve,
               inverse model, constrained fit, outline, solve, bow layout
               and loads
 src/state/    project state: schema, presets, validation, store, no DOM access
+src/export/   export model and DXF, CSV and ZIP writers, no DOM access
 src/worker/   solver worker
 src/ui/       user interface
 scripts/      tooling
@@ -61,7 +63,7 @@ docs/         user guide, model description and plan, synced to the GitHub wiki
 
 | Workflow | Trigger | Jobs |
 |---|---|---|
-| CI | pull request, push to `main` | lint and typecheck, unit tests with coverage check, build, end-to-end tests, Pages deploy (push to `main` only) |
+| CI | pull request, push to `main` | lint and typecheck, unit tests with coverage check, build, end-to-end tests, export files checked with ezdxf, Pages deploy (push to `main` only) |
 | Docs | push to `main` touching `docs/`, manual | sync `docs/` to the wiki |
 | Release | tag `v*` | CI, tag/version check, GitHub release with the build archive |
 

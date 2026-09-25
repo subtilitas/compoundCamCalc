@@ -107,6 +107,27 @@ All notable changes are listed here. Versions follow semantic versioning.
     on the achieved curve.
   - Zoom and pan shared by the cam view and the string plan
     (`src/ui/viewport.js`).
+- Export (slice 5):
+  - B-spline fit of the tracks (`src/core/bspline.js`): Hermite pieces on the
+    knots of a spline track with exact tangents, a convex C2 interpolant for
+    an ellipse, circles for an eccentric circle; within 0.01 mm along the
+    track normal.
+  - Export model (`src/export/model.js`): five plate cut outlines within
+    ±0.01 mm (the middle flange is the convex hull of both flanges), bore
+    and post holes in the flange plates next to their cord, a boss around
+    the cable stop peg where a flange cannot hold it, timing marks and
+    warnings that name the plates still holding a post.
+  - DXF R2000 writer (`src/export/dxf.js`), CSV writer (`src/export/csv.js`)
+    and ZIP writer (`src/export/zip.js`), all deterministic and never
+    throwing; spline control points with 10 decimals (mm).
+  - Files (`src/export/files.js`): plate cut files, reference drawing,
+    string plan, force table and a ZIP with a README; names carry the date
+    and a design id.
+  - Export panel in the page: a ZIP of all files and one button per file,
+    always from the last cam that met every check.
+  - CI job `export`: writes sample files of two designs and checks them with
+    ezdxf 1.4.4; each ZIP entry must pass its CRC-32 and equal its single
+    file.
 - User guide (`docs/user-guide.md`).
 - Cam track support functions (`src/core/support.js`): eccentric circle,
   ellipse with offset centre, parallel offset (groove bottom to pitch line)
