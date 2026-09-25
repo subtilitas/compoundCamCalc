@@ -17,6 +17,7 @@ import { createStats } from './stats.js';
 import { createResults } from './results.js';
 import { createSolver } from './solver.js';
 import { createPointTable } from './table.js';
+import { createExportPanel } from './exportpanel.js';
 import { createLoadChart } from './loadchart.js';
 import { createScrubber } from './scrubber.js';
 import { createStringPlan } from './stringplan.js';
@@ -216,6 +217,7 @@ export function startApp() {
   const camView = createCamView(byId('cam-body', HTMLDivElement));
   const plan = createStringPlan(byId('plan-body', HTMLDivElement));
   const loads = createLoadChart(byId('loads-body', HTMLDivElement));
+  const exportPanel = createExportPanel(byId('export-body', HTMLDivElement), { version: __APP_VERSION__ });
   const scrubber = createScrubber(byId('scrub-body', HTMLDivElement), {
     panel: byId('scrub-panel', HTMLElement),
     onChange: () => showPose(),
@@ -294,6 +296,7 @@ export function startApp() {
     root.dataset.solveState = solverStatus === 'busy' ? 'busy' : solverStatus === 'error' ? 'error' : current ? 'ok' : 'idle';
     root.dataset.solveStatus = current?.result.status ?? '';
     root.dataset.solveResolution = current?.result.resolution ?? '';
+    exportPanel.render({ lastGood, now, busy: solverStatus === 'busy', pending });
     showPose();
   }
 

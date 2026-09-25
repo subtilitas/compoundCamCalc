@@ -878,6 +878,67 @@ Neither length includes the wrap around a post, loops, serving or
 stretch. The axle-to-axle length at full draw is 2·O_y at the last sample.
 It is not given when the solve stopped before full draw.
 
+## Export geometry
+
+`src/core/bspline.js` and `src/export/` turn the solved tracks into CAD
+curves in the cam frame at brace. All curves stay within the export
+tolerance of 0.01 mm of the model track, measured along the track normal.
+
+**Curve fit.** A track is the envelope X(ψ) = p·n + p'·t with
+X'(ψ) = ρ·t. `fitSupport` returns a clamped cubic B-spline whose parameter
+is the track angle from the start of the curve:
+
+- A spline track (the cable pitch line, its groove bottom and flange) has
+  ρ = p + p'' only C0 at its knots. It is fitted by one Hermite cubic per
+  knot interval with the exact end points and tangents (Bézier form, triple
+  interior knots). The curve is C1 and keeps the radius of curvature of the
+  track: a C2 fit on uniform knots passes the position tolerance but adds
+  inflections near the track knots. On the default preset: 4360 control
+  points per curve, largest normal deviation 3.8e-13 m.
+- An ellipse track is fitted by a C2 cubic interpolant on N uniform
+  intervals with the exact end tangents; N doubles from 16 to at most 4096
+  until the deviation is at most tol/2 at 9 points per interval and the
+  curve is convex with ρ ≥ min ρ − 1e-6 m.
+- An eccentric-circle track is a circle of radius r about e·(cos φ, sin φ)
+  and is exported as a circle.
+
+The normal distance of a point S from a track is S·n(ψ*) − p(ψ*), with ψ*
+the root of S·t(ψ) − p'(ψ) found by bracketed Newton.
+
+**Cut contours.** A plate outline is a closed polygon on the track offset
+outwards by tol, sampled at a constant angle step Δψ with
+1 − cos(Δψ/2) = 2·tol/(1.1·ρ_max + tol), ρ_max from a 0.25° grid. Every
+vertex lies tol outside the track and every chord dips at most 2·tol below
+the offset, so the outline stays within [−tol, +tol] of the track. The
+middle flange is the convex hull of both flanges, h(ψ) = max of the two
+supports; where they cross (found by bisection) the outline follows their
+common tangent between both tangent points. Default preset: 269 to 274
+vertices per outline.
+
+**Cable stop boss.** The cable stop peg of radius r clears the cable groove
+bottom by r, so it reaches past the cable flange by 2r − d_g, with d_g the
+cable groove depth: 2.5 mm on the default preset (r = 2.5 mm,
+d_g = 2.5 mm). A plate among 3 and 5 whose outline does not hold the disc
+of radius r + w around the peg, w the minimum wall, adds that disc, with
+support h(ψ) = c·n(ψ) + r + w, to the hull. The outline then follows the
+common tangents from the flange to the disc, and at least w of material
+surrounds the peg hole. On the default preset both plates 3 and 5 get the
+disc: plate 3 would keep 1.5 mm around the hole.
+
+**Number format.** Coordinates are written with 6 decimals in mm, knots with
+12. Spline control points keep 10 decimals: the Hermite pieces of a spline
+track span 0.25° and their control points lie about 0.007 mm apart, so
+6 decimals would change the second differences by about 10 % and lower the
+radius of curvature from 5.005 mm to 4.55 mm on the default cable pitch
+line. A unit test reads the written reference DXF back and checks that the
+smallest radius of the cable pitch line stays above the minimum bend radius
+minus 0.001 mm.
+
+**Round trip.** A unit test reads the reference DXF back, rebuilds the cable
+support p(ψ) = max over the exported spline of S·n(ψ) on a 0.25° grid and
+the string track from its circle, runs the forward model and compares the
+draw force with the solved one: the largest difference is below 0.5 N.
+
 ## Validity and diagnostics of the forward model
 
 The solver never throws on user input. It returns `status`: `ok`,

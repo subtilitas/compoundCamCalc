@@ -441,14 +441,38 @@ Independent set; everything else is derived and shown read-only.
 ## Export geometry
 
 - All exports in millimetres; origin at the axle centre, +Z along the axle,
-  string layer at +Z; view side documented; optional mirrored bottom cam.
-- One canonical clamped cubic non-rational B-spline per curve, used by both
-  writers; first control point = last control point for closed curves.
-- DXF: R2000 or later structure with handles and tables (library
-  `@tarikjabiri/dxf`, MIT), `$INSUNITS = 4`, `$MEASUREMENT = 1`; SPLINE flag
-  70 = 8 only; cut contours as closed LWPOLYLINE with vertices shifted
-  outward by half the sagitta; explicit colour per layer; layers PITCH,
-  GROOVE, FLANGE, OUTLINE, BORE, POSTS, STOP, MARKS.
+  string layer at +Z, viewed from the string side. No mirrored bottom cam:
+  the bottom cam uses the same plates turned over.
+- One canonical clamped cubic non-rational B-spline per curve
+  (`src/core/bspline.js`), used by both writers; first control point = last
+  control point for closed curves. A spline track is fitted by Hermite
+  pieces on its own knots with the exact tangents (C1, no inflection); an
+  ellipse by a C2 interpolant on uniform knots, refined until convex and
+  within tolerance. Eccentric-circle tracks are written as circles.
+- DXF: hand-written R2000 (AC1015) writer (`src/export/dxf.js`) with handles,
+  tables, layouts and an object dictionary; `$INSUNITS = 4`,
+  `$MEASUREMENT = 1`; SPLINE flag 70 = 8 only, no exponent in any number;
+  explicit colour per layer; layers PITCH, GROOVE, FLANGE, OUTLINE, BORE,
+  POSTS, STOP, MARKS, TEXT (string plan: BRACE, FULL, TEXT). The writer
+  replaces the library `@tarikjabiri/dxf`, which writes R2007 and does not
+  control its number format.
+- Cut contours: closed LWPOLYLINE on the track offset outwards by the export
+  tolerance, at a constant angle step, so every chord stays within ±0.01 mm.
+- Plates (no layer thicknesses in the schema yet): 1 string flange, 2 string
+  groove, 3 middle flange (convex hull of both flanges), 4 cable groove, 5
+  cable flange. Post holes only in the flange plates next to their cord's
+  groove (string post 1 and 3, cable post and cable stop 3 and 5). A
+  flange plate that does not keep the minimum wall around the cable stop
+  peg gets a boss of radius peg + minimum wall around it; any other hole
+  that does not fit is left out with a warning that names the plates still
+  holding the post.
+- Number format: coordinates 6 decimals (mm), knots 12, spline control
+  points 10. The drawing extents include the glyph box of every text
+  (advance of 1 text height per character, descent 0.3 text heights).
+- Files: five plate cut files, a reference drawing, a string plan, the force
+  table (CSV) and a ZIP of all of them with a README; names
+  `cam-<YYYYMMDD>-<design id>-<part>`, design id = first 6 hex digits of the
+  FNV-1a hash of the inputs without display units.
 - STEP AP214 (automotive design schema), hand-written:
   - one MANIFOLD_SOLID_BREP per layer: SURFACE_OF_LINEAR_EXTRUSION side face
     with a seam edge, planar top and bottom faces with the bore as inner loop,
@@ -485,7 +509,7 @@ Committed as tests with stated tolerances:
   loop connectivity, Euler–Poincaré); `occt-import-js` (dev dependency) for
   solid count, face count, volume against ½∫(p² − p'²)dψ within 0.1 %, bounding
   box and unit handling.
-- DXF: `dxf-parser` round trip; `ezdxf audit` in CI; header units; end-to-end
+- DXF: round trip with an own reader (`tests/unit/dxf-reader.js`); `ezdxf audit` in CI; header units; end-to-end
   test that parses the exported DXF, rebuilds the tracks, runs the forward
   model and matches the target.
 - Playwright: load, drag, keyboard edit, touch add/delete in a mobile
@@ -513,13 +537,15 @@ ESLint forbids DOM globals and `ui` imports in `src/core`, `src/state` and
 ## Workflows
 
 Node.js 24; `actions/checkout@v7`, `actions/setup-node@v7`, `actions/cache@v6`,
-`actions/upload-artifact@v7`, `actions/download-artifact@v8`,
+`actions/setup-python@v7`, `actions/upload-artifact@v7`, `actions/download-artifact@v8`,
 `actions/configure-pages@v6`, `actions/upload-pages-artifact@v5`,
 `actions/deploy-pages@v5`.
 
 - CI (`pull_request`, push to `main`): jobs lint (ESLint + `tsc`), unit
   (Vitest with coverage, `coverage-readme --check`), build, e2e (Playwright on
-  the built site), export validation (Python `ezdxf`), deploy to Pages (push
+  the built site), export (sample files of two designs from
+  `scripts/export-samples.js`, checked by `scripts/validate-dxf.py` with
+  Python `ezdxf` 1.4.4 and a ZIP check in `scripts/validate-dxf.py`), deploy to Pages (push
   to `main` only, needs all other jobs).
 - Docs CI (push to `main` touching `docs/**`, manual dispatch): syncs `docs/`
   to the wiki repository.
@@ -552,7 +578,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 3a | Model code of slice 3 in `src/core` (inverse, fit, QP solver, outline, diagnostics, `solve`) and the tuned default preset; no user interface |
 | 3b | User interface of slice 3: solver worker (latest request wins, coarse while dragging, full on release), results card with diagnostics, achieved-curve overlay, cam view, settings for limbs, string track, cords and cam body |
 | 4 | String plan layout, build lengths, loads chart, draw-position scrubber. Pose and loads in `src/core/layout.js` from the forward-model samples, linear between samples; no change to the solver, the worker or the project schema. The draw position is view state: not saved, not in the undo history, no solve. Zoom and pan shared in `src/ui/viewport.js` |
-| 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export |
+| 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export. Hand-written R2000 writer, five plate profiles with post holes in the flange plates, ZIP of all files, no mirror option (decisions of the user); exports use the last cam that met every check |
 | 6 | STEP export |
 | 7 | Additional presets, JSON save/load, share URL, glossary and help, print report, wiki user guide |
 
