@@ -15,6 +15,7 @@ import {
 } from '../state/library.js';
 import { SAMPLES } from '../state/samples.js';
 import { toJSON } from '../state/schema.js';
+import { confirmDialog, dialogLiveRegion, openDialog } from './dialog.js';
 import { h } from './dom.js';
 import { download } from './download.js';
 
@@ -212,13 +213,11 @@ export function createFileMenu(container, store, options) {
     live,
   );
 
-  /** Live regions of the open dialogs; the page region lies inert behind a modal dialog. */
-  /** @type {HTMLElement[]} */
-  const liveStack = [];
-
+  // The page region lies inert behind a modal dialog: messages go to the
+  // newest open dialog.
   /** @param {string} text */
   function say(text) {
-    const region = liveStack.length > 0 ? liveStack[liveStack.length - 1] : live;
+    const region = dialogLiveRegion() ?? live;
     // The same text again is announced again.
     region.textContent = '';
     region.textContent = text;
@@ -282,65 +281,21 @@ export function createFileMenu(container, store, options) {
     if (!panel.hidden && e.target instanceof Node && !container.contains(e.target)) close();
   });
 
-  // Dialogs: native <dialog> with showModal(); focus returns to the opener.
+  // Dialogs (ui/dialog): focus returns to the opener, else to the File button.
   /**
    * @param {string} title
    * @param {(dialog: HTMLDialogElement, done: (v: any) => void) => Node[]} body
    * @param {HTMLElement} returnTo
    * @returns {Promise<any>}
    */
-  function dialog(title, body, returnTo) {
-    return new Promise((resolve) => {
-      const titleId = `file-dialog-${Math.random().toString(36).slice(2)}`;
-      const d = /** @type {HTMLDialogElement} */ (h('dialog', { class: 'file-dialog', 'aria-labelledby': titleId, 'data-testid': 'file-dialog' }));
-      let result = /** @type {any} */ (null);
-      const status = h('p', { class: 'file-status', role: 'status', 'data-testid': 'dialog-status' });
-      const leave = () => {
-        const i = liveStack.indexOf(status);
-        if (i >= 0) liveStack.splice(i, 1);
-      };
-      /** @param {any} v */
-      const done = (v) => {
-        result = v;
-        // Messages after this go to the page again.
-        leave();
-        d.close();
-      };
-      // The title first: body builders may look it up.
-      d.append(h('h2', { id: titleId, class: 'file-dialog-title', tabindex: -1 }, title));
-      d.append(...body(d, done), status);
-      d.addEventListener('close', () => {
-        leave();
-        d.remove();
-        if (returnTo.isConnected && !returnTo.hidden) returnTo.focus();
-        else menuButton.focus();
-        resolve(result);
-      });
-      document.body.append(d);
-      d.showModal();
-      liveStack.push(status);
-    });
-  }
+  const dialog = (title, body, returnTo) => openDialog(title, body, { returnTo, fallback: menuButton });
 
   /**
-   * Ask a yes or no question.
    * @param {string} text
    * @param {string} yes
    * @param {HTMLElement} returnTo
-   * @returns {Promise<boolean>}
    */
-  function confirm(text, yes, returnTo) {
-    return dialog('Please confirm', (_d, done) => {
-      const ok = h('button', { type: 'button', class: 'file-primary', 'data-testid': 'dialog-yes' }, yes);
-      const no = h('button', { type: 'button', 'data-testid': 'dialog-no' }, 'Cancel');
-      ok.addEventListener('click', () => done(true));
-      no.addEventListener('click', () => done(false));
-      queueMicrotask(() => no.focus());
-      const questionId = `file-question-${Math.random().toString(36).slice(2)}`;
-      _d.setAttribute('aria-describedby', questionId);
-      return [h('p', { id: questionId }, text), h('div', { class: 'file-actions' }, ok, no)];
-    }, returnTo).then((v) => v === true);
-  }
+  const confirm = (text, yes, returnTo) => confirmDialog(text, yes, { returnTo, fallback: menuButton });
 
   /**
    * Ask for a design name. A name another design has shows an error with a
