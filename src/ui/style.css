@@ -1501,3 +1501,216 @@ html {
 .export-error {
   color: var(--error);
 }
+
+/* Print report (ui/report): built on beforeprint, removed on afterprint. */
+
+body.printing-report > .app-header,
+body.printing-report > #app,
+body.printing-report > .app-footer {
+  display: none;
+}
+
+.report {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--gap);
+  background: var(--surface);
+  color: var(--text);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.report h1 {
+  margin: 0 0 8px;
+  font-size: 1.5em;
+}
+
+.report h2 {
+  margin: 1.2em 0 0.4em;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 1.2em;
+}
+
+.report h3 {
+  margin: 0.8em 0 0.3em;
+  font-size: 1em;
+}
+
+.report-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0 24px;
+  margin: 0;
+}
+
+.report-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-row dt {
+  color: var(--muted);
+}
+
+.report-row dd {
+  margin: 0;
+  text-align: right;
+}
+
+.report-status {
+  font-weight: 600;
+}
+
+.report-group {
+  break-inside: avoid;
+}
+
+.report-figure {
+  margin: 0;
+  break-inside: avoid;
+}
+
+.report-figure figcaption {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+.report-figure svg.chart,
+.report-figure svg.cam-view {
+  max-height: 110mm;
+}
+
+.report .cam-view {
+  width: 110mm;
+  max-width: 100%;
+  height: auto;
+}
+
+.static-achieved {
+  fill: none;
+  stroke: var(--chart-achieved);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.report-table caption {
+  margin-bottom: 4px;
+  color: var(--muted);
+  text-align: left;
+}
+
+.report-table th,
+.report-table td {
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.report-table tr {
+  break-inside: avoid;
+}
+
+.report-note {
+  margin-top: 1.2em;
+  color: var(--muted);
+}
+
+@page {
+  margin: 12mm;
+}
+
+@media print {
+  /* Light colours on paper, whatever the colour scheme of the screen. */
+  :root,
+  :root:not([data-theme='light']),
+  :root[data-theme='dark'] {
+    color-scheme: light;
+    --bg: #f7f7f5;
+    --surface: #ffffff;
+    --surface-2: #f0f2f1;
+    --text: #1b1f1e;
+    --muted: #5a6361;
+    --border: #d8dcda;
+    --control-border: #7d8784;
+    --accent: #206a5d;
+    --accent-contrast: #ffffff;
+    --warn: #9a5b00;
+    --error: #b3261e;
+    --focus: #1a5fb4;
+    --chart-bg: #ffffff;
+    --chart-grid: #e4e7e5;
+    --chart-axis: #5a6361;
+    --chart-curve: #206a5d;
+    --chart-point: #206a5d;
+    --chart-point-stroke: #ffffff;
+    --chart-point-selected: #b04a00;
+    --chart-locked: #5a6361;
+    --chart-ref: #7a4f9e;
+    --chart-readout-bg: #1b1f1e;
+    --chart-readout-text: #ffffff;
+    --chart-achieved: #b04a00;
+    --chart-range: #b3261e;
+    --marker: #1f5fbf;
+    --load-axle: #b04a00;
+    --plan-limb: #5a6361;
+    --plan-ghost: #7d8784;
+    --cam-string: #206a5d;
+    --cam-cable: #7a4f9e;
+    --cam-string-fill: rgba(32, 106, 93, 0.12);
+    --cam-cable-fill: rgba(122, 79, 158, 0.12);
+    --ok: #1e6b35;
+  }
+
+  body.printing-report {
+    min-height: 0;
+    display: block;
+    background: #ffffff;
+  }
+
+  .report {
+    max-width: none;
+    padding: 0;
+    font-size: 10.5pt;
+    line-height: 1.35;
+  }
+
+  .report h1 {
+    font-size: 16pt;
+  }
+
+  .report h2 {
+    font-size: 13pt;
+  }
+
+  .report h3 {
+    font-size: 11pt;
+  }
+
+  .report h1,
+  .report h2,
+  .report h3 {
+    break-after: avoid;
+  }
+
+  .report-figure figcaption,
+  .report-table caption,
+  .report .camview-legend {
+    font-size: 10pt;
+  }
+
+  .report-table thead {
+    display: table-header-group;
+  }
+}
