@@ -152,9 +152,17 @@ const FIT_ROW = Object.freeze({ key: 'fit', label: 'Fitted cable track' });
 export const METRIC_KEYS = Object.freeze(METRICS.map((m) => m.key));
 
 /** Glossary entries of the metric keys that have one. */
-const GLOSSARY_OF = /** @type {Readonly<Record<string, GlossaryKey>>} */ ({
-  peak: 'peak', holding: 'hold', letOff: 'letOff', drawEnergy: 'energy',
-});
+export const GLOSSARY_OF = /** @type {Readonly<Record<string, GlossaryKey>>} */ (Object.freeze({
+  peak: 'peak',
+  holding: 'hold',
+  letOff: 'letOff',
+  drawEnergy: 'energy',
+  limbEnergy: 'limbEnergy',
+  axleTravel: 'axleTravel',
+  rotation: 'camRotation',
+  stringRho: 'radiusOfCurvature',
+  cableRho: 'radiusOfCurvature',
+}));
 
 /**
  * Force tolerance of a fitted cam: FIT_FORCE_TOLERANCE of the target peak,
@@ -213,14 +221,16 @@ export function diagnosticItems(result) {
 let cards = 0;
 
 /**
- * Info button of a glossary entry with test ids of the results card, so they
- * do not repeat the ids of the target statistics (info-<key>, glossary-<key>).
+ * Info button of a glossary entry with test ids of the results card, named
+ * after the metric: they do not repeat the ids of the target statistics
+ * (info-<key>, glossary-<key>), and two metrics may share one entry.
  * @param {GlossaryKey} key
+ * @param {string} metric
  */
-function resultsInfo(key) {
+function resultsInfo(key, metric) {
   const wrap = infoButton(key);
-  wrap.querySelector('button')?.setAttribute('data-testid', `results-info-${key}`);
-  wrap.querySelector('.glossary-pop')?.setAttribute('data-testid', `results-glossary-${key}`);
+  wrap.querySelector('button')?.setAttribute('data-testid', `results-info-${metric}`);
+  wrap.querySelector('.glossary-pop')?.setAttribute('data-testid', `results-glossary-${metric}`);
   return wrap;
 }
 
@@ -256,7 +266,7 @@ export function createResults(container) {
   const rows = new Map();
   for (const { key, label } of [...METRICS, FIT_ROW]) {
     const glossary = GLOSSARY_OF[key];
-    const dt = glossary ? h('dt', {}, label, resultsInfo(glossary)) : h('dt', {}, label);
+    const dt = glossary ? h('dt', {}, label, resultsInfo(glossary, key)) : h('dt', {}, label);
     const dd = h('dd', { 'data-testid': `metric-${key}` }, MISSING);
     const row = h('div', { class: 'results-metric' }, dt, dd);
     rows.set(key, { row, dd });

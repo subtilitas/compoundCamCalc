@@ -1,7 +1,7 @@
 /**
  * Application wiring: store, editor, chart, table, settings, stats,
  * solver, results, cam view, toolbar, keyboard shortcuts, notices,
- * autosave, the File menu and share links.
+ * autosave, the File menu, share links and the Help button.
  * @module ui/app
  */
 
@@ -10,6 +10,7 @@ import { parseCurrent, serializeCurrent } from '../state/library.js';
 import { decodeShare } from '../state/share.js';
 import { loadCurrent, startAutosave, loadSaved } from './autosave.js';
 import { createFileMenu } from './filemenu.js';
+import { createHelpButton } from './help.js';
 import { createCamView } from './camview.js';
 import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
 import { createChart } from './chart.js';
@@ -131,6 +132,7 @@ export function startApp() {
     // default design, whatever the stored current design says.
     current: parseCurrent(loadCurrent(), saved.text),
     persist: () => autosave?.saveNow() ?? false,
+    after: [createHelpButton()],
   });
 
   const chart = createChart(byId('chart-wrap', HTMLDivElement), editor);

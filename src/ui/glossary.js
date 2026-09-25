@@ -48,6 +48,34 @@ export const GLOSSARY = Object.freeze({
     term: 'draw energy',
     text: 'Draw energy: energy stored by drawing the bow, the area under the force curve from brace to full draw.',
   },
+  limbEnergy: {
+    term: 'limb energy',
+    text: 'Limb energy: elastic energy stored in both limbs at full draw, counted from the unstrung limbs, so it includes the preload energy at brace.',
+  },
+  axleTravel: {
+    term: 'axle travel',
+    text: 'Axle travel: length of the arc the axle moves from brace to full draw, the limb lever length times the limb rotation at full draw.',
+  },
+  camRotation: {
+    term: 'cam rotation',
+    text: 'Cam rotation: angle the cam turns about its axle, counted from its position at brace. The results give the rotation at full draw.',
+  },
+  leverArm: {
+    term: 'lever arm',
+    text: 'Lever arm: perpendicular distance from the axle centre to the line of a cord at its contact point on the track pitch line. The cord tension times the lever arm is the torque of that cord on the cam.',
+  },
+  radiusOfCurvature: {
+    term: 'radius of curvature',
+    text: 'Radius of curvature: radius of the circle that matches the bend of a track pitch line at a point, ρ = p + p\'\' with the lever arm p as a function of the contact angle. A smaller value is a sharper bend.',
+  },
+  bendRadius: {
+    term: 'minimum bend radius',
+    text: 'Minimum bend radius: smallest radius of curvature allowed on a track pitch line. The solver uses the larger of this value and half the cord diameter plus 0.2 mm, so the groove bottom stays convex.',
+  },
+  wall: {
+    term: 'minimum wall',
+    text: 'Minimum wall: smallest material thickness between the bottom of a track groove and the axle bore. Every groove bottom stays at least the bore radius plus this wall from the axle centre.',
+  },
 });
 
 let counter = 0;

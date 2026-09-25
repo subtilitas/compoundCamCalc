@@ -303,6 +303,74 @@ button.file-primary:hover:not(:disabled) {
   gap: 8px;
 }
 
+/* Help dialog: scrolls inside 90 % of the dynamic viewport height. */
+.help-button {
+  min-width: var(--target);
+}
+
+.help-dialog {
+  max-height: 90vh;
+  max-height: 90dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.help-dialog .file-dialog-title {
+  padding-right: 88px;
+}
+
+.help-close-top {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.help-section h3 {
+  margin: 16px 0 4px;
+  font-size: 1rem;
+}
+
+.help-keys h4 {
+  margin: 12px 0 0;
+  font-size: 0.95rem;
+}
+
+.help-keys .hint {
+  margin: 2px 0 4px;
+}
+
+.help-steps {
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.help-keys dl,
+.help-terms {
+  margin: 0;
+}
+
+.help-keys dt,
+.help-terms dt {
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.help-keys dd,
+.help-terms dd {
+  margin: 0 0 0 16px;
+}
+
+.help-dialog kbd {
+  padding: 0 4px;
+  border: 1px solid var(--control-border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-family: inherit;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
 .app-main {
   flex: 1;
   display: grid;

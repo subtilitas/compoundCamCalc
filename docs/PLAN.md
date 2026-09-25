@@ -431,8 +431,22 @@ Independent set; everything else is derived and shown read-only.
   flushed on `pagehide` and when the page is hidden; schemaVersion in saved
   data. Unreadable saved data is copied to a backup key before the next
   change replaces it.
-- Glossary tooltips for let-off, holding weight, valley, wall, brace height,
-  ATA, AMO draw length, power stroke, lever arm, radius of curvature.
+- Glossary tooltips for ATA, brace height, draw length (AMO), peak draw
+  force, let-off, holding weight, valley, power stroke, draw energy, limb
+  energy, axle travel, cam rotation, lever arm, radius of curvature,
+  minimum bend radius, minimum wall. One source, `GLOSSARY` in
+  `src/ui/glossary.js`, feeds the info buttons, the help dialog and the
+  Terms section of the user guide; unit tests check that every term here
+  has an info button and that the user guide repeats each text word for
+  word.
+- Help dialog from a Help button next to the File menu, with no keyboard
+  shortcut (Web Content Accessibility Guidelines, WCAG, success criterion
+  2.1.4): quick start in 5 steps, the keyboard shortcuts of the chart, undo
+  and redo, the drawings and the draw position slider, the whole glossary,
+  and a link to the user guide in the wiki (new tab). Focus starts on the
+  heading and returns to the Help button; close buttons at the top and the
+  bottom; the dialog scrolls within 90 % of the dynamic viewport height
+  with no horizontal scroll at 320 px.
 - Footnote under results: static model; string stretch, cam timing and
   dynamics not modelled.
 - Touch: Pointer Events, `touch-action: none` on the editor, hit targets
