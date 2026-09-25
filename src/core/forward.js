@@ -36,6 +36,10 @@ export const COARSE_SAMPLES = 100;
 export const CLOSURE_TOLERANCE = 1e-10;
 /** Default Newton iteration limit per sample. */
 export const MAX_ITERATIONS = 30;
+/** Largest accepted Newton iteration limit per sample. */
+export const MAX_ITERATION_LIMIT = 200;
+/** Largest accepted number of samples. */
+export const MAX_SAMPLES = 20000;
 /** Default wrap beyond the extreme contacts: cable lead-in and string residual wrap (rad). */
 export const DEFAULT_WRAP = Math.PI / 6;
 
@@ -51,7 +55,7 @@ const MAX_ALPHA_STEP = 0.1;
 
 /**
  * @typedef {'invalid-input' | 'brace' | 'no-convergence' | 'slack-string' | 'slack-cable'
- *   | 'wrap-exhausted' | 'wrap-overlap' | 'cable-lever' | 'cam-reversal'} DiagnosticCode
+ *   | 'wrap-exhausted' | 'wrap-overlap' | 'cable-lever' | 'cam-reversal' | 'non-finite'} DiagnosticCode
  */
 
 /**
@@ -167,6 +171,7 @@ const MESSAGES = /** @type {Record<DiagnosticCode, string>} */ ({
   'wrap-overlap': 'A cord wraps a full turn or more on its track and would overlap itself in the groove',
   'cable-lever': 'The limbs do not pull the cable: c_a, the cable length change per limb rotation, is zero or negative',
   'cam-reversal': 'The cam turns backwards while the string is drawn (dθ/dx ≤ 0)',
+  'non-finite': 'The solution contains values outside the floating-point range; the input magnitudes are too large',
 });
 
 /**
@@ -215,6 +220,7 @@ function gridFor(input, xBrace, xFull) {
   if (input.x !== undefined) {
     const x = Float64Array.from(input.x ?? []);
     if (x.length < 1) return 'the x grid is empty';
+    if (x.length > MAX_SAMPLES) return `the x grid has more than ${MAX_SAMPLES} samples`;
     for (let i = 0; i < x.length; i++) {
       const outside = x[i] < xBrace - FULL_DRAW_TOLERANCE || x[i] > xFull + FULL_DRAW_TOLERANCE;
       if (!Number.isFinite(x[i]) || outside || (i > 0 && !(x[i] > x[i - 1]))) {
@@ -224,7 +230,9 @@ function gridFor(input, xBrace, xFull) {
     return x;
   }
   const samples = input.samples ?? FULL_SAMPLES;
-  if (!Number.isInteger(samples) || samples < 2) return 'the sample count must be an integer of at least 2';
+  if (!Number.isInteger(samples) || samples < 2 || samples > MAX_SAMPLES) {
+    return `the sample count must be an integer from 2 to ${MAX_SAMPLES}`;
+  }
   return drawGrid(xBrace, xFull, samples);
 }
 
@@ -258,6 +266,9 @@ export function solveForward(input) {
     }
   }
   const maxIterations = input.maxIterations ?? MAX_ITERATIONS;
+  if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > MAX_ITERATION_LIMIT) {
+    return failed('invalid-input', `the iteration limit must be an integer from 1 to ${MAX_ITERATION_LIMIT}`);
+  }
 
   // Brace: θ = 0, α = 0.
   const pose = createPose();
@@ -361,7 +372,7 @@ export function solveForward(input) {
     out.x[i] = x;
     out.theta[i] = th;
     out.alpha[i] = al;
-    out.F[i] = 2 * m * dAlpha;
+    out.F[i] = 2 * (m * dAlpha);
     out.Ts[i] = Ts;
     out.Tc[i] = Tc;
     out.phi[i] = Math.atan2(pose.usx, -pose.usy);
@@ -473,6 +484,10 @@ function collectDiagnostics(out, solved, xBrace, stringTermination, cableTermina
     ['wrap-overlap', (i) => stringTermination - out.psiS[i] >= 2 * Math.PI || out.psiC[i] - cableTermination >= 2 * Math.PI],
     ['cable-lever', (i) => !(out.cA[i] > 0)],
     ['cam-reversal', (i) => out.x[i] > xBrace && !(out.dThetaDx[i] > 0)],
+    [
+      'non-finite',
+      (i) => !(Number.isFinite(out.F[i]) && Number.isFinite(out.Ts[i]) && Number.isFinite(out.Tc[i]) && Number.isFinite(out.theta[i]) && Number.isFinite(out.alpha[i])),
+    ],
   ];
   /** @type {Diagnostic[]} */
   const diagnostics = [];

@@ -175,6 +175,10 @@ function solveCyclic(a, b, c, corner, r) {
 export function splineSupport(knots, values, options = {}) {
   const periodic = options.periodic === true;
   const n = knots.length - 1;
+  const slopes = options.endSlopes;
+  if (slopes !== undefined && !(Array.isArray(slopes) && slopes.length === 2 && slopes.every(Number.isFinite))) {
+    throw new RangeError('Spline end slopes must be two finite numbers');
+  }
   if (n < (periodic ? 3 : 1) || values.length !== knots.length) {
     throw new RangeError('A spline support needs matching knots and values and enough intervals');
   }
@@ -217,7 +221,6 @@ export function splineSupport(knots, values, options = {}) {
       c[i] = h[i];
       r[i] = 6 * (delta[i] - delta[i - 1]);
     }
-    const slopes = options.endSlopes;
     if (slopes) {
       b[0] = 2 * h[0];
       c[0] = h[0];

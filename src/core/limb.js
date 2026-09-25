@@ -65,11 +65,14 @@ export function linearLimb({ stiffness, preloadTravel, limbLength }) {
 /**
  * Stiffness k at the axle (N/m) that stores the draw energy W over the axle
  * travel s_f from brace to full draw, with preload travel s_0:
- * W = k·((s_f + s_0)² − s_0²). NaN when no positive stiffness does.
+ * W = k·((s_f + s_0)² − s_0²). NaN unless W > 0, s_f > 0 and s_0 ≥ 0 are
+ * finite.
  * @param {{ drawEnergy: number, travel: number, preloadTravel: number }} params (J, m, m)
  * @returns {number}
  */
 export function stiffnessForTravel({ drawEnergy, travel, preloadTravel }) {
+  const valid = drawEnergy > 0 && Number.isFinite(drawEnergy) && travel > 0 && Number.isFinite(travel) && preloadTravel >= 0 && Number.isFinite(preloadTravel);
+  if (!valid) return NaN;
   const k = drawEnergy / ((travel + preloadTravel) ** 2 - preloadTravel ** 2);
   return Number.isFinite(k) && k > 0 ? k : NaN;
 }

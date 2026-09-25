@@ -301,7 +301,7 @@ each run of affected samples.
 
 | Code | Condition |
 |---|---|
-| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, unknown limb kind, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not increasing or leaves [x_b, x_f], invalid sample count, non-finite termination angle, non-finite limb moment at brace (for example a NaN preload) |
+| `invalid-input` | non-finite or out-of-domain geometry, unknown track kind, unknown limb kind, ellipse without finite positive semi-axes, spline with non-finite knots, x grid that is not increasing or leaves [x_b, x_f], sample count outside 2 to 20000, iteration limit outside 1 to 200, non-finite termination angle, non-finite limb moment at brace (for example a NaN preload) |
 | `brace` | the string cannot leave its track at ψ = 0 towards the nock, the anchor lies inside the cable track, or det = 0 at brace |
 | `no-convergence` | a sample does not close within 30 iterations, or a contact is lost; later samples are NaN |
 | `slack-string` | T_s ≤ 0, including the brace tension when the x grid starts after brace |
@@ -310,6 +310,7 @@ each run of affected samples.
 | `wrap-overlap` | a cord wraps a full turn or more, σ·(ψ_c − ψ_e) ≥ 2π, and would overlap itself in its groove; the string wrap is largest at brace, the cable wrap at full draw |
 | `cable-lever` | c_a ≤ 0: limb rotation no longer takes up cable |
 | `cam-reversal` | dθ/dx ≤ 0 after brace |
+| `non-finite` | the force, a tension, θ or α at a sample is not finite (input magnitudes beyond the floating-point range) |
 
 ## Verification
 

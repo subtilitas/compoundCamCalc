@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLOSURE_TOLERANCE, DEFAULT_WRAP, FULL_SAMPLES, drawGrid, solveForward } from '../../src/core/forward.js';
+import { CLOSURE_TOLERANCE, DEFAULT_WRAP, FULL_SAMPLES, MAX_SAMPLES, drawGrid, solveForward } from '../../src/core/forward.js';
 import { axle, bowGeometry } from '../../src/core/geometry.js';
 import { createLimb, linearLimb, tableLimb } from '../../src/core/limb.js';
 import { createSupport, eccentricCircle, ellipse, offset, splineSupport } from '../../src/core/support.js';
@@ -651,6 +651,12 @@ describe('forward model: diagnostics', () => {
       input({ limb: /** @type {any} */ ({ kind: 'spring', torsionalStiffness: 100, alpha0: 0.1 }) }),
       input({ stringTermination: NaN }),
       input({ cableTermination: Infinity }),
+      input({ samples: Number.MAX_SAFE_INTEGER }),
+      input({ samples: MAX_SAMPLES + 1 }),
+      input({ x: Array.from({ length: MAX_SAMPLES + 1 }, (_, i) => geometry.braceHeight + i * 1e-9) }),
+      input({ maxIterations: 0 }),
+      input({ maxIterations: 1.5 }),
+      input({ maxIterations: 1e9 }),
     ];
     for (const c of cases) {
       const r = solveForward(c);
@@ -659,6 +665,17 @@ describe('forward model: diagnostics', () => {
       expect(r.diagnostics[0].xRange).toBeNull();
       expect(r.n).toBe(0);
     }
+  });
+
+  it('non-finite: values beyond the floating-point range are reported; representable ones stay finite', () => {
+    // M(0) = 1e307·10 = 1e308: 2·M overflows, but F = 2·(M·dα/dx) and the tensions do not.
+    const large = solveForward(input({ limb: { kind: 'linear', torsionalStiffness: 1e307, alpha0: 10 }, samples: 20 }));
+    expect(large.status).toBe('ok');
+    expect(large.F.every(Number.isFinite)).toBe(true);
+    // M(0) = 1.7e308: T_c = M·p_s/det overflows.
+    const huge = solveForward(input({ limb: { kind: 'linear', torsionalStiffness: 1e307, alpha0: 17 }, samples: 20 }));
+    expect(huge.status).toBe('infeasible');
+    expect(codes(huge)).toContain('non-finite');
   });
 
   it('brace: the cable anchor lies inside the cable track', () => {

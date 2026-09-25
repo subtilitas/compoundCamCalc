@@ -51,6 +51,10 @@ describe('stiffnessForTravel', () => {
     expect(limbEnergies(limb, 0.038 / R).drawEnergy).toBeCloseTo(W, 10);
     expect(stiffnessForTravel({ drawEnergy: -1, travel: 0.038, preloadTravel: s0 })).toBeNaN();
     expect(stiffnessForTravel({ drawEnergy: 90, travel: 0, preloadTravel: 0 })).toBeNaN();
+    // A backward travel with preload gives a positive denominator; it is still rejected.
+    expect(stiffnessForTravel({ drawEnergy: 80, travel: -0.1, preloadTravel: 0.03 })).toBeNaN();
+    expect(stiffnessForTravel({ drawEnergy: 80, travel: 0.04, preloadTravel: -0.01 })).toBeNaN();
+    expect(stiffnessForTravel({ drawEnergy: Infinity, travel: 0.04, preloadTravel: 0.01 })).toBeNaN();
   });
 });
 
