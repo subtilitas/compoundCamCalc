@@ -49,6 +49,31 @@ All notable changes are listed here. Versions follow semantic versioning.
   custom curve modes, glossary popovers, autosave to localStorage that
   writes at once when the page is hidden and keeps a copy of unreadable
   saved data.
+- Solver in the page (slice 3b):
+  - The solve runs in a module Web Worker (`src/worker/solver.worker.js`,
+    client `src/ui/solver.js`). The newest request wins; a finished result
+    is shown even while a newer request waits, so a continuous drag shows
+    coarse results (100 samples) and the release a full one (1500 samples).
+    A worker that fails before its first answer is replaced by a solve on
+    the main thread, which repeats the failed request.
+  - Results card (`src/ui/results.js`): status, achieved peak, holding
+    weight, let-off, draw and limb energy, axle travel, cam rotation,
+    string and cable length, cam maximum dimension, radius of curvature of
+    each track with its limit, the fit against its tolerance, and the
+    problems with their suggestions.
+  - Achieved force curve (dashed) over the target, with the draw ranges of
+    problems shaded and a legend.
+  - Cam view (`src/ui/camview.js`): flange outlines, groove bottoms, pitch
+    lines, bore, posts and timing marks with a legend and a scale bar;
+    zoom by buttons, Ctrl and wheel, or keys; pan by drag or arrow keys.
+  - An input that fails a check keeps the last cam that met every check in
+    the cam view, dimmed and labelled; the values and the dashed curve are
+    labelled as the latest attempt.
+  - Settings for limb lever length and angle, limbs (stiffness, axle
+    travel or a measured table of 3 to 50 rows), string track (eccentric
+    circle or ellipse), cords and cam body; dimension and stiffness units;
+    a solve status link at the top of the settings; angles shown in
+    degrees with the ° symbol; range hints with the unit of the step.
 - User guide (`docs/user-guide.md`).
 - Cam track support functions (`src/core/support.js`): eccentric circle,
   ellipse with offset centre, parallel offset (groove bottom to pitch line)

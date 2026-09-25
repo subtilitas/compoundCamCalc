@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCurve, pointMetrics } from '../../src/core/curve.js';
 import { INCH, toSI } from '../../src/core/units.js';
+import { chipText, meetsEveryCheck, solveView } from '../../src/ui/app.js';
 import { moveLimitMessage, niceStep, ticks } from '../../src/ui/chart.js';
 import { amo, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain, pointLabel } from '../../src/ui/display.js';
 
@@ -72,5 +73,83 @@ describe('range bounds and messages', () => {
     expect(metricsOf(points)).toBe(m);
     expect(m).toEqual(pointMetrics(points));
     expect(metricsOf(points.slice())).not.toBe(m);
+  });
+});
+
+describe('solve status link', () => {
+  it('names the state and the number of problems', () => {
+    expect(chipText('busy', 0)).toBe('Cam: solving…');
+    expect(chipText('preview', 0)).toBe('Cam: preview, full check follows');
+    expect(chipText('ok', 0)).toBe('Cam: meets every check');
+    expect(chipText('infeasible', 1)).toBe('Cam: 1 problem, see Results');
+    expect(chipText('infeasible', 3)).toBe('Cam: 3 problems, see Results');
+    expect(chipText('no-convergence', 1)).toBe('Cam: the solver did not converge, see Results');
+    expect(chipText('error', 0)).toBe('Cam: the solver stopped with an error');
+  });
+});
+
+describe('solve view selection', () => {
+  /**
+   * @param {'ok' | 'infeasible' | 'no-convergence'} status
+   * @param {boolean} [achieved]
+   */
+  const solved = (status, achieved = true) => ({
+    result: /** @type {import('../../src/core/solve.js').SolveResult} */ (/** @type {unknown} */ ({
+      status,
+      achieved: achieved ? { x: new Float64Array(2), F: new Float64Array(2) } : null,
+    })),
+    state: status,
+  });
+
+  it('shows the current result when it meets every check', () => {
+    const good = solved('ok');
+    expect(solveView(good, good, 'idle')).toEqual({ current: good, stale: false, outdated: false, status: 'ok', shown: good, withCurve: good });
+    expect(solveView(null, null, 'idle')).toEqual({ current: null, stale: false, outdated: false, status: 'idle', shown: null, withCurve: null });
+  });
+
+  it('keeps the last valid cam in view for a failing result', () => {
+    const good = solved('ok');
+    const bad = solved('infeasible');
+    expect(solveView(bad, good, 'idle')).toEqual({ current: bad, stale: true, outdated: false, status: 'infeasible', shown: good, withCurve: bad });
+    const noCurve = solved('no-convergence', false);
+    expect(solveView(noCurve, good, 'busy')).toMatchObject({ current: noCurve, stale: true, status: 'busy', shown: good, withCurve: good });
+    expect(solveView(bad, null, 'idle')).toMatchObject({ stale: false, shown: bad });
+  });
+
+  it('drops the older result after a solver error', () => {
+    const good = solved('ok');
+    const bad = solved('infeasible');
+    expect(solveView(good, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good });
+    expect(solveView(bad, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good });
+    expect(solveView(bad, null, 'error')).toEqual({ current: null, stale: false, outdated: false, status: 'error', shown: null, withCurve: null });
+  });
+});
+
+describe('coarse results', () => {
+  it('shows a coarse result without problems as a preview', () => {
+    const coarse = { result: /** @type {any} */ ({ status: 'ok', resolution: 'coarse', achieved: null }), state: 1 };
+    expect(solveView(coarse, null, 'idle').status).toBe('preview');
+    const bad = { result: /** @type {any} */ ({ status: 'infeasible', resolution: 'coarse', achieved: null }), state: 1 };
+    expect(solveView(bad, null, 'idle').status).toBe('infeasible');
+  });
+});
+
+describe('outdated results', () => {
+  it('marks the current result outdated only while a solve has run for a while', () => {
+    const good = { result: /** @type {any} */ ({ status: 'ok', achieved: null }), state: 1 };
+    expect(solveView(good, good, 'busy', true)).toMatchObject({ outdated: true, stale: false, shown: good, status: 'busy' });
+    expect(solveView(good, good, 'busy', false).outdated).toBe(false);
+    expect(solveView(good, good, 'idle', true).outdated).toBe(false);
+    expect(solveView(null, null, 'busy', true).outdated).toBe(false);
+  });
+});
+
+describe('last cam that met every check', () => {
+  it('takes only full solves without problems', () => {
+    /** @param {string} status @param {string} resolution */
+    const r = (status, resolution) => /** @type {import('../../src/core/solve.js').SolveResult} */ (/** @type {unknown} */ ({ status, resolution }));
+    expect(meetsEveryCheck(r('ok', 'full'))).toBe(true);
+    expect(meetsEveryCheck(r('ok', 'coarse'))).toBe(false);
+    expect(meetsEveryCheck(r('infeasible', 'full'))).toBe(false);
   });
 });

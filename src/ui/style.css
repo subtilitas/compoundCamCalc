@@ -23,6 +23,13 @@
   --chart-ref: #7a4f9e;
   --chart-readout-bg: #1b1f1e;
   --chart-readout-text: #ffffff;
+  --chart-achieved: #b04a00;
+  --chart-range: #b3261e;
+  --cam-string: #206a5d;
+  --cam-cable: #7a4f9e;
+  --cam-string-fill: rgba(32, 106, 93, 0.12);
+  --cam-cable-fill: rgba(122, 79, 158, 0.12);
+  --ok: #1e6b35;
   --radius: 8px;
   --gap: 16px;
   --target: 44px;
@@ -57,6 +64,13 @@
     --chart-ref: #c9a3f0;
     --chart-readout-bg: #e6eae8;
     --chart-readout-text: #121514;
+    --chart-achieved: #f0b35a;
+    --chart-range: #ff8a80;
+    --cam-string: #5fc2ae;
+    --cam-cable: #c9a3f0;
+    --cam-string-fill: rgba(95, 194, 174, 0.16);
+    --cam-cable-fill: rgba(201, 163, 240, 0.16);
+    --ok: #7bd88f;
   }
 }
 
@@ -89,6 +103,13 @@
   --chart-ref: #c9a3f0;
   --chart-readout-bg: #e6eae8;
   --chart-readout-text: #121514;
+  --chart-achieved: #f0b35a;
+  --chart-range: #ff8a80;
+  --cam-string: #5fc2ae;
+  --cam-cable: #c9a3f0;
+  --cam-string-fill: rgba(95, 194, 174, 0.16);
+  --cam-cable-fill: rgba(201, 163, 240, 0.16);
+  --ok: #7bd88f;
 }
 
 * {
@@ -136,10 +157,23 @@ body {
     grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
     align-items: start;
   }
+
+  .panel-curve,
+  .panel-results,
+  .panel-cam {
+    grid-column: 1;
+  }
+
+  .panel-settings {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+  }
 }
 
+/* Notices stay in the first column, so on wide screens the settings start
+   in the first row whether a notice is shown or not. */
 .notices {
-  grid-column: 1 / -1;
+  grid-column: 1;
   display: grid;
   gap: 8px;
 }
@@ -636,4 +670,273 @@ input[aria-invalid='true'] {
   gap: 8px;
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+/* Results card */
+
+.results-status {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-left: 4px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.results-status:empty {
+  display: none;
+}
+
+.results-status-ok {
+  border-left-color: var(--ok);
+}
+
+.results-status-infeasible {
+  border-left-color: var(--warn);
+}
+
+.results-status-no-convergence,
+.results-status-error {
+  border-left-color: var(--error);
+}
+
+.results-status-busy,
+.results-status-preview {
+  color: var(--muted);
+}
+
+.results-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px 16px;
+  margin: 12px 0;
+}
+
+.results-metric {
+  min-width: 0;
+}
+
+.results-metrics dt {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.results-metrics dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.results-diagnostics-heading {
+  margin: 16px 0 8px;
+  font-size: 1rem;
+}
+
+.results-diagnostics {
+  margin: 0;
+  padding-left: 1.5em;
+  display: grid;
+  gap: 8px;
+}
+
+.results-diagnostic p {
+  margin: 0;
+}
+
+.results-diag-suggestion {
+  color: var(--muted);
+}
+
+/* Cam view */
+
+.cam-body {
+  position: relative;
+}
+
+.camview-controls {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.camview-btn {
+  min-width: var(--target);
+  min-height: var(--target);
+}
+
+.cam-view {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  background: var(--chart-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.cam-view:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.cam-view.cam-zoomed {
+  touch-action: none;
+  cursor: grab;
+}
+
+.cam-view.cam-panning {
+  cursor: grabbing;
+}
+
+.cam-view.cam-stale .cam-drawing {
+  opacity: 0.65;
+}
+
+.cam-flange.cam-string {
+  fill: var(--cam-string-fill);
+  stroke: var(--cam-string);
+  stroke-width: 1.5px;
+}
+
+.cam-flange.cam-cable {
+  fill: var(--cam-cable-fill);
+  stroke: var(--cam-cable);
+  stroke-width: 1.5px;
+}
+
+.cam-groove.cam-string,
+.cam-pitch.cam-string {
+  stroke: var(--cam-string);
+}
+
+.cam-groove.cam-cable,
+.cam-pitch.cam-cable {
+  stroke: var(--cam-cable);
+}
+
+.cam-groove {
+  stroke-width: 1px;
+}
+
+.cam-pitch {
+  stroke-width: 0.75px;
+  opacity: 0.7;
+}
+
+.cam-bore {
+  fill: var(--surface-2);
+  stroke: var(--chart-axis);
+  stroke-width: 1.5px;
+}
+
+.cam-post {
+  fill: var(--chart-axis);
+}
+
+.cam-mark {
+  stroke: var(--text);
+  stroke-width: 2px;
+}
+
+.cam-scale-bar {
+  stroke: var(--text);
+  stroke-width: 2px;
+}
+
+.cam-scale-label {
+  fill: var(--text);
+}
+
+.camview-caption {
+  color: var(--muted);
+  text-align: center;
+}
+
+.camview-caption:empty {
+  display: none;
+}
+
+/* Values of an older attempt: muted and italic, still at text contrast. */
+.results-stale .results-metrics dd,
+.results-stale .results-diagnostics {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.results-caption {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.results-caption:empty,
+.results-caption[hidden] {
+  display: none;
+}
+
+.results-metric-warn dd {
+  color: var(--warn);
+}
+
+.results-metric-warn {
+  grid-column: 1 / -1;
+}
+
+/* Solve status link at the top of the settings */
+
+.solve-chip {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: block;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  min-height: var(--target);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.solve-chip:empty {
+  display: none;
+}
+
+.solve-chip[data-status='ok'] {
+  border-left-color: var(--ok);
+}
+
+.solve-chip[data-status='infeasible'] {
+  border-left-color: var(--warn);
+}
+
+.solve-chip[data-status='no-convergence'],
+.solve-chip[data-status='error'] {
+  border-left-color: var(--error);
+}
+
+/* Cam view legend */
+
+.camview-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.camview-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }

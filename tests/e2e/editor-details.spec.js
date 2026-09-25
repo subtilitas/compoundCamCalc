@@ -213,7 +213,7 @@ test.describe('settings', () => {
 
   test('the bounds printed in a range hint are accepted', async ({ page }) => {
     await page.getByTestId('unit-draw').selectOption('mm');
-    await expect(page.locator('#f-draw-range')).toHaveText('508 to 863.6 mm, step 5');
+    await expect(page.locator('#f-draw-range')).toHaveText('508 to 863.6 mm, step 5 mm');
     const draw = page.getByTestId('field-draw');
     await draw.fill('863.6');
     await draw.press('Enter');
@@ -221,7 +221,7 @@ test.describe('settings', () => {
     await expect(draw).toHaveValue('863.6');
 
     await page.getByTestId('unit-force').selectOption('lbf');
-    await expect(page.locator('#f-peak-range')).toHaveText('11.3 to 202.3 lbf, step 0.5');
+    await expect(page.locator('#f-peak-range')).toHaveText('11.3 to 202.3 lbf, step 0.5 lbf');
     const peak = page.getByTestId('field-peak');
     await peak.fill('11.3');
     await peak.press('Enter');
