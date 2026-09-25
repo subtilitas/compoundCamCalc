@@ -137,6 +137,31 @@ export function createFileMenu(container, store, options) {
     }
   }
 
+  /**
+   * Change the library: read it fresh, apply change, write it, all under a
+   * lock shared by every tab (Web Locks), so two tabs cannot overwrite each
+   * other's changes. A failed write marks the storage as full.
+   * @template T
+   * @param {(lib: Library) => { library: Library, value: T } | null} change null leaves the library as it is
+   * @returns {Promise<{ ok: boolean, value: T | null, before: Library | null }>}
+   */
+  async function withLibrary(change) {
+    const run = () => {
+      const lib = readLibrary();
+      if (!lib) return { ok: false, value: null, before: null };
+      const out = change(lib);
+      if (!out) return { ok: true, value: null, before: lib };
+      if (!writeLibrary(out.library)) {
+        writable = false;
+        render();
+        return { ok: false, value: null, before: lib };
+      }
+      return { ok: true, value: out.value, before: lib };
+    };
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+    return locks ? locks.request(LIBRARY_KEY, run) : run();
+  }
+
   /** State the unsaved-changes marker compares with. */
   function baseline() {
     if (current.source === 'saved') {
@@ -234,7 +259,9 @@ export function createFileMenu(container, store, options) {
     menuButton.setAttribute('aria-expanded', String(open));
     if (open) {
       readLibrary();
-      writable = probeWrite();
+      // A failed probe shows full storage; a passing one does not undo a
+      // real write that failed (the library needs far more than the probe).
+      writable = writable && probeWrite();
       render();
       /** @type {HTMLButtonElement | undefined} */ ([...panel.querySelectorAll('button')].find((b) => !b.disabled))?.focus();
     }
@@ -411,20 +438,18 @@ export function createFileMenu(container, store, options) {
    * @param {string} name
    * @param {string | null} id design to overwrite, or null for a new one
    */
-  function saveUnder(name, id) {
-    const lib = readLibrary();
-    if (!lib) {
-      say(STORAGE_FULL);
-      return;
-    }
+  async function saveUnder(name, id) {
     const state = store.getState();
-    const out = saveDesign(lib, { id, name, state, now: now() });
-    if (!writeLibrary(out.library)) {
+    const r = await withLibrary((lib) => {
+      const out = saveDesign(lib, { id: id !== null && lib.designs.some((d) => d.id === id) ? id : null, name, state, now: now() });
+      return { library: out.library, value: out.id };
+    });
+    if (!r.ok || r.value === null) {
       say(STORAGE_FULL);
-      render();
       return;
     }
-    const ok = setCurrent({ id: out.id, name, source: 'saved', baseline: null });
+    writable = true;
+    const ok = setCurrent({ id: r.value, name, source: 'saved', baseline: null });
     say(ok ? `Saved "${name}"` : `Saved "${name}", but the working copy was not updated: browser storage is full. Use Save to file.`);
   }
 
@@ -434,10 +459,10 @@ export function createFileMenu(container, store, options) {
     const own = current.source === 'saved' ? current.id : null;
     const r = await askName('Save as', initial, own, menuButton);
     if (!r) return;
-    saveUnder(r.name, r.replaceId ?? (r.name.toLocaleLowerCase('en') === current.name.toLocaleLowerCase('en') ? own : null));
+    await saveUnder(r.name, r.replaceId ?? (r.name.toLocaleLowerCase('en') === current.name.toLocaleLowerCase('en') ? own : null));
   }
 
-  saveBtn.addEventListener('click', () => {
+  saveBtn.addEventListener('click', async () => {
     if (current.source !== 'saved') {
       void saveAs();
       return;
@@ -449,7 +474,7 @@ export function createFileMenu(container, store, options) {
       return;
     }
     close();
-    saveUnder(current.name, current.id);
+    await saveUnder(current.name, current.id);
     menuButton.focus();
   });
   saveAsBtn.addEventListener('click', () => void saveAs());
@@ -457,6 +482,9 @@ export function createFileMenu(container, store, options) {
   openBtn.addEventListener('click', async () => {
     close();
     if (!(await mayDiscard(menuButton))) return;
+    // Whether the user was asked already; the inputs may become orphaned or
+    // change while the dialog is open (another tab deletes the design).
+    const asked = dirty() || current.orphan === true;
     await dialog('Open a design', (_d, done) => {
       const list = h('ul', { class: 'file-list', 'data-testid': 'design-list' });
       const empty = h('p', { class: 'hint' }, 'No saved designs yet. Save as… stores the current design in this browser.');
@@ -472,25 +500,27 @@ export function createFileMenu(container, store, options) {
         const rename = h('button', { type: 'button', 'aria-label': `Rename ${e.name}`, 'data-testid': 'design-rename' }, 'Rename');
         const del = h('button', { type: 'button', 'aria-label': `Delete ${e.name}`, 'data-testid': 'design-delete' }, 'Delete');
         open.disabled = e.state === null;
-        open.addEventListener('click', () => {
+        open.addEventListener('click', async () => {
           if (!e.state) return;
+          if (!asked && !(await mayDiscard(open))) return;
           done(true);
           switchTo(e.state, { id: e.id, name: e.name, source: 'saved', baseline: null }, `Opened "${e.name}"`);
         });
         rename.addEventListener('click', async () => {
           const r = await askName('Rename', e.name, e.id, rename);
           if (!r) return;
-          const lib = readLibrary();
-          if (!lib) return;
-          const next = r.replaceId ? deleteDesign(lib, r.replaceId) : lib;
-          if (!writeLibrary(renameDesign(next, e.id, r.name))) {
+          const done2 = await withLibrary((lib) => {
+            const next = r.replaceId ? deleteDesign(lib, r.replaceId) : lib;
+            return { library: renameDesign(next, e.id, r.name), value: true };
+          });
+          if (!done2.ok || !done2.before) {
             say(STORAGE_FULL);
             return;
           }
           if (current.id === e.id) setCurrent({ ...current, name: r.name });
           else if (r.replaceId !== null && r.replaceId === current.id) {
             // The open design was replaced: its inputs stay open, unsaved.
-            const gone = listDesigns(lib).find((x) => x.id === r.replaceId);
+            const gone = listDesigns(done2.before).find((x) => x.id === r.replaceId);
             setCurrent({ id: null, name: current.name, source: 'unsaved', baseline: gone?.state ?? null, orphan: true });
           }
           say(`Renamed "${e.name}" to "${r.name}"`);
@@ -501,13 +531,12 @@ export function createFileMenu(container, store, options) {
           const isOpen = current.id === e.id;
           const text = isOpen ? `Delete "${e.name}"? Its inputs stay open as an unsaved design.` : `Delete "${e.name}"?`;
           if (!(await confirm(text, 'Delete', del))) return;
-          const lib = readLibrary();
-          if (!lib) return;
-          const index = listDesigns(lib).findIndex((x) => x.id === e.id);
-          if (!writeLibrary(deleteDesign(lib, e.id))) {
+          const gone = await withLibrary((lib) => ({ library: deleteDesign(lib, e.id), value: listDesigns(lib).findIndex((x) => x.id === e.id) }));
+          if (!gone.ok) {
             say(STORAGE_FULL);
             return;
           }
+          const index = gone.value ?? 0;
           writable = probeWrite();
           if (isOpen) setCurrent({ id: null, name: e.name, source: 'unsaved', baseline: store.getState(), orphan: true });
           say(`Deleted "${e.name}"`);

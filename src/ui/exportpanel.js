@@ -159,6 +159,7 @@ export function createExportPanel(container, { version, date = () => new Date() 
       return null;
     }
     cache = { key: exportKey(v.now.units, d), result: v.lastGood.result, set: out.set, date: d };
+    markMissing(out.set);
     failed = null;
     alert.replaceChildren();
     showWarnings(out.set.warnings);
@@ -176,6 +177,18 @@ export function createExportPanel(container, { version, date = () => new Date() 
       if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: IDLE_TIMEOUT });
       else run();
     }, IDLE_DELAY);
+  }
+
+  /**
+   * Buttons of files the set left out (a plate whose outline could not be
+   * fitted has no STEP file) are marked off.
+   * @param {ExportSet} set
+   */
+  function markMissing(set) {
+    for (const [part, b] of buttons) {
+      const missing = !set.files.some((f) => f.part === part);
+      setAttrs(b, { 'aria-disabled': missing ? 'true' : null, title: missing ? 'Not in this export: see the warnings' : null });
+    }
   }
 
   /** @param {string[]} list */
@@ -222,7 +235,10 @@ export function createExportPanel(container, { version, date = () => new Date() 
   for (const [part, b] of buttons) {
     b.addEventListener('click', () => run((set) => {
       const f = set.files.find((file) => file.part === part);
-      if (!f) return;
+      if (!f) {
+        say(`${b.textContent} is not in this export: see the warnings`);
+        return;
+      }
       download(f.name, f.text, f.mime);
       say(`Saved ${f.name}`);
     }));
@@ -254,6 +270,7 @@ export function createExportPanel(container, { version, date = () => new Date() 
         return;
       }
       if (cached(next, date())) {
+        markMissing(/** @type {NonNullable<typeof cache>} */ (cache).set);
         showWarnings(/** @type {NonNullable<typeof cache>} */ (cache).set.warnings);
         return;
       }

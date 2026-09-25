@@ -109,6 +109,29 @@ describe('hull fit', () => {
     }
   });
 
+  it('closes a hull whose tracks cross exactly at the start angle', () => {
+    // Discs above and below the axis: supports equal at 0 and π.
+    const list = [
+      eccentricCircle({ radius: 0.01, offset: 0.03, phase: Math.PI / 2 }),
+      eccentricCircle({ radius: 0.01, offset: 0.03, phase: -Math.PI / 2 }),
+    ];
+    const out = fitHull(list, 0, EXPORT_TOLERANCE);
+    expect(out.error).toBeNull();
+    const s = /** @type {NonNullable<typeof out.spline>} */ (out.spline);
+    expect(s.closed).toBe(true);
+    const supports = list.map((d) => createSupport(d));
+    const o = new Float64Array(6);
+    let worst = 0;
+    for (let span = 3; span < s.knots.length - 4; span++) {
+      if (!(s.knots[span + 1] > s.knots[span])) continue;
+      for (let j = 0; j <= 8; j++) {
+        evaluate(s, s.knots[span] + ((s.knots[span + 1] - s.knots[span]) * j) / 8, o);
+        worst = Math.max(worst, Math.abs(hullDistance(supports, o[0], o[1], Math.atan2(-o[2], o[3]))));
+      }
+    }
+    expect(worst).toBeLessThanOrEqual(EXPORT_TOLERANCE / 2);
+  });
+
   it('finds the arcs and reuses a single track that covers the whole turn', () => {
     const supports = [sf, cf, boss].map((d) => createSupport(d));
     const arcs = hullArcs(supports, 0);

@@ -248,6 +248,62 @@ test.describe('File menu', () => {
   });
 });
 
+test.describe('File menu storage failures', () => {
+  test('autosave writes the inputs and their design together or not at all', async ({ page }) => {
+    await page.goto('./');
+    await saveAs(page, 'Bow A');
+    const before = await page.evaluate(() => localStorage.getItem('compoundCamCalc.project'));
+    await page.evaluate(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'compoundCamCalc.current') throw new DOMException('full', 'QuotaExceededError');
+        set.call(this, key, value);
+      };
+    });
+    await changeAta(page, '35');
+    await expect(page.locator('#app')).toHaveAttribute('data-autosave', 'error');
+    expect(await page.evaluate(() => localStorage.getItem('compoundCamCalc.project'))).toBe(before);
+  });
+
+  test('a save that storage refuses turns Save off', async ({ page }) => {
+    await page.goto('./');
+    await page.evaluate(() => {
+      const set = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === 'compoundCamCalc.designs') throw new DOMException('full', 'QuotaExceededError');
+        set.call(this, key, value);
+      };
+    });
+    await menu(page, 'save-as');
+    await page.getByTestId('dialog-name').fill('Bow A');
+    await page.getByTestId('dialog-ok').click();
+    await expect(page.getByTestId('file-status')).toContainText('not saved');
+    await page.getByTestId('file-menu').click();
+    await expect(page.getByTestId('file-save')).toBeDisabled();
+    await expect(page.getByTestId('file-note')).toContainText('storage is full');
+  });
+
+  test('Open asks again when another tab deletes the open design meanwhile', async ({ page, context }) => {
+    await page.goto('./');
+    await saveAs(page, 'Bow A');
+    await changeAta(page, '34');
+    await saveAs(page, 'Bow B');
+    await menu(page, 'open');
+    const other = await context.newPage();
+    await other.goto('./');
+    await other.getByTestId('file-menu').click();
+    await other.getByTestId('file-open').click();
+    await other.getByRole('button', { name: 'Delete Bow B' }).click();
+    await other.getByTestId('dialog-yes').click();
+    // The delete runs under a lock: wait for it before the page closes.
+    await expect(other.locator('dialog').filter({ has: other.getByTestId('design-list') }).getByTestId('dialog-status')).toHaveText('Deleted "Bow B"');
+    await other.close();
+    await expect(page.getByTestId('design-marker')).toHaveText('(not saved)');
+    await page.getByRole('button', { name: 'Open Bow A' }).click();
+    await expect(page.getByTestId('file-dialog').last()).toContainText('"Bow B" is not saved. Discard them?');
+  });
+});
+
 test.describe('File menu with full storage', () => {
   test('keeps Open for deleting designs and turns Save off', async ({ page }) => {
     await page.goto('./');

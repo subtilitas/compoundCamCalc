@@ -570,7 +570,12 @@ Independent set; everything else is derived and shown read-only.
     working copy `compoundCamCalc.project`, and at once on Open, Save, Save
     as, Rename and Delete, so name and inputs always come from one tab. A
     reload restores the working copy with its name and marker. There is no
-    leave-page prompt: the working copy is autosaved.
+    leave-page prompt: the working copy is autosaved. Autosave writes the
+    working copy and the current design together; when either write fails
+    it restores both. Library changes (save, rename, delete) read, change
+    and write the library under a Web Lock shared by all tabs, so two tabs
+    cannot overwrite each other's changes; a real write that fails turns
+    Save and Save as off until a write succeeds.
   - Unsaved changes: `toJSON(state)` differs from the saved copy after
     `fromJSON` (key order normalised by `migrate`, including table rows).
     Recomputed after each change outside a gesture; undoing back to the

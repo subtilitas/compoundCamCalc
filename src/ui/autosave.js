@@ -81,12 +81,27 @@ export function startAutosave(store, onStatus, options = {}) {
   const save = () => {
     clearTimeout(timer);
     timer = undefined;
+    // Both keys or neither: a working copy stored without its design (or
+    // the other way round) would pair inputs with the wrong name.
+    /** @type {[string, string | null][]} */
+    const before = [];
     try {
+      before.push([STORAGE_KEY, window.localStorage.getItem(STORAGE_KEY)]);
+      if (options.current) before.push([CURRENT_KEY, window.localStorage.getItem(CURRENT_KEY)]);
       window.localStorage.setItem(STORAGE_KEY, toJSON(store.getState()));
       if (options.current) window.localStorage.setItem(CURRENT_KEY, options.current());
       onStatus('saved');
       return true;
     } catch {
+      for (const [key, value] of before) {
+        try {
+          if (value === null) window.localStorage.removeItem(key);
+          else window.localStorage.setItem(key, value);
+        } catch {
+          // Restoring a value of the same size or smaller fails only when
+          // storage is blocked, where nothing was written either.
+        }
+      }
       onStatus('error');
       return false;
     }

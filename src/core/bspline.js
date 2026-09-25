@@ -920,8 +920,10 @@ export function fitHull(dataList, psi0, tol) {
       const fit = fitArc(supports[arc.index], dataList[arc.index], arc.start, arc.end, tol);
       if (!fit.spline) return { spline: null, single: null, error: fit.error };
       pieces.push(fit.spline);
-      if (i === arcs.length - 1) break;
-      const next = arcs[i + 1];
+      // After the last arc: a crossing exactly at the start angle needs the
+      // common tangent back to the first arc to close the curve.
+      const next = i === arcs.length - 1 ? arcs[0] : arcs[i + 1];
+      if (next.index === arc.index) continue;
       const P = trackPoint(supports[arc.index], arc.end, buf);
       const Q = trackPoint(supports[next.index], arc.end, buf);
       if (Math.hypot(Q[0] - P[0], Q[1] - P[1]) > HULL_LINE_MIN) {
