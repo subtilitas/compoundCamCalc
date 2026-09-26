@@ -6,13 +6,28 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Free-form string track (`src/core/freeform.js`): Shape → Free-form
+  samples the current eccentric or elliptical track at 12 points (one
+  undo step, the cam stays within 0.1 mm). The track is the periodic cubic
+  spline through 8 to 16 groove radii at equal angles. Validation checks
+  their number and the 2 mm to 150 mm range only; a track that bends too
+  sharply or comes too close to the bore loads and gets the
+  `string-radius` or `string-clearance` diagnostic, with the suggestion
+  "Offset the free-form track outward by at least X". The string radius
+  check uses the exact smallest radius of curvature for every shape. Core
+  functions for the editor: shape modifiers (size, shift, oval, rounded
+  triangle, rounded square, egg) with their largest amount, a smooth drag
+  bump with its limit, resampling with a check, and the contact points.
+  The print report lists the points; DXF and STEP export the track as
+  splines.
+
 - Plausibility warnings (`src/core/plausibility.js`) for a cam wider than
   35 % of the axle-to-axle length and for cams that overlap at a draw
   position. The results card, the status line and the print report list
   them; they do not stop the exports.
 - Share link (`src/state/share.js`): File → Copy share link copies a link
   whose `#design=` fragment holds the inputs and name as base64url JSON
-  (about 1.6 KB for the default design). Opening the link asks first when
+  (about 1.8 KB for the default design). Opening the link asks first when
   the working copy has unsaved changes (Save mine first…, Open without
   saving, Keep my design) and keeps the display units of the person who
   opens it. A cut-off or damaged link shows a notice and changes nothing.

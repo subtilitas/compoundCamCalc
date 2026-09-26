@@ -140,8 +140,9 @@ focus moves to the next useful button.
   **Maximum limb rotation from brace** is the limit of the limb-rotation
   check.
 - **String track**: an eccentric circle (radius, centre offset from the
-  axle, phase) or an ellipse (semi-major and semi-minor axis, centre offset,
-  phase), measured on the groove bottom.
+  axle, phase), an ellipse (semi-major and semi-minor axis, centre offset,
+  phase) or a free-form track (see [Free-form track](#free-form-track)),
+  measured on the groove bottom.
 - **Cords**: string and cable diameter and the depth of each groove.
 - **Cam body**: axle bore diameter, minimum wall between groove bottom and
   bore, post diameter, minimum bend radius of a track, flange plate
@@ -163,6 +164,25 @@ change.
 A status line at the top of the settings shows the solve status, for
 example "Cam: 2 problems, see Results", and stays in view while the settings
 scroll; select it to go to the results.
+
+## Free-form track
+
+Shape → *Free-form* turns the string track into a free-form track: 12
+points around the axle, one every 30°, joined by a smooth closed curve.
+Each point holds the groove radius at its angle: the distance from the
+axle centre to the line that touches the groove bottom there. Switching
+samples the current eccentric circle or ellipse, so the cam stays the same
+within 0.1 mm; one undo step goes back. The radius, offset and phase
+fields do not apply to a free-form track and are hidden; they keep their
+values for a switch back. The settings show the line "Free-form track, 12
+points", and the print report lists every point.
+
+A free-form track can bend more sharply than the minimum bend radius, or
+come too close to the axle bore. The design still saves and loads; the
+solve reports the problem and suggests an outward offset of the whole
+track, for example "Offset the free-form track outward by at least
+2.4 mm". An outward offset raises the radius of curvature everywhere by
+the same amount.
 
 ## Results
 
@@ -542,7 +562,7 @@ second tab replaces that saved working copy; the design in the first tab
 stays on screen until that tab is reloaded. Save a design under a name
 first to keep it.
 
-A link of the default design has about 1,600 characters. Most browsers
+A link of the default design has about 1,800 characters. Most browsers
 and chat apps handle this, but some shorten long messages. A link longer
 than 64 KB (65,536 characters) is refused.
 

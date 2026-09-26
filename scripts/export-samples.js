@@ -1,7 +1,9 @@
 /**
- * Writes the export files of two sample designs to a directory, for the
- * DXF validation job of CI: the default preset (eccentric string track) and
- * the same bow with an elliptical string track (46 mm × 44 mm).
+ * Writes the export files of three sample designs to a directory, for the
+ * DXF validation job of CI: the default preset (eccentric string track),
+ * the same bow with an elliptical string track (46 mm × 44 mm) and with a
+ * free-form string track (the default track at 12 points plus a 1 mm
+ * rounded triangle).
  *
  * Usage: node scripts/export-samples.js [dir]   (default: export-samples)
  * Exits with 1 when a sample does not solve or export.
@@ -9,6 +11,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { applyModifier } from '../src/core/freeform.js';
 import { solve } from '../src/core/solve.js';
 import { exportFiles, exportZip } from '../src/export/files.js';
 import { defaultState } from '../src/state/presets.js';
@@ -20,9 +23,12 @@ const date = new Date(2026, 0, 1, 12, 0, 0);
 
 const ellipse = structuredClone(defaultState());
 Object.assign(ellipse.stringTrack, { shape: 'ellipse', semiMajor: 0.046, semiMinor: 0.044 });
+const freeform = structuredClone(defaultState());
+Object.assign(freeform.stringTrack, { shape: 'freeform', freeform: { values: applyModifier(freeform.stringTrack.freeform.values, 'triangle', 0.001, 0) } });
 const samples = [
   ['default', defaultState()],
   ['ellipse', ellipse],
+  ['freeform', freeform],
 ];
 
 mkdirSync(dir, { recursive: true });
