@@ -675,7 +675,7 @@ the name:
 | Reset to default | Replaces all inputs with the default design. The name stays; Undo restores the inputs. |
 | Save to file (.json) | Downloads the inputs as `<name>.json`. |
 | Copy share link | Copies a link to the design to the clipboard. See [Share link](#share-link). |
-| Open from file… | Reads such a file. A file that is empty, larger than 1 MB or not a valid project changes nothing and the message names the reason. Missing values take their defaults, and the message says so. A file without force curve points gets the curve generated from its geometry and curve parameters. |
+| Open from file… | Reads such a file. A file that is empty, larger than 1 MB or not a valid project changes nothing and the message names the reason. Missing values take their defaults, and the message says so. Settings this version does not know, for example from a newer version, are left out, and the message names them. A file without force curve points gets the curve generated from its geometry and curve parameters. |
 
 Opening a design, a sample or a file asks first when the current inputs
 have unsaved changes or belong to a deleted design, and clears the undo
@@ -737,8 +737,11 @@ Opening a link:
 - A link that is cut off or damaged, for example by a chat app that
   shortens long messages, changes nothing. A notice names the reason: ask
   for the whole link, or for a project file (Save to file).
-- A link from a newer version of the app asks to reload the page. The link
-  stays in the address bar, so the reload opens it.
+- A link from a newer version of the app asks to open it with the newest
+  version: choose "main, newest" in the Version select, or reload the
+  page. The link stays in the address bar, so the reload opens it.
+- A link with settings this version does not know opens without them, and
+  the message names them.
 - After the link is handled, the address bar shows the page address
   without `#design=`, so a reload does not open the link again.
 

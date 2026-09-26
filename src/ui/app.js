@@ -486,12 +486,13 @@ export function startApp() {
    * @param {ProjectState} state
    * @param {string} name
    * @param {boolean} filled
+   * @param {readonly string[]} dropped
    */
-  async function openLink(state, name, filled) {
-    if (await fileMenu.openShared(state, name, filled)) return;
+  async function openLink(state, name, filled, dropped) {
+    if (await fileMenu.openShared(state, name, filled, dropped)) return;
     showNotice(notices, `The shared design "${name}" was not opened; your design stays open.`, {
       label: 'Open shared design',
-      run: () => void openLink(state, name, filled),
+      run: () => void openLink(state, name, filled, dropped),
     });
   }
 
@@ -505,7 +506,7 @@ export function startApp() {
         pendingLink = null;
         const r = decodeShare(text);
         try {
-          if (r.state) await openLink(r.state, r.name, r.filled);
+          if (r.state) await openLink(r.state, r.name, r.filled, r.dropped);
           else showNotice(notices, `The shared design could not be opened. ${r.error}`);
         } catch {
           showNotice(notices, `The shared design could not be opened. ${LINK_DAMAGED}`);

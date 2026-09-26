@@ -102,7 +102,11 @@ describe('share link', () => {
     bad.geometry.ata = 0.01;
     expect(decodeShare(encodeShare(bad, 'Bad')).error).toMatch(/Axle-to-axle length/);
     const partial = decodeShare(linkOf({ name: 'Part', state: { schemaVersion: 1 } }));
-    expect(partial).toEqual({ state: defaultState(), name: 'Part', error: null, filled: true });
+    expect(partial).toEqual({ state: defaultState(), name: 'Part', error: null, filled: true, dropped: [] });
+    const extra = decodeShare(linkOf({ name: 'Later', state: { ...defaultState(), tuning: { cableTop: 0.001 } } }));
+    expect(extra.error).toBeNull();
+    expect(extra.dropped).toEqual(['tuning']);
+    expect(extra.state).toEqual(defaultState());
   });
 
   it('cuts, normalises and replaces names', () => {

@@ -178,7 +178,20 @@ test.describe('File menu', () => {
       await expect(page.getByTestId('design-name')).toHaveText('Untitled');
     }
     await page.getByTestId('file-input').setInputFiles({ name: 'part.json', mimeType: 'application/json', buffer: Buffer.from('{"schemaVersion":1}') });
-    await expect(page.getByTestId('file-status')).toHaveText('Opened part.json. Missing values in part.json were set to their defaults');
+    await expect(page.getByTestId('file-status')).toHaveText('Opened part.json. Missing values in part.json were set to their defaults.');
+  });
+
+  test('a file with settings this version does not know opens and names them', async ({ page }) => {
+    const data = /** @type {any} */ (structuredClone(defaultState()));
+    data.geometry.ata = 34 * 0.0254;
+    data.tuning = { cableTop: 0.001 };
+    data.limb.boltTurns = 2;
+    await page.getByTestId('file-input').setInputFiles({ name: 'later.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(data)) });
+    await expect(page.getByTestId('file-status')).toHaveText(
+      'Opened later.json. Settings this version does not know were left out: limb.boltTurns, tuning.',
+    );
+    await expect(page.getByTestId('field-ata')).toHaveValue('34.00');
+    await expect(page.getByTestId('design-name')).toContainText('later');
   });
 
   test('a solve still running for the previous design does not come back after Open', async ({ page }) => {

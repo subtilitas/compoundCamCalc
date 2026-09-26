@@ -4,7 +4,7 @@ import { MAX_POINTS, MIN_GAP, pointMetrics } from '../../src/core/curve.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
 import {
-  ENUMS, FIELDS, FREEFORM_POINTS, FREEFORM_VALUE, SCHEMA_VERSION, drawLengthMessage, freeformErrors, fromJSON, migrate, rangeMessage,
+  ENUMS, FIELDS, FREEFORM_POINTS, FREEFORM_VALUE, SCHEMA_VERSION, drawLengthMessage, droppedText, freeformErrors, fromJSON, migrate, rangeMessage,
   specValue, toJSON, validate, validateField, validatePoints,
 } from '../../src/state/schema.js';
 
@@ -206,7 +206,7 @@ describe('JSON codec', () => {
       st.curve.points[3].F = 255.123456789;
       st.units.force = 'lbf';
     });
-    expect(fromJSON(toJSON(s))).toEqual({ state: s, errors: [] });
+    expect(fromJSON(toJSON(s))).toEqual({ state: s, errors: [], dropped: [] });
   });
 
   it('returns the default preset and a message for invalid JSON', () => {
@@ -282,7 +282,8 @@ describe('migrate', () => {
     const r = migrate({ ...defaultState(), schemaVersion: 2 });
     expect(r.state).toBeNull();
     expect(r.errors[0].message).toBe(
-      'The project was saved by a newer version of the app (schema version 2); this version reads schema version 1',
+      'The project was saved by a newer version of the app (schema version 2); this version reads schema version 1. '
+        + 'Open it with the newest version: choose "main, newest" in the Version select, or reload the page.',
     );
     expect(fromJSON(JSON.stringify({ schemaVersion: 7 })).errors[0].message).toMatch(/newer version/);
   });
@@ -303,6 +304,30 @@ describe('migrate', () => {
     const r = migrate(data);
     expect(r.errors).toEqual([]);
     expect(r.state).toEqual(defaultState());
+    // Keys inside arrays are not listed: array items take their shape from the defaults.
+    expect(r.dropped).toEqual(['extra']);
+  });
+
+  it('lists the key paths it drops, nested ones with their section', () => {
+    const data = /** @type {any} */ (structuredClone(defaultState()));
+    data.tuning = { cableTop: 0.001 };
+    data.limb.boltTurns = 2;
+    data.geometry.ata = { value: 0.8 };
+    const r = migrate(data);
+    expect(r.dropped).toEqual(['limb.boltTurns', 'tuning']);
+    // A value of the wrong type is kept for validation, not dropped.
+    expect(fromJSON(JSON.stringify(data)).dropped).toEqual([]);
+    delete data.geometry.ata;
+    const valid = fromJSON(JSON.stringify(data));
+    expect(valid.errors).toEqual([]);
+    expect(valid.dropped).toEqual(['limb.boltTurns', 'tuning']);
+    expect(migrate({ schemaVersion: 9 }).dropped).toEqual([]);
+  });
+
+  it('names at most five dropped settings', () => {
+    expect(droppedText([])).toBe('');
+    expect(droppedText(['tuning'])).toBe('Settings this version does not know were left out: tuning.');
+    expect(droppedText(['a', 'b', 'c', 'd', 'e', 'f', 'g'])).toBe('Settings this version does not know were left out: a, b, c, d, e and 2 more.');
   });
 });
 

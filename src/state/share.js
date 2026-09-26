@@ -7,7 +7,7 @@
  */
 
 import { FILE_MAX, NAME_MAX, normalizeName, readProjectText } from './library.js';
-import { SCHEMA_VERSION } from './schema.js';
+import { NEWER_HINT, SCHEMA_VERSION } from './schema.js';
 
 /** @typedef {import('./schema.js').ProjectState} ProjectState */
 
@@ -23,7 +23,7 @@ export const SHARED_NAME = 'Shared design';
 /** Message for a link that was cut off or changed on the way. */
 export const LINK_DAMAGED = 'The link is incomplete or damaged, often because a chat app shortened it. Ask for the whole link, or for a project file.';
 /** Message for a link from a newer version of the app. */
-export const LINK_NEWER = 'The link was made with a newer version of the app; reload the page.';
+export const LINK_NEWER = `The link was made with a newer version of the app. ${NEWER_HINT}`;
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 /** Value of each character code below 128, or -1. */
@@ -140,14 +140,15 @@ export function shareName(name) {
 }
 
 /**
- * Read link text: state, name, the reason it cannot be used, and whether
- * fields took default values.
+ * Read link text: state, name, the reason it cannot be used, whether
+ * fields took default values and which settings of the link the schema
+ * does not know.
  * @param {string} text the fragment after '#design='
- * @returns {{ state: ProjectState | null, name: string, error: string | null, filled: boolean }}
+ * @returns {{ state: ProjectState | null, name: string, error: string | null, filled: boolean, dropped: string[] }}
  */
 export function decodeShare(text) {
   /** @param {string} error */
-  const fail = (error) => ({ state: null, name: SHARED_NAME, error, filled: false });
+  const fail = (error) => ({ state: null, name: SHARED_NAME, error, filled: false, dropped: [] });
   if (typeof text !== 'string' || text.length === 0) return fail(LINK_DAMAGED);
   if (text.length > SHARE_MAX) return fail(`The link is longer than ${SHARE_MAX.toLocaleString('en-US')} characters. Ask for a project file instead.`);
   if (!text.startsWith(SHARE_VERSION)) {
@@ -179,5 +180,5 @@ export function decodeShare(text) {
     return fail(LINK_DAMAGED);
   }
   if (!r.state) return fail(r.error ?? LINK_DAMAGED);
-  return { state: r.state, name: shareName(data.name), error: null, filled: r.filled };
+  return { state: r.state, name: shareName(data.name), error: null, filled: r.filled, dropped: r.dropped };
 }

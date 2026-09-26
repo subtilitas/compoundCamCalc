@@ -15,7 +15,7 @@ import {
   parseLibrary, readProjectFile, renameDesign, saveDesign, serializeLibrary,
 } from '../state/library.js';
 import { SAMPLES } from '../state/samples.js';
-import { toJSON } from '../state/schema.js';
+import { droppedText, toJSON } from '../state/schema.js';
 import { encodeShare } from '../state/share.js';
 import { KEY_PREFIX } from './autosave.js';
 import { confirmDialog, dialogLiveRegion, openDialog } from './dialog.js';
@@ -35,6 +35,18 @@ export const LIBRARY_BACKUP_KEY = `${KEY_PREFIX}.designs.unreadable`;
 
 /** Message when storage refuses a write. */
 export const STORAGE_FULL = 'The design was not saved: browser storage is full or blocked. Use Save to file.';
+
+/**
+ * Status text after a file or link opened: the action, then what changed
+ * on the way in, each as a sentence.
+ * @param {string} opened for example 'Opened bow.json'
+ * @param {string} filled sentence about fields that took defaults, or ''
+ * @param {readonly string[]} dropped key paths this version does not know
+ */
+export function openedText(opened, filled, dropped) {
+  const parts = [filled, droppedText(dropped)].filter((t) => t !== '');
+  return parts.length === 0 ? opened : `${opened}. ${parts.join(' ')}`;
+}
 
 /**
  * Text after the design name in the header.
@@ -79,7 +91,7 @@ function savedText(iso) {
  * @param {HTMLElement} container
  * @param {Store} store
  * @param {FileMenuOptions} options
- * @returns {{ current: () => Current, render: () => void, openShared: (state: ProjectState, name: string, filled?: boolean) => Promise<boolean> }}
+ * @returns {{ current: () => Current, render: () => void, openShared: (state: ProjectState, name: string, filled?: boolean, dropped?: readonly string[]) => Promise<boolean> }}
  *   openShared resolves to false when the working copy stays open
  */
 export function createFileMenu(container, store, options) {
@@ -686,7 +698,7 @@ export function createFileMenu(container, store, options) {
     if (!(await mayDiscard(menuButton))) return;
     const name = nameOfFile(file.name);
     switchTo(r.state, { id: null, name, source: 'unsaved', baseline: r.state },
-      r.filled ? `Opened ${file.name}. Missing values in ${file.name} were set to their defaults` : `Opened ${file.name}`);
+      openedText(`Opened ${file.name}`, r.filled ? `Missing values in ${file.name} were set to their defaults.` : '', r.dropped));
     menuButton.focus();
   });
   // A closed picker returns focus to the File button.
@@ -723,9 +735,10 @@ export function createFileMenu(container, store, options) {
    * @param {ProjectState} shared
    * @param {string} name
    * @param {boolean} [filled] fields of the link took default values
+   * @param {readonly string[]} [dropped] settings of the link this version does not know
    * @returns {Promise<boolean>} false when the working copy stays open
    */
-  async function openShared(shared, name, filled = false) {
+  async function openShared(shared, name, filled = false, dropped = []) {
     close();
     let before = epoch;
     if (dirty() || current.orphan) {
@@ -745,7 +758,7 @@ export function createFileMenu(container, store, options) {
     }
     const state = { ...shared, units: store.getState().units };
     return switchTo(state, { id: null, name, source: 'unsaved', baseline: state },
-      filled ? `Opened the shared design "${name}". Missing values in the link were set to their defaults` : `Opened the shared design "${name}"`);
+      openedText(`Opened the shared design "${name}"`, filled ? 'Missing values in the link were set to their defaults.' : '', dropped));
   }
 
   // Another tab changed the library: the open design may be gone or renamed.

@@ -2,10 +2,14 @@
 
 All notable changes are listed here. Versions follow semantic versioning.
 
-## Unreleased
+## 0.2.0 — 2026-09-26
 
 ### Added
 
+- Opening a file or a share link that holds settings this version does not
+  know, for example from a newer version, names them: "Settings this
+  version does not know were left out: …" (at most five, then "and N
+  more").
 - `docs/research.md`: reference data read from six papers and a thesis
   (Tiermas, Sādhanā 2025, Zanevskyy, Hanson), checked a second time
   against the sources, with citation and licence; the forward model
@@ -15,6 +19,13 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Changed
 
+- Files, links and saved data from a newer version point to the Version
+  select: "Open it with the newest version: choose "main, newest" in the
+  Version select, or reload the page."
+- The status after opening a file or link ends each sentence with a full
+  stop.
+- Export file names ignore the analysis-only section `tuning`, so they stay
+  the same while the cam stays the same.
 - `docs/research.md`: the default design compares against limbs fitted to
   measured bows (54 mm to 71 mm axle travel, 4.4 N/mm to 4.8 N/mm) instead
   of the reported 32 mm to 50 mm, which no source read so far supports.

@@ -197,6 +197,8 @@ describe('export files', () => {
     // The id ignores the display units and follows the inputs.
     expect(designId({ ...state, units: { ...state.units, dims: 'in' } })).toBe(id);
     expect(designId({ ...state, geometry: { ...state.geometry, ata: 0.85 } })).not.toBe(id);
+    // Analysis-only sections do not change the cam, so they keep the name.
+    expect(designId(/** @type {any} */ ({ ...state, tuning: { cableTop: 0.001 } }))).toBe(id);
   });
 
   it('writes plate files with the cut outline and holes only', () => {
