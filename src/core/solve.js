@@ -209,6 +209,9 @@ export const RESOLUTIONS = Object.freeze({
  * @property {{ minRho: number, minP: number, maxP: number, rhoShortfall: number, start: number, end: number } | null} idealTrack
  *   ideal cable track on its angle range: smallest ρ and p, largest p (m),
  *   ∫ max(0, ρ_lim − ρ) dψ (m·rad), start and end angle (rad)
+ * @property {import('./analysis.js').AnalysisResult | null} analysisReference
+ *   the analysis with unchanged cords and the options of `analysis`, the
+ *   reference of its changes; the same object when the cords are unchanged
  * @property {import('./analysis.js').AnalysisResult | null} analysis asymmetric
  *   analysis of the final cam with the cord length changes of the solve
  *   option `analysis`; null without the option, in a coarse solve, or
@@ -254,8 +257,19 @@ function emptyResult(resolution) {
     metrics: null,
     idealTrack: null,
     analysis: null,
+    analysisReference: null,
     timings: { total: 0, inverse: 0, fit: 0, outline: 0, forward: 0, trials: 0, analysis: 0 },
   };
+}
+
+/**
+ * True when an analysis ran with unchanged cords: the brace stays at the
+ * design brace with a level nock and the cams in time.
+ * @param {import('./analysis.js').AnalysisResult} a
+ */
+function unchanged(a) {
+  const b = a.brace;
+  return b !== null && b.y === 0 && b.thetaTop === 0 && b.thetaBottom === 0 && b.alphaTop === 0 && b.alphaBottom === 0;
 }
 
 /** Marks an analysis option that cannot be read; the analysis reports invalid input. */
@@ -955,7 +969,8 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
     } catch {
       fields = null;
     }
-    res.analysis = !fields ? analyseTiming(/** @type {any} */ (null)) : analyseTiming({
+    /** @param {unknown} offsets */
+    const run = (offsets) => analyseTiming({
       geometry,
       stringTrack: stringPitch,
       cableTrack: cablePitch,
@@ -964,11 +979,15 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
       cableTermination: closed.psiStart,
       stop: peg ? { x: peg.x, y: peg.y, radius: peg.radius } : null,
       cableDiameter: cords.cableDiameter,
-      offsets: fields.offsets,
-      nock: fields.nock,
-      samples: fields.samples,
+      offsets: /** @type {any} */ (offsets),
+      nock: fields?.nock,
+      samples: fields?.samples,
       maxIterations,
     });
+    res.analysis = !fields ? analyseTiming(/** @type {any} */ (null)) : run(fields.offsets);
+    // The reference: unchanged cords on the same grid, so that the changes
+    // of peak and let-off compare samples of one kind.
+    res.analysisReference = fields && res.analysis.brace && unchanged(res.analysis) ? res.analysis : fields ? run({}) : null;
     res.timings.analysis = now() - tAnalysis;
   }
   res.warnings = plausibility({

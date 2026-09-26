@@ -103,6 +103,18 @@ describe('report data', () => {
     expect(d.note).toBe(MODEL_NOTE);
   });
 
+  it('lists the current timing inputs, which do not change the cam', () => {
+    const now = { ...state, tuning: { ...state.tuning, topCable: 0.0012 } };
+    const d = data({ now });
+    expect(d.status).toBe(`This report shows the current cam, design ${d.id}`);
+    const timing = d.inputs.find((g) => g.title === 'Timing (analysis only)');
+    expect(timing?.rows.find((r) => r.label === 'Top cable length change')?.text).toBe('1.20 mm');
+    // Inputs of an older cam stay together.
+    const older = data({ now: { ...now, geometry: { ...state.geometry, ata: state.geometry.ata + 0.01 } } });
+    const oldTiming = older.inputs.find((g) => g.title === 'Timing (analysis only)');
+    expect(oldTiming?.rows.find((r) => r.label === 'Top cable length change')?.text).toBe('0.00 mm');
+  });
+
   it('says that later edits are not included when the inputs changed since', () => {
     const now = { ...state, geometry: { ...state.geometry, braceHeight: state.geometry.braceHeight + 0.001 } };
     const d = data({ now });
@@ -155,7 +167,7 @@ describe('report data', () => {
 describe('inputs of the report', () => {
   it('group the fields as the settings panel and leave out hidden fields', () => {
     const groups = inputGroups(state);
-    expect(groups.map((g) => g.title)).toEqual(['Bow geometry', 'Draw force', 'Limbs', 'String track', 'Cords', 'Cam body']);
+    expect(groups.map((g) => g.title)).toEqual(['Bow geometry', 'Draw force', 'Limbs', 'String track', 'Cords', 'Cam body', 'Timing (analysis only)']);
     const labels = groups.flatMap((g) => g.rows.map((r) => r.label));
     expect(labels).toContain('Axle-to-axle length (ATA)');
     expect(labels).toContain('Limb stiffness at the axle');

@@ -270,6 +270,16 @@ describe('analysis statics', () => {
     expect(deg(a.dThetaDL[a.n - 1])).toBeCloseTo(6.646, 2);
   });
 
+  it('gives the sensitivity at the end of the draw in the nock mode', () => {
+    const board = analyseTiming({ ...base, nock: 'board' });
+    // A draw board holds the nock: the fixed-nock value of the samples.
+    expect(Math.abs(board.sensitivity - board.dThetaDL[board.end])).toBeLessThanOrEqual(1e-6 * board.sensitivity);
+    // A free nock follows: 6.91 °/mm at full draw (docs/research.md).
+    const free = analyseTiming(base);
+    expect(free.end).toBe(free.n - 1);
+    expect((free.sensitivity * 180) / Math.PI / 1000).toBeCloseTo(6.91, 2);
+  });
+
   it('keeps the free nock stable on the default design', () => {
     const a = analyseTiming({ ...base, offsets: { topCable: 0.1 * MM } });
     expect(Math.min(...a.ky)).toBeGreaterThan(3000);

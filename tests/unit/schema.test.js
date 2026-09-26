@@ -310,23 +310,23 @@ describe('migrate', () => {
 
   it('lists the key paths it drops, nested ones with their section', () => {
     const data = /** @type {any} */ (structuredClone(defaultState()));
-    data.tuning = { cableTop: 0.001 };
+    data.wind = { speed: 3 };
     data.limb.boltTurns = 2;
     data.geometry.ata = { value: 0.8 };
     const r = migrate(data);
-    expect(r.dropped).toEqual(['limb.boltTurns', 'tuning']);
+    expect(r.dropped).toEqual(['limb.boltTurns', 'wind']);
     // A value of the wrong type is kept for validation, not dropped.
     expect(fromJSON(JSON.stringify(data)).dropped).toEqual([]);
     delete data.geometry.ata;
     const valid = fromJSON(JSON.stringify(data));
     expect(valid.errors).toEqual([]);
-    expect(valid.dropped).toEqual(['limb.boltTurns', 'tuning']);
+    expect(valid.dropped).toEqual(['limb.boltTurns', 'wind']);
     expect(migrate({ schemaVersion: 9 }).dropped).toEqual([]);
   });
 
   it('names at most five dropped settings', () => {
     expect(droppedText([])).toBe('');
-    expect(droppedText(['tuning'])).toBe('Settings this version does not know were left out: tuning.');
+    expect(droppedText(['wind'])).toBe('Settings this version does not know were left out: wind.');
     expect(droppedText(['a', 'b', 'c', 'd', 'e', 'f', 'g'])).toBe('Settings this version does not know were left out: a, b, c, d, e and 2 more.');
   });
 });

@@ -98,9 +98,9 @@ describe('design library', () => {
     expect(readProjectFile('{"schemaVersion":9}', 19).error).toMatch(/newer version/);
     const partial = readProjectFile('{"schemaVersion":1}', 19);
     expect(partial).toEqual({ state: defaultState(), error: null, filled: true, dropped: [] });
-    const unknown = readProjectFile('{"schemaVersion":1,"tuning":{"cableTop":0.001}}', 47);
+    const unknown = readProjectFile('{"schemaVersion":1,"wind":{"speed":3}}', 47);
     expect(unknown.error).toBeNull();
-    expect(unknown.dropped).toEqual(['tuning']);
+    expect(unknown.dropped).toEqual(['wind']);
     // Omitted points follow the file's geometry and parameters, not the default bow.
     const brace = readProjectFile('{"schemaVersion":1,"geometry":{"braceHeight":0.2}}', 50);
     expect(brace.error).toBeNull();

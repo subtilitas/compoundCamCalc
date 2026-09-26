@@ -651,7 +651,8 @@ Independent set; everything else is derived and shown read-only.
 - Glossary tooltips for ATA, brace height, draw length (AMO), peak draw
   force, let-off, holding weight, valley, power stroke, draw energy, limb
   energy, axle travel, cam rotation, lever arm, radius of curvature,
-  minimum bend radius, minimum wall, working arc. One source, `GLOSSARY` in
+  minimum bend radius, minimum wall, working arc, cam timing, nock travel,
+  draw stop. One source, `GLOSSARY` in
   `src/ui/glossary.js`, feeds the info buttons, the help dialog and the
   Terms section of the user guide; unit tests check that every term here
   has an info button and that the user guide repeats each text word for
@@ -665,8 +666,24 @@ Independent set; everything else is derived and shown read-only.
   heading and returns to the Help button; close buttons at the top and the
   bottom; the dialog scrolls within 90 % of the dynamic viewport height
   with no horizontal scroll at 320 px.
-- Footnote under results: static model; string stretch, cam timing and
-  dynamics not modelled.
+- Footnote under results and the report note: static model with rigid
+  cords; string stretch and dynamics not modelled; cam timing in the Timing
+  panel, which never changes the cam.
+- Timing (slice 10b): settings group "Timing (analysis only)"
+  (`settings-timing`), section `tuning` of the state, analysis only
+  (`ANALYSIS_ONLY`): top and bottom cable length change (−20 mm to 20 mm),
+  string length change (−50 mm to 50 mm) and nocking point above the string
+  centre (−50 mm to 50 mm), 0.1 mm steps, default 0, one undo step per
+  edit, kept by files, share links and saved designs. The worker runs the
+  analysis in every full solve with these changes (a free nock). The Timing
+  panel (`src/ui/timing.js`, below Loads) lists cam timing at the end of the
+  draw with the cam ahead, the first draw stop and the gap of the other cam,
+  nock travel, the changes of brace height, draw length (end of the draw
+  against x_f), peak and let-off against the analysis of unchanged cords
+  on the same grid, and dΔθ/dL of the top cable in °/mm with the nock free; problems of the analysis under them; a chart of nock
+  height and cam timing, stacked, over the draw length with full draw of
+  the design dashed. A coarse solve keeps the values of the last full solve,
+  marked as belonging to the previous inputs.
 - Touch: Pointer Events, `touch-action: none` on the editor, hit targets
   ≥ 44 px. Keyboard: points focusable, arrows move 0.1 in / 1 N, Shift ×10.
 - Responsive layout: side-by-side panels on screens from 960 px, stacked
@@ -1042,7 +1059,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`). Optimise part: the search in `src/core/optimise.js`, the optimise worker and the Optimise section of the String track group. Sample part: light hunting, short-brace hunting (free-form track with a rounded triangle), long draw and youth compound bows, and the target with an optimised track |
 | 9 | Forward compatibility before new inputs: dropped unknown keys reported, newer-version messages pointing to the Version select, design id ignoring analysis-only sections. Released as 0.2.0. Details in [research.md](research.md#delivery-plan) |
 | 10a | Asymmetric rigid analysis `src/core/analysis.js` (cam timing, nock travel, stop order; the first stop is the wall with rigid cords) and the `solve` option `analysis`, no user interface |
-| 10b | Timing user interface: cable and string length changes, nocking point height, timing results block and chart |
+| 10b | Timing user interface: cable and string length changes, nocking point height, timing results block and chart (`src/ui/timing.js`) |
 | 10c | String plan with both halves, CSV columns and print report section for the analysis |
 | 11 | Cord stiffness: EA per cord, compliant closures, wall stiffness, free and loaded build lengths |
 | 12 | Reference-bow fixture format and harness; first fixture Tiermas's round-wheel bow B1 |
@@ -1140,8 +1157,9 @@ tolerance (41 of 45).
 - Static model: arrow speed, dynamic efficiency and hysteresis are not
   computed.
 - String and cable are inextensible; walls are therefore vertical.
-- Nock at the midpoint between the axles; top and bottom limbs identical; no
-  nock travel or cam timing error.
+- The design path keeps the nock at the midpoint between the axles; top and
+  bottom limbs identical. Cam timing and nock travel come from the
+  analysis only, with rigid cords, so its draw ends at the first stop.
 - Cable guard offset is ignored: 3D cable build lengths exceed the reported
   2D lengths by about 1.5–3 mm for a 25–40 mm guard offset.
 - Yoke legs, cam lean, axle friction and limb twist are not modelled.

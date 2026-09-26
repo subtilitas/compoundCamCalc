@@ -31,7 +31,7 @@ import { createStringPlan, planDims } from './stringplan.js';
 /** @typedef {import('./results.js').DiagnosticItem} DiagnosticItem */
 
 /** Note on the limits of the model, as under the results card. */
-export const MODEL_NOTE = 'Static model: string stretch, cam timing and dynamics are not modelled.';
+export const MODEL_NOTE = 'Static model with rigid cords: string stretch and dynamics are not modelled. Cam timing comes from the Timing panel, which never changes the cam.';
 
 /** Width of the loads chart in the report (px). */
 const LOADS_WIDTH = 640;
@@ -83,15 +83,18 @@ export function dateTimeText(d) {
  */
 export function reportData(src) {
   const units = src.now.units;
-  const state = { ...src.state, units };
   const id = designId(src.state);
+  const current = id === designId(src.now);
+  // The analysis-only settings of the current inputs belong to the current
+  // cam: the design id ignores them.
+  const state = { ...src.state, units, ...(current ? { tuning: src.now.tuning } : {}) };
   const ctx = createLayout(src.result, src.state.geometry).layout;
   return {
     name: src.name,
     printed: dateTimeText(src.date),
     version: src.version,
     id,
-    status: id === designId(src.now)
+    status: current
       ? `This report shows the current cam, design ${id}`
       : `This report shows the last cam that met every check, design ${id}; later edits are not included`,
     units,

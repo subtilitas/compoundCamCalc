@@ -56,7 +56,7 @@
       <section class="panel panel-results" aria-labelledby="results-title">
         <h2 id="results-title">Results</h2>
         <div id="results-body" data-testid="results"></div>
-        <p class="hint">Static model: string stretch, cam timing and dynamics are not modelled.</p>
+        <p class="hint">Static model with rigid cords: string stretch and dynamics are not modelled. Cam timing comes from the Timing panel, which never changes the cam.</p>
       </section>
       <div class="views" data-testid="views">
         <section id="scrub-panel" class="panel panel-scrub" aria-labelledby="scrub-title" hidden>
@@ -82,6 +82,14 @@
         <section class="panel panel-loads" aria-labelledby="loads-title">
           <h2 id="loads-title">Loads</h2>
           <div id="loads-body" class="loads-body"></div>
+        </section>
+        <section class="panel panel-timing" aria-labelledby="timing-title">
+          <h2 id="timing-title">Timing</h2>
+          <p class="hint">
+            The built cam with the cord length changes of the Timing settings, rigid cords, nock free to move up and down. The
+            draw ends at the first draw stop. Analysis only: the cam, its checks and the exports stay the same.
+          </p>
+          <div id="timing-body" class="loads-body" data-testid="timing"></div>
         </section>
       </div>
       <section class="panel panel-export" aria-labelledby="export-title">

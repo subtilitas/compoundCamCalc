@@ -500,7 +500,14 @@ describe('worker answer', () => {
     const reply = answer({ id: 4, state: st('s'), resolution: 'coarse' }, /** @type {any} */ (solveFn));
     expect(reply.id).toBe(4);
     expect(reply.resolution).toBe('coarse');
-    expect(solveFn).toHaveBeenCalledWith(st('s'), { resolution: 'coarse' });
+    expect(solveFn).toHaveBeenCalledWith(st('s'), { resolution: 'coarse', analysis: false });
+  });
+
+  it('asks a full solve for the timing analysis with the length changes of the state', () => {
+    const solveFn = vi.fn(() => fake('ok'));
+    const state = /** @type {any} */ ({ ...st('s'), tuning: { topCable: 0.001 } });
+    answer({ id: 5, state, resolution: 'full' }, /** @type {any} */ (solveFn));
+    expect(solveFn).toHaveBeenCalledWith(state, { resolution: 'full', analysis: { offsets: { topCable: 0.001 } } });
   });
 
   it('turns a thrown error into a no-convergence result', () => {

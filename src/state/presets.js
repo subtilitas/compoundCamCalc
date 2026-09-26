@@ -93,5 +93,6 @@ export function defaultState() {
       flangeThickness: 0.002,
       grooveClearance: 0.0005,
     },
+    tuning: { topCable: 0, bottomCable: 0, string: 0, nockHeight: 0 },
   };
 }

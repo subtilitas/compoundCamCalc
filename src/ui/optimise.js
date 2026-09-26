@@ -11,6 +11,7 @@
  */
 
 import { GOALS, OPTIMISE_BUDGET, OPTIMISE_TIME_LIMIT } from '../core/optimise.js';
+import { ANALYSIS_ONLY } from '../state/schema.js';
 import { dimsText, fixed, forceText } from './display.js';
 import { h } from './dom.js';
 import { sampledText } from './trackeditor.js';
@@ -50,13 +51,21 @@ export function budgetFromSearch(search) {
 }
 
 /**
- * True when two states describe the same design; the units may differ.
+ * True when two states describe the same design; the units and the
+ * analysis-only sections (ANALYSIS_ONLY) may differ.
  * @param {ProjectState} a
  * @param {ProjectState} b
  */
 export function sameDesign(a, b) {
   if (a === b) return true;
-  return JSON.stringify({ ...a, units: null }) === JSON.stringify({ ...b, units: null });
+  /** @param {ProjectState} s */
+  const design = (s) => {
+    /** @type {Record<string, unknown>} */
+    const d = { ...s, units: null };
+    for (const key of ANALYSIS_ONLY) delete d[key];
+    return JSON.stringify(d);
+  };
+  return design(a) === design(b);
 }
 
 /**

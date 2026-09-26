@@ -86,6 +86,8 @@ const EVENT_WIDTH = 1e-11;
 const SIMULTANEOUS = 1e-9;
 /** A failure counts as a fold when the determinant extrapolates to zero within this many steps. */
 const FOLD_STEPS = 3;
+/** Length step of the timing sensitivity at the end of the draw (m). */
+const SENSITIVITY_STEP = 1e-6;
 /** Fewest steps of the stop search beyond full draw. */
 const MIN_EXTENSION_STEPS = 10;
 /** Iteration limit of the stop search. */
@@ -177,6 +179,13 @@ export const ANALYSIS_CODES = /** @type {Record<AnalysisCode, string>} */ ({
  *   first stop and its nock position x₁, the last sample; both gaps there
  *   (m); first null and x NaN when no stop is reached
  * @property {number} fullDraw design full draw x_f (m)
+ * @property {number} end index of the last sample of the draw: the first
+ *   stop, or without a stop the last sample at or before full draw (the
+ *   samples of the stop search beyond it are not part of the draw); -1
+ *   without samples
+ * @property {number} sensitivity dΔθ/dL_c,t at the end of the draw in the
+ *   nock mode of the analysis (rad/m): with a free nock the nock height
+ *   follows the length change; central difference over ±1 µm
  * @property {number} iterations Newton iterations over all closures
  */
 
@@ -482,6 +491,8 @@ function failed(code, detail, iterations = 0) {
     brace: null,
     stops: { first: null, x: NaN, gapTop: NaN, gapBottom: NaN },
     fullDraw: NaN,
+    end: -1,
+    sensitivity: NaN,
     iterations,
   };
 }
@@ -879,6 +890,8 @@ function finish(ctx, march, brace, nock, xFull, input) {
     });
   }
   const stopped = march.first !== null;
+  let end = n - 1;
+  if (!stopped) while (end >= 0 && r.x[end] > xFull + 1e-12) end--;
   return {
     status: march.failure && !march.fold ? 'no-convergence' : diagnostics.length > 0 ? 'infeasible' : 'ok',
     diagnostics,
@@ -893,6 +906,29 @@ function finish(ctx, march, brace, nock, xFull, input) {
       gapBottom: stopped ? r.gapBottom[n - 1] : NaN,
     },
     fullDraw: xFull,
+    end,
+    sensitivity: end >= 0 ? sensitivityAt(ctx, list[end]) : NaN,
     iterations: ctx.iterations,
   };
+}
+
+/**
+ * dΔθ/dL_c,t at a sample in the nock mode of the analysis: the pose solved
+ * again with the top cable 1 µm longer and shorter (rad/m); NaN when either
+ * solve fails.
+ * @param {Context} ctx
+ * @param {{ x: number, pose: Pose }} sample
+ */
+function sensitivityAt(ctx, sample) {
+  const base = ctx.lengths[1];
+  /** @param {number} dL */
+  const timing = (dL) => {
+    ctx.lengths[1] = base + dL;
+    const p = copyPose(sample.pose);
+    const reason = solveAt(ctx, p, sample.x);
+    return reason ? NaN : p.q[0] - p.q[2];
+  };
+  const value = (timing(SENSITIVITY_STEP) - timing(-SENSITIVITY_STEP)) / (2 * SENSITIVITY_STEP);
+  ctx.lengths[1] = base;
+  return value;
 }
