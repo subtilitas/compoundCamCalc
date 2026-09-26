@@ -2,7 +2,7 @@
 
 All notable changes are listed here. Versions follow semantic versioning.
 
-## Unreleased
+## 0.1.0 — 2026-09-26
 
 ### Added
 
@@ -15,10 +15,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   `/v0.1.0/`), listed in `versions.json`. Switching carries the open design
   along as a share link. It is hidden when the list is missing, such as in
   local development.
-- Each release built from this version on keeps its own browser storage
-  under keys starting with `compoundCamCalc@<tag>`; main keeps the keys
-  starting with `compoundCamCalc.`. Release v0.1.0 predates this and shares
-  the storage of main.
+- Each release keeps its own browser storage under keys starting with
+  `compoundCamCalc@<tag>`; main keeps the keys starting with
+  `compoundCamCalc.`.
 - `scripts/build-site.js` builds the site: main at the root, each tag from
   its own worktree with its own `npm ci`. CI runs it on every push to main
   and after each release; the release workflow dispatches CI on main.
@@ -26,11 +25,6 @@ All notable changes are listed here. Versions follow semantic versioning.
   default design against measured ranges, the formulation of cam timing
   and cord stiffness with numbers computed on the default design, the
   feasibility of other cam systems and the delivery plan (slices 9 to 15).
-
-## 0.1.0 — 2026-09-26
-
-### Added
-
 - Free-form string track (`src/core/freeform.js`): Shape → Free-form
   samples the current eccentric or elliptical track at 12 points (one
   undo step, the cam stays within 0.1 mm), or at up to 16 points for a
