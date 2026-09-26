@@ -83,15 +83,18 @@ export function dateTimeText(d) {
  */
 export function reportData(src) {
   const units = src.now.units;
-  const state = { ...src.state, units };
   const id = designId(src.state);
+  const current = id === designId(src.now);
+  // The analysis-only settings of the current inputs belong to the current
+  // cam: the design id ignores them.
+  const state = { ...src.state, units, ...(current ? { tuning: src.now.tuning } : {}) };
   const ctx = createLayout(src.result, src.state.geometry).layout;
   return {
     name: src.name,
     printed: dateTimeText(src.date),
     version: src.version,
     id,
-    status: id === designId(src.now)
+    status: current
       ? `This report shows the current cam, design ${id}`
       : `This report shows the last cam that met every check, design ${id}; later edits are not included`,
     units,

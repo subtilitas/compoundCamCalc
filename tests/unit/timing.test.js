@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { solve } from '../../src/core/solve.js';
 import { defaultState } from '../../src/state/presets.js';
+import { sampleState } from '../../src/state/samples.js';
 import { FIELDS, fromJSON, toJSON, validate } from '../../src/state/schema.js';
 import { reduce } from '../../src/state/store.js';
 import { TUNING_FIELDS, TUNING_HINT } from '../../src/ui/settings.js';
 import { MISSING } from '../../src/ui/results.js';
-import { TIMING_GLOSSARY, peakAndLetOff, signed, timingItems } from '../../src/ui/timing.js';
+import { TIMING_GLOSSARY, drawEnd, peakAndLetOff, signed, timingItems } from '../../src/ui/timing.js';
 
 const MM = 1e-3;
 
@@ -102,6 +103,20 @@ describe('timing results', () => {
     const bottom = texts(timingItems(solved({ bottomCable: 1 * MM }).result, state.units));
     expect(bottom['timing-end']).toBe('−6.89°, bottom cam ahead');
     expect(bottom['first-stop']).toBe('Bottom cam; top cam gap 3.81 mm');
+  });
+
+  it('end the draw at full draw when no stop is reached', () => {
+    const state = sampleState('youth');
+    state.tuning = { topCable: -20 * MM, bottomCable: -20 * MM, string: 50 * MM, nockHeight: 0 };
+    const result = solve(state, { analysis: { offsets: state.tuning } });
+    const a = /** @type {import('../../src/core/analysis.js').AnalysisResult} */ (result.analysis);
+    expect(a.diagnostics.map((d) => d.code)).toContain('analysis-no-stop');
+    const end = drawEnd(a);
+    expect(a.x[end]).toBe(a.fullDraw);
+    expect(end).toBeLessThan(a.n - 1);
+    const t = texts(timingItems(result, state.units));
+    expect(t['first-stop']).toBe('No stop reached');
+    expect(t['draw-change']).toBe('0.00 mm');
   });
 
   it('never change the cam, its status or its checks', () => {

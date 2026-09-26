@@ -63,6 +63,20 @@ export function peakAndLetOff(F) {
 }
 
 /**
+ * Index of the last sample of the draw: the first stop, or without a stop
+ * the last sample at or before full draw of the design; the samples of the
+ * stop search beyond full draw are not part of the draw.
+ * @param {AnalysisResult} a
+ * @returns {number} -1 without samples
+ */
+export function drawEnd(a) {
+  if (a.stops.first !== null) return a.n - 1;
+  let last = -1;
+  for (let i = 0; i < a.n && a.x[i] <= a.fullDraw + 1e-12; i++) last = i;
+  return last;
+}
+
+/**
  * Timing results of a solve as display items. Without an analysis every
  * value is '—'. Changes compare the changed bow with the design (the
  * forward model of the built cam); the end of the draw is the first stop,
@@ -75,8 +89,8 @@ export function timingItems(result, units) {
   const a = result?.analysis ?? null;
   const design = result?.achieved ?? null;
   const metrics = result?.metrics ?? null;
-  const ok = a !== null && a.n > 0 && design !== null && metrics !== null;
-  const last = ok ? a.n - 1 : -1;
+  const last = a ? drawEnd(a) : -1;
+  const ok = a !== null && last >= 0 && design !== null && metrics !== null;
   const dims = (/** @type {number} */ v) => fromSI(v, 'length', units.dims);
   const dimsDecimals = units.dims === 'mm' ? 2 : 3;
   const signedDims = (/** @type {number} */ v) => (Number.isFinite(v) ? `${signed(dims(v), dimsDecimals)} ${units.dims}` : MISSING);
@@ -109,7 +123,7 @@ export function timingItems(result, units) {
         : 'No stop reached');
   let yMin = Infinity;
   let yMax = -Infinity;
-  for (let i = 0; i < a.n; i++) {
+  for (let i = 0; i <= last; i++) {
     yMin = Math.min(yMin, a.y[i]);
     yMax = Math.max(yMax, a.y[i]);
   }
@@ -118,7 +132,7 @@ export function timingItems(result, units) {
   const xf = design.x[design.x.length - 1];
   set('brace-change', signedDims(/** @type {number} */ (a.brace?.x) - xb));
   set('draw-change', signedDims(a.x[last] - xf));
-  const changed = peakAndLetOff(a.F);
+  const changed = peakAndLetOff(a.F.subarray(0, last + 1));
   set('peak-change', Number.isFinite(changed.peak) ? `${signed(fromSI(changed.peak - metrics.peak, 'force', units.force), units.force === 'N' ? 1 : 2)} ${units.force}` : MISSING);
   set('letoff-change', Number.isFinite(changed.letOff) ? `${signed((changed.letOff - metrics.letOff) * 100, 2)} points` : MISSING);
   // Per millimetre in every unit system: a twist changes a cord by about 1 mm.
@@ -183,7 +197,9 @@ export function createTiming(container) {
     const a = shown?.analysis ?? null;
     const design = shown?.achieved ?? null;
     for (const g of [bg, grid, lines, axes]) g.replaceChildren();
-    if (!a || a.n < 2 || !design || !units) {
+    // The chart ends where the draw ends.
+    const n = a ? drawEnd(a) + 1 : 0;
+    if (!a || n < 2 || !design || !units) {
       setAttrs(root, { width: 0, height: 0, 'aria-label': 'Timing chart: no cam yet' });
       return;
     }
@@ -194,7 +210,7 @@ export function createTiming(container) {
     const right = W - MARGIN.right;
     const plotH = (H - MARGIN.top - MARGIN.bottom - MARGIN.gap) / 2;
     const x0 = Math.min(a.x[0], design.x[0]);
-    const x1 = Math.max(a.x[a.n - 1], design.x[design.x.length - 1]);
+    const x1 = Math.max(a.x[n - 1], design.x[design.x.length - 1]);
     const px = (/** @type {number} */ x) => left + ((x - x0) / (x1 - x0)) * (right - left);
     setAttrs(root, { width: W, height: H, viewBox: `0 0 ${W} ${H}` });
     /**
@@ -217,7 +233,7 @@ export function createTiming(container) {
       const bottom = p.top + plotH;
       let lo = Infinity;
       let hi = -Infinity;
-      for (let i = 0; i < a.n; i++) {
+      for (let i = 0; i < n; i++) {
         const v = p.scale(p.values[i]);
         if (Number.isFinite(v)) {
           lo = Math.min(lo, v);
@@ -247,8 +263,8 @@ export function createTiming(container) {
       // Design full draw.
       const XF = px(design.x[design.x.length - 1]);
       add(grid, 'line', { class: 'timing-full', x1: XF, x2: XF, y1: p.top, y2: bottom });
-      const values = Array.from(p.values, (v) => p.scale(v));
-      for (const points of seriesRuns(a.x, values, px, py)) {
+      const values = Array.from(p.values.subarray(0, n), (v) => p.scale(v));
+      for (const points of seriesRuns(a.x.subarray(0, n), values, px, py)) {
         lines.append(svg('polyline', { class: `timing-line ${p.cls}`, points, 'stroke-linejoin': 'round', 'data-testid': p.cls }));
       }
     }
