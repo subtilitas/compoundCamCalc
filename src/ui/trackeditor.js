@@ -482,10 +482,10 @@ export function presetRoomText(plan, id, s) {
   const size = () => (amount > 0
     ? ` A Size of at least ${valueText(amount, units)} ${units.dims} brings it within the limit and the ${margin} margin.`
     : ` No Size up to ${plain(fromSI(MODIFIER_MAX_AMOUNT, 'length', units.dims))} ${units.dims} brings it within the limit and the ${margin} margin.`);
-  if (id !== 'shift' && room.track === 'below') {
+  if (room.track === 'below') {
     return `The track bends more sharply than the limit: ${bend}.${id === 'size' ? size() : ' Size raises every bend.'}`;
   }
-  if (id !== 'shift' && room.track === 'margin') {
+  if (room.track === 'margin') {
     return `The track is within the bend limit but inside the ${margin} margin of the presets: ${bend}.`
       + `${id === 'size' ? size() : ' Size raises every bend.'}`;
   }
@@ -495,8 +495,7 @@ export function presetRoomText(plan, id, s) {
       : room.stop === 'range' ? `within ${range}`
         : room.stop === 'bore' ? 'that keeps the groove clear of the bore and its wall'
           : 'this preset takes';
-    const note = id === 'shift' ? '. Shift moves the track and does not change its bend' : '';
-    return `Largest amount ${within}: ${valueText(room.most, units)} ${units.dims}${note}`;
+    return `Largest amount ${within}: ${valueText(room.most, units)} ${units.dims}`;
   }
   const blocked = room.stop === 'range' ? `${range[0].toUpperCase()}${range.slice(1)}, leaves no room for this preset in this direction`
     : room.stop === 'bore' ? 'The bore clearance leaves no room for this preset in this direction'
@@ -702,6 +701,9 @@ export function createTrackEditor(store) {
   /** The track the preset amount was filled for. */
   /** @type {StringTrack | null} */
   let amountFor = null;
+  /** The dimension unit of the shown amount. */
+  /** @type {Units['dims'] | null} */
+  let amountUnit = null;
   let shownTableKey = '';
   /** @type {HTMLInputElement[]} */
   let cells = [];
@@ -948,6 +950,12 @@ export function createTrackEditor(store) {
     const units = s.units;
     const id = presetId();
     amountLabel.textContent = `Amount (${units.dims})`;
+    if (amountTouched && amountUnit !== units.dims) {
+      // A typed amount keeps its length in the other unit.
+      const typed = parseQuantity(amountInput.value, 'length', amountUnit ?? units.dims);
+      if (Number.isFinite(typed)) amountInput.value = plain(fromSI(typed, 'length', units.dims));
+    }
+    amountUnit = units.dims;
     angleField.hidden = id === 'size';
     const angle = presetAngle();
     const vals = trackValues(s.stringTrack);

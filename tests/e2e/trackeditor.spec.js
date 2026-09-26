@@ -112,6 +112,25 @@ test.describe('free-form track editor', () => {
     await expect(page.getByTestId('preset-error')).toHaveText('The amount must be a number from −30 to 30 mm');
   });
 
+  test('a typed preset amount keeps its length when the dimension unit changes', async ({ page }) => {
+    await page.goto('./');
+    await solved(page);
+    await page.getByTestId('preset-select').selectOption('size');
+    const amount = page.getByTestId('preset-amount');
+    await amount.fill('1');
+    await page.getByTestId('unit-dims').selectOption('in');
+    await expect(amount).toHaveValue('0.0393701');
+    await page.getByTestId('unit-dims').selectOption('mm');
+    await expect(amount).toHaveValue('1');
+    await page.getByTestId('unit-dims').selectOption('in');
+    await page.getByTestId('preset-apply').click();
+    await expect(page.getByTestId('preset-msg')).toContainText('Size of 0.0394 in applied');
+    await page.getByTestId('unit-dims').selectOption('mm');
+    await openValues(page);
+    // Size adds 1 mm to every point.
+    expect(await tableValues(page)).toEqual(DEFAULT_VALUES.map((v) => (Number(v) + 1).toFixed(2)));
+  });
+
   test('a drag moves a smooth bump, stops at the bend limit and is one undo step', async ({ page }) => {
     await freeform(page);
     await openValues(page);

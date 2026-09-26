@@ -85,8 +85,11 @@ export const PENDING_DELAY = 250;
  * solver error, whose latest result belongs to an older input), whether the
  * cam shown is the last valid one in place of the current result, whether
  * the current result belongs to older inputs while a newer solve runs
- * (outdated), the status, the result drawn in the cam view and the result
- * whose achieved curve the chart shows.
+ * (outdated), the status, the result drawn in the cam view, the result
+ * whose achieved curve the chart shows and the result whose working arc the
+ * track editor shows. The last valid cam can belong to another track, so the
+ * editor gets the current result only, and none when it has no achieved
+ * curve.
  * @template T
  * @param {Solved<T> | null} latest last delivered result
  * @param {Solved<T> | null} lastGood last delivered result with status ok
@@ -109,7 +112,8 @@ export function solveView(latest, lastGood, solverStatus, pending = false) {
   const outdated = pending && solverStatus === 'busy' && current !== null;
   const shown = stale ? lastGood : current;
   const withCurve = current?.result.achieved ? current : stale ? lastGood : null;
-  return { current, stale, outdated, status, shown, withCurve };
+  const forEditor = current?.result.achieved ? current : null;
+  return { current, stale, outdated, status, shown, withCurve, forEditor };
 }
 
 /**
@@ -303,7 +307,7 @@ export function startApp() {
 
   function showSolve() {
     const pending = solverStatus === 'busy' && performance.now() - busySince >= PENDING_DELAY;
-    const { current, stale, outdated, status, shown, withCurve } = solveView(latest, lastGood, solverStatus, pending);
+    const { current, stale, outdated, status, shown, withCurve, forEditor } = solveView(latest, lastGood, solverStatus, pending);
     const now = store.getState();
     const shownResult = shown?.result ?? null;
     markerOnCurve = withCurve !== null && withCurve === shown;
@@ -346,7 +350,7 @@ export function startApp() {
     root.dataset.solveStatus = current?.result.status ?? '';
     root.dataset.solveResolution = current?.result.resolution ?? '';
     exportPanel.render({ lastGood, now, busy: solverStatus === 'busy', pending });
-    settings.setResult(withCurve?.result ?? null);
+    settings.setResult(forEditor?.result ?? null);
     showPose();
   }
 

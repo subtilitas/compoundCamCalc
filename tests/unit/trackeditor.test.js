@@ -207,10 +207,12 @@ describe('preset panel', () => {
       + 'limit 47.7 mm. A Size of at least 2.50 mm brings it within the limit and the 0.5 mm margin.');
     expect(presetRoomText(presetPlan(values, 'egg', 0, below), 'egg', below)).toBe(
       'The track bends more sharply than the limit: sharpest bend 45.7 mm, limit 47.7 mm. Size raises every bend.');
-    // Shift does not change the bend: it keeps its amount below the limit.
+    // On the spline Shift changes the bend slightly: like the shape presets,
+    // it takes no amount below the limit.
     const shift = presetPlan(values, 'shift', 0, below);
-    expect(shift.amount).toBe(1e-3);
-    expect(presetRoomText(shift, 'shift', below)).toBe('Largest amount this preset takes: 30.00 mm. Shift moves the track and does not change its bend');
+    expect(shift.amount).toBe(0);
+    expect(presetRoomText(shift, 'shift', below)).toBe(
+      'The track bends more sharply than the limit: sharpest bend 45.7 mm, limit 47.7 mm. Size raises every bend.');
   });
 
   it('says when the value range or the bend limit leaves no room, and names a negative amount that fits', () => {

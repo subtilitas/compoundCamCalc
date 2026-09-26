@@ -40,9 +40,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   margin; the line under it names what limits it, tells a track below the
   limit from one inside the margin, and names a negative amount when the
   positive side has no room. Size on a track inside the margin starts at
-  the smallest amount that restores it; Shift is limited by the value
-  range and the bore clearance only. Glossary term "working arc"; the help dialog lists the editor
-  keys.
+  the smallest amount that restores it; Shift also keeps the bore
+  clearance. Glossary term "working arc"; the help dialog lists the
+  editor keys.
 - Optimise (`src/core/optimise.js`, `src/worker/optimise.worker.js`,
   `src/ui/optimise.js`): **Optimise shape** in the String track group
   searches for a free-form track with one of two goals, "Smallest cam,
@@ -57,7 +57,7 @@ All notable changes are listed here. Versions follow semantic versioning.
   keeps the best track so far; a change of the design or another design
   discards the run. A before/after table (cam size, force difference,
   let-off, sharpest string bend) offers Apply, one undo step, and
-  Discard. The query parameter `optimise-budget` lowers the budget for
+  Discard; the goal select stays locked until one of them. The query parameter `optimise-budget` lowers the budget for
   the browser tests. On the default design the cam goal reaches 93.9 mm
   from 98.2 mm with a force difference of 3.56 N (start 3.71 N).
 

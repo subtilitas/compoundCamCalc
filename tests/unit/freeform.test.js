@@ -286,17 +286,20 @@ describe('preset room', () => {
     expect(stuck.negative).toBeLessThan(-1e-3);
   });
 
-  it('limits Shift by the value range and the bore clearance only, not by the bend', () => {
+  it('limits Shift by the bend limit with its margin, the value range and the bore clearance', () => {
     const sharp = { ...margin, rho: rho + 2e-3 };
     const wall = state.body.boreDiameter / 2 + state.body.minWall;
     expect(clearsBore(values, wall)).toBe(true);
-    // The track misses this limit by 2 mm, yet Shift keeps its full room:
-    // 30 mm towards 0° keeps every value in range and the groove off the bore.
-    const shift = presetRoom(values, 'shift', 0, sharp, wall);
-    expect(shift).toMatchObject({ track: 'below', most: MODIFIER_MAX_AMOUNT, stop: 'max' });
-    expect(presetRoom(values, 'oval', 0, sharp).most).toBe(0);
+    // The track misses this limit by 2 mm: like the shape presets, Shift
+    // gets no room and a default amount of 0.
+    expect(presetRoom(values, 'shift', 0, sharp, wall)).toMatchObject({ track: 'below', most: 0, stop: 'bend' });
+    expect(defaultAmount(values, 'shift', 0, sharp, wall)).toBe(0);
+    // Within the limit and its margin, 30 mm towards 0° keeps every value in
+    // range, the bend and the groove off the bore.
+    const shift = presetRoom(values, 'shift', 0, margin, wall);
+    expect(shift).toMatchObject({ track: 'within', most: MODIFIER_MAX_AMOUNT, stop: 'max' });
     expect(clearsBore(applyModifier(values, 'shift', shift.most, 0), wall)).toBe(true);
-    expect(defaultAmount(values, 'shift', 0, sharp, wall)).toBeCloseTo(MODIFIERS.shift.amount, 12);
+    expect(defaultAmount(values, 'shift', 0, margin, wall)).toBeCloseTo(MODIFIERS.shift.amount, 12);
     // A wall 0.5 mm inside the nearest point of the groove: the shift
     // towards that point stops at the bore after about 0.5 mm.
     const groove = createSupport(freeformSupport(values));
@@ -311,6 +314,36 @@ describe('preset room', () => {
     expect(snug.most).toBeGreaterThan(0.4e-3);
     expect(snug.most).toBeLessThan(0.6e-3);
     expect(clearsBore(values, near.d + 1e-4)).toBe(false);
+  });
+
+  it('keeps the default track dragged to the bend limit within it on a Shift', () => {
+    // Point 1 dragged out to the 5 mm limit: 5.0002 mm. On the spline a 1 mm
+    // Shift towards 0° changes the bend to about 4.977 mm, below the limit.
+    const wall = state.body.boreDiameter / 2 + state.body.minWall;
+    const dragged = dragBump(values, 0, dragLimit(values, 0, 1, limit));
+    const bend = pitchMinRho(dragged, limit.d).value;
+    expect(bend).toBeGreaterThanOrEqual(limit.rho);
+    expect(bend).toBeLessThan(limit.rho + 1e-6);
+    expect(withinLimit(applyModifier(dragged, 'shift', MODIFIERS.shift.amount, 0), limit)).toBe(false);
+    for (let deg = 0; deg < 360; deg += 30) {
+      const room = presetRoom(dragged, 'shift', deg * DEG, margin, wall);
+      expect(room).toMatchObject({ track: 'margin', most: 0, stop: 'bend' });
+      const amount = defaultAmount(dragged, 'shift', deg * DEG, margin, wall);
+      expect(amount).toBe(0);
+    }
+    // Dragged to the limit plus the margin: every Shift the room allows keeps
+    // the limit and the margin on the spline.
+    const edge = dragBump(values, 0, dragLimit(values, 0, 1, margin));
+    for (let deg = 0; deg < 360; deg += 30) {
+      const room = presetRoom(edge, 'shift', deg * DEG, margin, wall);
+      expect(room.track).toBe('within');
+      expect(withinLimit(applyModifier(edge, 'shift', room.most, deg * DEG), margin)).toBe(true);
+      expect(defaultAmount(edge, 'shift', deg * DEG, margin, wall)).toBe(Math.min(MODIFIERS.shift.amount, room.most));
+    }
+    // Towards 0° the bend ends the Shift before its default amount.
+    const towards = presetRoom(edge, 'shift', 0, margin, wall);
+    expect(towards.stop).toBe('bend');
+    expect(towards.most).toBeLessThan(MODIFIERS.shift.amount);
   });
 });
 

@@ -195,11 +195,10 @@ results are in `docs/model.md`.
   amount clamped by `presetRoom` with a 0.5 mm margin; the line under it
   says what limits it, and tells a track below the limit from one inside
   the margin. Size on such a track starts at the smallest amount that
-  restores the margin; Shift is limited by the value range and the bore
-  clearance only. An eccentric or elliptical track is sampled
-  (`sampleAnalytic`, 12 to 16 points) in the same action, so one undo
-  step reverts it. The panel says that a preset can make the design fail
-  and that the solve shows why.
+  restores the margin; Shift also keeps the bore clearance. An eccentric
+  or elliptical track is sampled (`sampleAnalytic`, 12 to 16 points) in
+  the same action, so one undo step reverts it. The panel says that a
+  preset can make the design fail and that the solve shows why.
 
 ### Optimise
 

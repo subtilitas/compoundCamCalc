@@ -189,9 +189,12 @@ Shape modifiers add a harmonic term to the values of the current track:
   largest amount (the bend with its margin, the value range, the bore
   clearance, or the 30 mm search limit). Size (ρ + a) on a track inside
   the margin or below the limit gets the smallest positive amount that
-  restores ρ_lim + margin, by bisection upwards to 1 µm. Shift does not
-  change ρ, so only the value range and the bore clearance (the rule of
-  `string-clearance`, 720 angles) limit it. When a track within the
+  restores ρ_lim + margin, by bisection upwards to 1 µm. Shift keeps ρ of
+  the exact track, but on the spline its cos ψ term changes ρ by a small
+  amount (a 1 mm Shift takes the default track dragged to the 5 mm limit
+  from 5.0002 mm to about 4.977 mm), so Shift keeps the bend limit with
+  its margin like the other modifiers, and in addition the bore clearance
+  (the rule of `string-clearance`, 720 angles). When a track within the
   margin has no room for a shape modifier, the largest negative amount is
   reported instead.
 - A modifier within the limit can still fail the solve. At angle 0 and the

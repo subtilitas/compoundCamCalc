@@ -4,7 +4,8 @@
  * before/after table with Apply and Discard. A run searches in the optimise
  * worker (worker/optimise.worker.js). The rest of the String track group is
  * locked while it runs; any change of the design stops the run and
- * discards its result, a change of the units does not. Apply sets the
+ * discards its result, a change of the units does not. The goal select
+ * stays locked while a result waits for Apply or Discard. Apply sets the
  * free-form track in one undo step.
  * @module ui/optimise
  */
@@ -242,7 +243,9 @@ export function createOptimise(store, options = {}) {
     const s = store.getState();
     const why = disabledReason({ workers, latest, state: s });
     run.disabled = phase !== 'idle' || why !== '';
-    goalSelect.disabled = phase === 'running';
+    // A result belongs to the goal of its run: the goal stays locked until
+    // Apply or Discard.
+    goalSelect.disabled = phase !== 'idle';
     reason.textContent = phase === 'idle' ? why : '';
     reason.hidden = reason.textContent === '';
     running.hidden = phase !== 'running';

@@ -61,7 +61,8 @@ export const EGG_RATIO = 0.5;
 
 /**
  * Shape modifiers, in menu order. Size and Shift do not change the shape:
- * Size offsets the track (ρ + a), Shift moves it (ρ unchanged).
+ * Size offsets the track (ρ + a), Shift moves it (ρ of the exact track
+ * unchanged; on the spline ρ changes by a small amount).
  * @type {Readonly<Record<ModifierId, Modifier>>}
  */
 export const MODIFIERS = Object.freeze({
@@ -368,7 +369,7 @@ export const MODIFIER_REFERENCE = 40e-3;
  *   pointsFor, against the limit: at least rho + margin (within), at least
  *   rho but inside the margin (margin), or below rho (below)
  * @property {number} most largest positive amount (m); 0 for a track that
- *   is not within, except for Shift
+ *   is not within
  * @property {'bend' | 'range' | 'bore' | 'max'} stop what ends the positive
  *   amounts: the bend limit with its margin, the value range, the bore
  *   clearance (Shift only) or MODIFIER_MAX_AMOUNT
@@ -380,10 +381,12 @@ export const MODIFIER_REFERENCE = 40e-3;
  */
 
 /**
- * Room of a modifier. Size (ρ + a) and the shape modifiers keep the bend
- * limit with its margin and the value range; Shift moves the track without
- * changing ρ, so only the value range and the bore clearance limit it (the
- * bore clearance only when the track clears the bore now).
+ * Room of a modifier. Every modifier keeps the bend limit with its margin
+ * and the value range; Shift also keeps the bore clearance when the track
+ * clears the bore now. Shift moves the exact track without changing ρ, but
+ * on the spline its cos ψ term changes ρ slightly (a 1 mm Shift takes the
+ * default track dragged to the 5 mm limit to about 4.98 mm), so its room
+ * is checked on the spline as well.
  * @param {readonly number[]} values
  * @param {ModifierId} id
  * @param {number} angle (rad)
@@ -399,17 +402,17 @@ export function presetRoom(values, id, angle, limit, wall = 0) {
   const inRange = (/** @type {number[]} */ v) => v.every((x) => x >= FREEFORM_RANGE.min && x <= FREEFORM_RANGE.max);
   // The probe past the largest amount tells what ends it.
   const past = (/** @type {number} */ most) => at(most + 2 * LIMIT_TOLERANCE);
-  if (id === 'shift') {
-    const clear = clearsBore(base, wall);
-    const most = largestTrue((a) => {
-      const v = at(a);
-      return inRange(v) && (!clear || clearsBore(v, wall));
-    }, MODIFIER_MAX_AMOUNT);
-    const stop = most >= MODIFIER_MAX_AMOUNT ? 'max' : inRange(past(most)) ? 'bore' : 'range';
-    return { track, most, stop, least: 0, negative: 0 };
-  }
-  const most = largestTrue((a) => withinLimit(at(a), limit), MODIFIER_MAX_AMOUNT);
-  const stop = most >= MODIFIER_MAX_AMOUNT ? 'max' : track === 'within' && !inRange(past(most)) ? 'range' : 'bend';
+  // Shift also keeps the groove off the bore when it clears it now.
+  const clear = id === 'shift' && clearsBore(base, wall);
+  const ok = (/** @type {number} */ a) => {
+    const v = at(a);
+    return withinLimit(v, limit) && (!clear || clearsBore(v, wall));
+  };
+  const most = largestTrue(ok, MODIFIER_MAX_AMOUNT);
+  const probe = most >= MODIFIER_MAX_AMOUNT ? null : past(most);
+  const stop = !probe ? 'max'
+    : track === 'within' && !inRange(probe) ? 'range'
+      : id === 'shift' && withinLimit(probe, limit) ? 'bore' : 'bend';
   let least = 0;
   if (id === 'size' && track !== 'within') {
     // ρ and the smallest value grow with the amount: bisect upwards to the
@@ -430,7 +433,7 @@ export function presetRoom(values, id, angle, limit, wall = 0) {
       if (inRange(at(hi))) least = hi;
     }
   }
-  const negative = track === 'within' && most === 0 ? largestAmount(values, id, angle, limit, -1) : 0;
+  const negative = track === 'within' && most === 0 ? -largestTrue((a) => ok(-a), MODIFIER_MAX_AMOUNT) : 0;
   return { track, most, stop, least, negative };
 }
 

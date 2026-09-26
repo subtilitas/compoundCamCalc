@@ -78,12 +78,16 @@ test.describe('Optimise', () => {
     await expect(rows.nth(0).locator('td').first()).toHaveText(`${before.toFixed(1)} mm`);
     const after = Number(/^(\d+\.\d) mm$/.exec((await rows.nth(0).locator('td').nth(1).textContent()) ?? '')?.[1]);
     expect(after).toBeLessThan(before);
+    // The result belongs to the goal of the run: the goal stays locked
+    // until Apply or Discard.
+    await expect(goal).toBeDisabled();
 
     await page.getByTestId('optimise-apply').click();
     await expect(page.getByTestId('choice-track-shape')).toHaveValue('freeform');
     await expect(page.getByTestId('track-freeform-summary')).toHaveText('Free-form track, 12 points');
     await expect(page.getByTestId('optimise-message')).toHaveText('Optimised free-form track applied, 12 points. Undo restores the previous track.');
     await expect(section).toHaveAttribute('data-phase', 'idle');
+    await expect(goal).toBeEnabled();
     await expect.poll(() => camSize(page), { timeout: 20_000 }).toBe(after);
     await solved(page);
 
@@ -100,7 +104,10 @@ test.describe('Optimise', () => {
     await page.getByTestId('optimise-goal').selectOption('force');
     await runToResult(page);
     await expect(page.getByTestId('optimise-progress')).toBeHidden();
+    await expect(page.getByTestId('optimise-goal')).toBeDisabled();
     await page.getByTestId('optimise-discard').click();
+    await expect(page.getByTestId('optimise-goal')).toBeEnabled();
+    await expect(page.getByTestId('optimise-goal')).toHaveValue('force');
     await expect(page.getByTestId('optimise-result')).toBeHidden();
     await expect(page.getByTestId('optimise-message')).toHaveText('Optimise result discarded. The track stays as it is.');
     await expect(page.getByTestId('choice-track-shape')).toHaveValue('eccentric');

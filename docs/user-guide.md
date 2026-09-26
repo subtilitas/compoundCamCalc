@@ -267,8 +267,9 @@ starts at 1 mm (0.5 mm for the square), reduced when needed so the track
 keeps the bend limit plus a 0.5 mm margin; the line under the field names
 the largest such amount and what limits it: the bend limit and the
 margin, the groove radius range of 2 mm to 150 mm, or for Shift the bore
-clearance. Shift moves the track without changing its bend, so only the
-value range and the bore clearance limit it. The line also covers the
+clearance. Shift moves the track and keeps its bend to within a small
+amount on the spline (about 0.02 mm for a 1 mm Shift near the 5 mm limit), so
+it keeps the bend limit and the margin as well. The line also covers the
 cases without room:
 
 - The track bends more sharply than the limit, or it is within the limit
@@ -354,7 +355,8 @@ dimension, largest force difference, let-off and sharpest string bend (the
 smallest radius of curvature of the string pitch line). **Apply** sets the
 free-form track; one undo step goes back to the previous track, also when
 it was an eccentric circle or an ellipse. **Discard** keeps the track as it
-is. When no track was better, the line "No better shape found" says so and
+is. The Goal select stays locked until Apply or Discard, so the result
+always belongs to the goal shown. When no track was better, the line "No better shape found" says so and
 the track stays as it is.
 
 For the browser tests, the query parameter `optimise-budget` lowers the
