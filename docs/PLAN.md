@@ -600,8 +600,7 @@ Independent set; everything else is derived and shown read-only.
   `compoundCamCalc.project`, `.current`, `.designs` and their backups; a
   release built with this code uses `compoundCamCalc@<tag>.…`, so an older
   release never reads or replaces data written by a newer schema, and the
-  named designs of main are not listed in a release. v0.1.0 predates the
-  rule and shares the keys of main (same schema version 1).
+  named designs of main are not listed in a release.
 - Version select (`src/ui/versions.js`) after the Help button: fetched
   from `<site root>versions.json` (`cache: no-cache`); hidden when the
   fetch fails, the list is invalid, has fewer than two entries or does
@@ -610,8 +609,7 @@ Independent set; everything else is derived and shown read-only.
   with `#design=` and the share payload of the open design and its name;
   the target opens it as a shared design (it asks first when it has
   unsaved changes). A note under the select says that releases keep their
-  own saved designs and that the open design goes along. v0.1.0 has no
-  select; the browser Back button returns.
+  own saved designs and that the open design goes along.
 - Workflows: CI runs on `workflow_dispatch` as well; `pages-build` and
   `deploy` run for a push to main or a dispatch on main. `pages-build`
   checks out main with all tags (`fetch-depth: 0`) and uploads `site/`.
@@ -993,7 +991,10 @@ Node.js 24; `actions/checkout@v7`, `actions/setup-node@v7`, `actions/cache@v6`,
   against `package.json` at the commit, builds the archive and creates the
   release: with `--verify-tag` for a pushed tag, with `--target <sha>` for
   a manual run, which creates the tag on GitHub without a git push. Then it
-  dispatches CI on main to rebuild the site.
+  dispatches CI on main to rebuild the site. The workflow token cannot
+  create a tag on a commit whose `.github/workflows` differ from main
+  (the API answers HTTP 403 "Resource not accessible by integration"), so
+  `prepare` refuses such a target; that commit needs a pushed tag.
 - Vite `base: './'`.
 - Coverage figure in README: line coverage of `src/core`, `src/state`,
   `src/export`, floor to integer percent, between

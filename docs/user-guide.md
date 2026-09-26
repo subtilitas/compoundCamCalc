@@ -806,9 +806,7 @@ before it replaces them.
 Each release keeps its own working copy and its own named designs in the
 browser, so an older release never changes a design saved by a newer
 one. Designs saved in main are not listed in a release; use the Version
-select, Save to file or a share link to move a design. Release v0.1.0 is
-the exception: it shares the saved designs of main and has no Version
-select (use the browser Back button). The select is hidden when the list
+select, Save to file or a share link to move a design. The select is hidden when the list
 of versions cannot be loaded, for example in local development.
 
 ## Terms
