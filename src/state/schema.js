@@ -5,6 +5,7 @@
  */
 
 import { MAX_FORCE, MAX_POINTS, MIN_FORCE, MIN_GAP, drawRange, generateCurve } from '../core/curve.js';
+import { FREEFORM_POINTS, FREEFORM_RANGE } from '../core/freeform.js';
 import { INCH, fromSI } from '../core/units.js';
 import { defaultState } from './presets.js';
 
@@ -65,13 +66,24 @@ export const SCHEMA_VERSION = 1;
  */
 
 /**
+ * Free-form string track: N groove-bottom support values p_i at
+ * ψ_i = 2π·i/N (N from 8 to 16), joined by a periodic cubic spline
+ * (core/freeform).
+ * @typedef {object} FreeformTrack
+ * @property {number[]} values p_i (m)
+ */
+
+/**
+ * String track. The fields of the shapes that are not selected keep their
+ * values.
  * @typedef {object} StringTrack
- * @property {'eccentric' | 'ellipse'} shape
+ * @property {'eccentric' | 'ellipse' | 'freeform'} shape
  * @property {number} radius eccentric circle radius (m)
  * @property {number} offset centre offset from the axle (m)
  * @property {number} phase (rad)
  * @property {number} semiMajor ellipse semi-major axis (m)
  * @property {number} semiMinor ellipse semi-minor axis (m)
+ * @property {FreeformTrack} freeform
  */
 
 /**
@@ -174,8 +186,20 @@ export const ENUMS = Object.freeze({
   'units.stiffness': { label: 'Stiffness unit', values: ['N/mm', 'lbf/in'] },
   'curve.mode': { label: 'Curve mode', values: ['parametric', 'custom'] },
   'limb.mode': { label: 'Limb input mode', values: ['stiffness', 'travel', 'table'] },
-  'stringTrack.shape': { label: 'String track shape', values: ['eccentric', 'ellipse'] },
+  'stringTrack.shape': { label: 'String track shape', values: ['eccentric', 'ellipse', 'freeform'] },
 });
+
+/**
+ * Range of every free-form track value (FREEFORM_RANGE of core/freeform).
+ * Not in FIELDS, which holds single numbers: validate checks the values
+ * with {@link freeformErrors}.
+ * @type {Readonly<FieldSpec>}
+ */
+export const FREEFORM_VALUE = Object.freeze({
+  label: 'Free-form track value', quantity: 'length', unit: 'mm', min: FREEFORM_RANGE.min, max: FREEFORM_RANGE.max,
+});
+
+export { FREEFORM_POINTS };
 
 /** Minimum power stroke x_f − x_b required by validation: 2 in. */
 export const MIN_POWER_STROKE = 2 * INCH;
@@ -314,6 +338,32 @@ export function validatePoints(points, geometry) {
 }
 
 /**
+ * Structure of free-form track values: an array of FREEFORM_POINTS.min to
+ * FREEFORM_POINTS.max finite numbers inside the range of FREEFORM_VALUE.
+ * Convexity and bore clearance are solver diagnostics (string-radius,
+ * string-clearance), not validation errors: their limits depend on other
+ * fields, and a later edit of those must not make a saved design invalid.
+ * @param {unknown} values
+ * @returns {ValidationError[]}
+ */
+export function freeformErrors(values) {
+  const path = 'stringTrack.freeform.values';
+  const { min, max } = FREEFORM_POINTS;
+  if (!Array.isArray(values)) return [{ path, message: 'The free-form track values are missing' }];
+  if (values.length < min || values.length > max) {
+    return [{ path, message: `A free-form track needs ${min} to ${max} values` }];
+  }
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (!isNumber(v)) return [{ path: `${path}[${i}]`, message: `Free-form track value ${i + 1} must be a number` }];
+    if (v < FREEFORM_VALUE.min || v > FREEFORM_VALUE.max) {
+      return [{ path: `${path}[${i}]`, message: rangeMessage({ ...FREEFORM_VALUE, label: `Free-form track value ${i + 1}` }) }];
+    }
+  }
+  return [];
+}
+
+/**
  * Validate a project state. Checks structure, enumerations, numeric ranges,
  * the draw length against the brace height and the curve points.
  * @param {unknown} state
@@ -359,6 +409,11 @@ export function validate(state) {
   }
   if (isNumber(semiMinor) && isNumber(semiMajor) && semiMinor > semiMajor) {
     errors.push({ path: 'stringTrack.semiMinor', message: 'String track semi-minor axis must not exceed the semi-major axis' });
+  }
+  if (!isObject(track.freeform)) {
+    errors.push({ path: 'stringTrack.freeform', message: 'The string track has no free-form values' });
+  } else {
+    errors.push(...freeformErrors(track.freeform.values));
   }
   const table = state.limb.table;
   if (!Array.isArray(table) || !table.every((r) => isObject(r) && Number.isFinite(r.travel) && Number.isFinite(r.force))) {
@@ -420,6 +475,9 @@ export function migrate(data) {
   }
   if (Array.isArray(state.curve?.points)) {
     state.curve.points = state.curve.points.map((/** @type {any} */ p) => (isObject(p) ? { x: p.x, F: p.F } : p));
+  }
+  if (Array.isArray(state.stringTrack?.freeform?.values)) {
+    state.stringTrack.freeform.values = [...state.stringTrack.freeform.values];
   }
   if (Array.isArray(state.limb?.table)) {
     state.limb.table = state.limb.table.map((/** @type {any} */ r) => (isObject(r) ? { travel: r.travel, force: r.force } : r));

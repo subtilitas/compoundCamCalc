@@ -4,6 +4,7 @@
  */
 
 import { GENERATOR_DEFAULTS, drawRange, generateCurve } from '../core/curve.js';
+import { FREEFORM_POINTS, sampleTrack } from '../core/freeform.js';
 import { INCH } from '../core/units.js';
 
 /** @typedef {import('./schema.js').ProjectState} ProjectState */
@@ -28,7 +29,8 @@ const DEG = Math.PI / 180;
  * 192 mm preload travel, 499 N at the axle at brace and 701 N at full draw)
  * and is not checked against measured limbs. The string groove (radius
  * 45 mm, offset 22 mm towards −122°) has a small lever arm around the peak
- * and a large one at full draw. Let-off 80 % builds with a softer limb
+ * and a large one at full draw; the free-form values are this track at 12
+ * points. Let-off 80 % builds with a softer limb
  * (2.1 N/mm, 92 mm axle travel) and a 124 mm cam, but fewer edits around it
  * meet the fit tolerance (docs/PLAN.md). Returns a new object on every call.
  * @returns {ProjectState}
@@ -48,6 +50,19 @@ export function defaultState() {
     valleyWidth: GENERATOR_DEFAULTS.valleyWidth,
   };
   const points = generateCurve({ ...drawRange(geometry.braceHeight, geometry.drawLength), ...params });
+  /** @type {import('./schema.js').StringTrack} */
+  const stringTrack = {
+    shape: 'eccentric',
+    radius: 0.045,
+    offset: 0.022,
+    phase: -122 * DEG,
+    semiMajor: 0.05,
+    semiMinor: 0.04,
+    freeform: { values: [] },
+  };
+  // The free-form values default to the eccentric track, so switching the
+  // shape to free-form keeps the cam.
+  stringTrack.freeform.values = sampleTrack(stringTrack, FREEFORM_POINTS.default);
   return {
     schemaVersion: 1,
     units: { draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' },
@@ -61,14 +76,7 @@ export function defaultState() {
       maxRotation: 30 * DEG,
       table: [],
     },
-    stringTrack: {
-      shape: 'eccentric',
-      radius: 0.045,
-      offset: 0.022,
-      phase: -122 * DEG,
-      semiMajor: 0.05,
-      semiMinor: 0.04,
-    },
+    stringTrack,
     cords: {
       stringDiameter: 0.0025,
       cableDiameter: 0.0025,

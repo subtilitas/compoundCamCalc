@@ -88,7 +88,8 @@ export function plausibility(input, fmt) {
       message: `The cam measures ${fmt.size(camMaxDimension)} across, ${fmt.percent(camMaxDimension / ata)} of the ` +
         `${fmt.size(ata)} axle-to-axle length; this app warns above ${fmt.percent(CAM_SIZE_SHARE)}`,
       suggestion: 'Less axle travel at full draw makes the cable track smaller: reduce "Axle travel, brace to full draw" ' +
-        'or raise "Limb stiffness at the axle". A smaller string track ("Radius", or "Semi-major axis" for an ellipse) ' +
+        'or raise "Limb stiffness at the axle". A smaller string track ("Radius", "Semi-major axis" for an ellipse, ' +
+        'or an inward offset of a free-form track) ' +
         'makes the cam turn further for the same power stroke, which also makes the cable track smaller',
     });
   }

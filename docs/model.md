@@ -112,6 +112,83 @@ Shapes (`src/core/support.js`):
   pitch line is the groove bottom offset by half the string diameter,
   p_pitch = p_groove + d/2 (exact, because offsetting adds a constant to p).
 
+### Free-form string track
+
+A free-form string track (`src/core/freeform.js`) stores N groove-bottom
+support values p_i at ψ_i = 2π·i/N, N from 8 to 16 (12 by default). The
+groove bottom is the periodic C2 cubic spline through (ψ_i, p_i) with
+period 2π; the pitch line is that spline offset by d/2, as for the other
+shapes. The track closes by construction, and ρ = p + p'' is linear in the
+values.
+
+- Sensitivity: one value moves ρ at its knot by −15 mm per mm at N = 12
+  and by −63 mm per mm at N = 24. N stops at 16 to keep single values
+  usable.
+- Sampling: switching the shape to free-form samples the eccentric or
+  elliptical groove bottom at N = 12 points, rounded to 0.1 µm. On the
+  default eccentric track and the elliptical track of the hunting sample
+  the spline stays within 10 µm of p at N = 12 and 3 µm at N = 16, and
+  within 1.1 mm of ρ at N = 12 and 0.6 mm at N = 16 (tested with 50 µm,
+  5 µm, 3 mm and 1 mm).
+- Solve effect of that sampling (full solves): default 98.19 → 98.19 mm
+  cam, 3.71 → 3.71 N largest force difference; hunting 132.2 → 132.2 mm,
+  5.53 → 5.53 N; crossbow 86.0 → 86.0 mm, 11.87 → 11.89 N; mini 26.4 →
+  26.4 mm, 1.28 → 1.28 N (tested within 0.1 mm and 0.05 N).
+- Resampling to another N evaluates the spline at the new knots. The shape
+  changes slightly: the default track at 8 points keeps p within 25 µm and
+  ρ within 1.4 mm. A track at its limit can fall below it: an oval, rounded
+  triangle or egg at its largest amount on 12 points bends below the limit
+  on 8 points. `resampleChecked` reports that case.
+- Limit: the pitch line must keep ρ ≥ ρ_lim = max(minimum bend radius,
+  d/2 + 0.2 mm) (`rhoLimitFor`, the rule of `string-radius`), plus an
+  optional margin, and every value must stay in 2 mm to 150 mm. The exact
+  minimum of ρ comes from `minRho` (the cubic p + p'' minimised on every
+  interval).
+- Contact points of the knots, X(ψ_i) = p·n + p'·t, sit off the radial
+  line by p' (up to 22 mm on the default track).
+
+Shape modifiers add a harmonic term to the values of the current track:
+
+| Modifier | Added to p | Change of ρ (exact) |
+|---|---|---|
+| Size | a | +a |
+| Shift | a·cos(ψ − φ) | 0 (a translation) |
+| Oval | a·cos 2(ψ − φ) | −3a·cos 2(ψ − φ) |
+| Rounded triangle | a·cos 3(ψ − φ) | −8a·cos 3(ψ − φ) |
+| Rounded square | a·cos 4(ψ − φ) | −15a·cos 4(ψ − φ) |
+| Egg | a·(cos 2(ψ − φ) + 0.5·cos 3(ψ − φ)) | −a·(3·cos 2(ψ − φ) + 4·cos 3(ψ − φ)) |
+
+- A cos ψ or sin ψ term adds nothing to ρ: a closed track has no first
+  harmonic in ρ, so an egg built from cos ψ is only a shifted oval.
+- Harmonic k needs N ≥ 4k points: the triangle and the egg raise N to 12,
+  the square to 16, before the term is added. On the spline the drop of ρ
+  is 0.9 to 1.3 times the exact value.
+- `largestAmount` finds the largest amount that keeps the limit by
+  bisection (1 µm) on the spline of the modified values, not on the exact
+  formula: ρ is linear in the amount, so the amounts within the limit form
+  one interval. The default amounts (1 mm, 0.5 mm for the square) are
+  clamped to it. On the default track with a 0.5 mm margin the largest
+  amounts are about 12 mm (oval), 4 mm (triangle), 2.2 mm (square) and
+  5 mm (egg).
+- A modifier within the limit can still fail the solve. At angle 0 and the
+  default amounts on the four samples: the square on the hunting bow
+  reports `closing-blend`, the oval and the egg on the 26 mm mini cam
+  report `cable-radius`; the other 21 combinations solve without
+  diagnostics.
+
+A drag moves a raised-cosine bump: the value at index i by δ, its
+neighbours by 0.75·δ and 0.25·δ. A single value would bend the track at
+its knot. `dragLimit` finds the largest δ in a direction that keeps the
+limit by bisection to 1 µm; along the bump the feasible set is one
+interval, since ρ is linear in δ.
+
+Convexity and bore clearance of a free-form track are solver diagnostics
+(`string-radius`, `string-clearance`), not validation errors. Their limits
+depend on the minimum bend radius, the string diameter, the bore and the
+wall; a later edit of those must not make a saved design fail to load.
+Validation checks the structure only: 8 to 16 finite values from 2 mm to
+150 mm.
+
 ## Cord contact and length
 
 A cord wraps a track and leaves it tangentially towards a point B in the cam
@@ -821,13 +898,13 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `limb-rotation` | α_f above the maximum limb rotation: of the final cam once it is built, otherwise of the ideal track (the message shows up to 4 decimals, enough to tell the two apart) | the stiffness (computed) or the limb travel, or the maximum rotation |
 | `limb-energy` | a tabulated limb cannot store the work of the target | a longer limb table or a lower peak |
 | `target-shape` | the rebuilt target is not monotone on its first segment: no monotone setting of the free values at knots 0 and 1 exists (for example a string groove with 46 mm offset on a 50 mm radius, and point 2 at 7 N, 11.8 in from brace, as a local maximum: the first segment dips below 0 N) | point 2 |
-| `string-radius` | ρ of the string pitch line below ρ_lim | the string track radius (computed increase) or the ellipse axes |
-| `string-clearance` | the string groove bottom closer to the axle than bore/2 + wall | the radius or the offset (computed) |
-| `string-wrap` | full-draw contact angle plus residual wrap ≥ 360°: the contact of the final cam once it is built, otherwise of the ideal track (up to 4 decimals in the message); a full turn in the forward model of the final cam, `string-wrap` or `cable-wrap` by the cord that wraps it on the solved samples | the string track radius (computed) or the residual wrap |
+| `string-radius` | ρ of the string pitch line below ρ_lim; the exact minimum over one turn (`minRho`) for every shape, since a 0.5° grid misses the knot minima of a free-form track when N does not divide 720 | the string track radius (computed increase), the ellipse axes, or an outward offset of a free-form track by at least the shortfall (a uniform offset raises ρ by exactly its amount) |
+| `string-clearance` | the string groove bottom closer to the axle than bore/2 + wall (smallest of 720 samples) | the radius or the offset (computed), or an outward offset of a free-form track (computed) |
+| `string-wrap` | full-draw contact angle plus residual wrap ≥ 360°: the contact of the final cam once it is built, otherwise of the ideal track (up to 4 decimals in the message); a full turn in the forward model of the final cam, `string-wrap` or `cable-wrap` by the cord that wraps it on the solved samples | the string track radius (computed), or an outward offset of a free-form track (computed), or the residual wrap |
 | `cable-radius` | ρ of the ideal cable track below ρ_lim and the fitted cam outside the tolerance; the named range leaves out the brace blend unless it is the only one, and a negative ρ is given as the angle over which the track bends the wrong way | chosen at the largest force difference of the fitted cam: before point 2 a change of point 2; between points 2 and 3, before the peak, where the force rises and point 3 is not the full-draw point, a later point 3, for a parametric curve a larger rise to peak; after the peak a more gradual drop over the nearest falling interval at or before it, or less let-off; otherwise a more gradual change between the curve points on either side |
 | `cable-clearance` | lever arm of the ideal cable track below p_min and the fitted cam outside the tolerance, or the lead-in too close to the bore | the let-off (computed limit) at full draw or the force at the position, and the bore radius plus wall (at most the lowest lever arm / 1.03 minus the cable radius, rounded down, when at least 1.5 mm); a larger string track also raises the lever arm at the peak and is not suggested |
-| `cable-wrap` | active cable range plus lead-in wrap ≥ 360° | the lead-in wrap (computed) or the string track radius |
-| `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min, or an arc too short for a closed track within the input domain (no cam then); the message gives the smallest ρ or p of the returned closed track, which decides, and the closing blend's constrained fit uses no margin, since its lead-in end can sit exactly at ρ_lim | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the smallest string track increase (5 mm to 20 mm, both semi-axes of an ellipse), then half the minimum bend radius when it sets ρ_lim, with which a coarse trial solve reports no diagnostic; otherwise the changes tried and the force curve. The trials run in a full solve; a coarse solve names the force curve |
+| `cable-wrap` | active cable range plus lead-in wrap ≥ 360° | the lead-in wrap (computed) or the string track radius (an outward offset of a free-form track) |
+| `closing-blend` | no closing curve with ρ ≥ ρ_lim and p ≥ p_min, or an arc too short for a closed track within the input domain (no cam then); the message gives the smallest ρ or p of the returned closed track, which decides, and the closing blend's constrained fit uses no margin, since its lead-in end can sit exactly at ρ_lim | the largest lead-in wrap that closes the track (5° steps, down to 0°); otherwise the smallest string track increase (5 mm to 20 mm, both semi-axes of an ellipse, every value of a free-form track), then half the minimum bend radius when it sets ρ_lim, with which a coarse trial solve reports no diagnostic; otherwise the changes tried and the force curve. The trials run in a full solve; a coarse solve names the force curve |
 | `no-convergence` | a closure, the resampling, the constrained fit or the forward model of the final cam fails (including a non-finite or concave final cam, and any forward code without its own entry), the travel-mode stiffness does not settle, or an internal error | the input to change |
 | `slack-string` | the string of the final cam goes slack (forward model) | the force in the range or the let-off |
 | `wrap-exhausted` | a contact of the final cam passes its termination (forward model) | the residual and lead-in wrap |
@@ -888,7 +965,8 @@ tolerance of 0.01 mm of the model track, measured along the track normal.
 X'(ψ) = ρ·t. `fitSupport` returns a clamped cubic B-spline whose parameter
 is the track angle from the start of the curve:
 
-- A spline track (the cable pitch line, its groove bottom and flange) has
+- A spline track (the cable pitch line, its groove bottom and flange, and
+  the three curves of a free-form string track) has
   ρ = p + p'' only C0 at its knots. It is fitted by one Hermite cubic per
   knot interval with the exact end points and tangents (Bézier form, triple
   interior knots). The curve is C1 and keeps the radius of curvature of the
@@ -1062,6 +1140,10 @@ Measured values are the largest errors over the tested samples.
 | Lead-in wrap 137.55° on the default preset (0.06° left to close, coarse and full): `closing-blend` alone, no cable track, achieved curve or metrics, string outlines only, suggestion a lead-in wrap of at most 105.0°, which solves without diagnostics; 100 random valid states: every solve without diagnostics has a cable track, an achieved curve and metrics | | passes |
 | `closing-blend` trials: point 2 at 12 in and 120 N names a 55.0 mm string track radius (full solve; 50 mm fails, 55 mm solves without diagnostics; the coarse solve runs no trials and names the force curve); a 45 mm × 35 mm ellipse with point 2 at 11 in and 100 N names both semi-axes 15 mm larger; point 2 at 10 in and 50 N names none, and each larger string track raises the largest force difference; trial states within the field range, the bend radius tried only when it sets ρ_lim | | passes |
 | Offsets, maximum dimension, termination and cable stop posts, timing marks | 5e-16 m to 1e-6 m | passes |
+| Free-form track: default eccentric and hunting ellipse sampled at 12 and 16 points against the exact support, p and ρ on a 0.1° grid | 50 µm, 5 µm; 3 mm, 1 mm | 9.8 µm, 3.0 µm; 1.06 mm, 0.59 mm |
+| Free-form track: each sample converted at 12 points, full solve | 0.1 mm cam size, 0.05 N force difference | 0.08 mm, 0.021 N |
+| Free-form track: `largestAmount` and `dragLimit` by bisection, the value 1 µm further misses the limit; clamped default amounts keep a 0.5 mm margin at 8, 12 and 16 points and 12 angles; exact `minRho` at a knot at 98.18° (N = 11) named by `string-radius` | 1 µm | passes |
+| Free-form design exported: string curves as splines within the export tolerance, DXF reader and Part 21 checks | 0.01 mm | passes |
 | Default preset: zero diagnostics; force within the fit tolerance; outlines closed and nested (groove bottom inside the pitch line and the flange, outside the bore and its wall); posts and marks at the achieved contacts | 8.0 N | 3.71 N |
 | Edits of the default preset (peak 250, 260, 275, 285 N; rise 44 %, 48 %, 50 %; valley 0.9 in, 1.5 in): zero diagnostics | 3 % of the peak | 6.0 N at peak 250 N (7.5 N) |
 | Solve: one test per diagnostic code; 100 random states (fast-check) never throw and return plain data; a result without a cable track has the three string outlines only, invalid input none | | passes |

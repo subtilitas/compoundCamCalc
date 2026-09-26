@@ -9,7 +9,8 @@
  */
 
 import { AMO_OFFSET, INCH, fromSI, parseNumber, parseQuantity, toSI } from '../core/units.js';
-import { FIELDS, MIN_POWER_STROKE } from '../state/schema.js';
+import { FREEFORM_POINTS, knotAngles, sampleTrack } from '../core/freeform.js';
+import { FIELDS, MIN_POWER_STROKE, freeformErrors } from '../state/schema.js';
 import { DEGREE, DIMS_DECIMALS, FORCE_DECIMALS, dimsText, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
 import { h } from './dom.js';
 import { infoButton } from './glossary.js';
@@ -198,13 +199,19 @@ function outsideNote(def, s, measured, what, shown) {
  * Cross-field message of a string track, the rules of schema.validate:
  * eccentric circle offset smaller than the radius, ellipse offset smaller
  * than the semi-minor axis, semi-minor axis not larger than the semi-major
- * axis. Returns the first rule the track breaks, or null.
+ * axis, and for a free-form track the number and range of its values (no
+ * offset rule applies to it). Returns the first rule the track breaks, or
+ * null.
  * @param {StringTrack} track
  * @param {Units} units
  * @returns {string | null}
  */
 export function stringTrackMessage(track, units) {
   const { shape, offset, radius, semiMajor, semiMinor } = track;
+  if (shape === 'freeform') {
+    const error = freeformErrors(track.freeform?.values)[0];
+    if (error) return error.message;
+  }
   if (shape === 'eccentric' && offset >= radius) {
     return `String track offset must be smaller than the radius (${dimsText(radius, units)})`;
   }
@@ -226,6 +233,22 @@ export function stringTrackMessage(track, units) {
  */
 export function stringTrackExtra(key, value, s) {
   return stringTrackMessage({ ...s.stringTrack, [key]: value }, s.units);
+}
+
+/**
+ * String track change of the Shape select. Switching to free-form samples
+ * the current eccentric or elliptical track at FREEFORM_POINTS.default
+ * points, so the cam stays the same; the values of an earlier free-form
+ * track are replaced. Other switches change the shape only.
+ * @param {StringTrack['shape']} shape
+ * @param {ProjectState} s
+ * @returns {Partial<StringTrack>}
+ */
+export function shapeChange(shape, s) {
+  if (shape === 'freeform' && s.stringTrack.shape !== 'freeform') {
+    return { shape, freeform: { values: sampleTrack(s.stringTrack, FREEFORM_POINTS.default) } };
+  }
+  return { shape };
 }
 
 /** Limits of the measured limb table. The schema needs 3 rows in table mode. */
@@ -659,6 +682,7 @@ const TRACK_FIELDS = [
     action: (v) => ({ type: 'setStringTrack', stringTrack: { offset: v } }),
     ...TRACK,
     extra: trackExtra('offset'),
+    visible: (s) => s.stringTrack.shape !== 'freeform',
   },
   {
     id: 'track-phase',
@@ -668,6 +692,7 @@ const TRACK_FIELDS = [
     get: (s) => s.stringTrack.phase,
     action: (v) => ({ type: 'setStringTrack', stringTrack: { phase: v } }),
     ...ANGLE,
+    visible: (s) => s.stringTrack.shape !== 'freeform',
   },
 ];
 
@@ -819,7 +844,38 @@ const LIMB_MODES = Object.freeze([
 const TRACK_SHAPES = Object.freeze([
   { value: 'eccentric', label: 'Eccentric circle' },
   { value: 'ellipse', label: 'Ellipse' },
+  { value: 'freeform', label: 'Free-form' },
 ]);
+
+/** Decimals of free-form track values in the report, per dimension unit. */
+const FREEFORM_DECIMALS = Object.freeze({ mm: 2, in: 4 });
+
+/**
+ * One-line summary of a free-form track, shown in the settings.
+ * @param {StringTrack} track
+ */
+export function freeformSummary(track) {
+  return `Free-form track, ${track.freeform.values.length} points`;
+}
+
+/**
+ * Report rows of a free-form track: the number of points and each groove
+ * value with its angle.
+ * @param {StringTrack} track
+ * @param {Units} units
+ * @returns {{ label: string, text: string }[]}
+ */
+function freeformRows(track, units) {
+  const values = track.freeform.values;
+  const angles = knotAngles(values.length);
+  return [
+    { label: 'Points', text: String(values.length) },
+    ...values.map((v, i) => ({
+      label: `Point ${i + 1} at ${plain((angles[i] * 180) / Math.PI, 4)}°: groove radius`,
+      text: `${fixed(fromSI(v, 'length', units.dims), FREEFORM_DECIMALS[units.dims])} ${units.dims}`,
+    })),
+  ];
+}
 
 /**
  * @typedef {object} InputGroup
@@ -871,7 +927,14 @@ export function inputGroups(s) {
       rows: [{ label: 'Curve', text: custom ? 'Custom' : 'Parametric' }, ...force, ...points],
     },
     { title: 'Limbs', rows: [{ label: 'Limb input', text: option(LIMB_MODES, s.limb.mode) }, ...rows(LIMB_FIELDS), ...table] },
-    { title: 'String track', rows: [{ label: 'Shape', text: option(TRACK_SHAPES, s.stringTrack.shape) }, ...rows(TRACK_FIELDS)] },
+    {
+      title: 'String track',
+      rows: [
+        { label: 'Shape', text: option(TRACK_SHAPES, s.stringTrack.shape) },
+        ...rows(TRACK_FIELDS),
+        ...(s.stringTrack.shape === 'freeform' ? freeformRows(s.stringTrack, s.units) : []),
+      ],
+    },
     { title: 'Cords', rows: rows(CORD_FIELDS) },
     { title: 'Cam body', rows: rows(BODY_FIELDS) },
   ];
@@ -1381,8 +1444,16 @@ export function createSettings(panel, store) {
     label: 'Shape',
     options: TRACK_SHAPES,
     get: (s) => s.stringTrack.shape,
-    action: (value) => ({ type: 'setStringTrack', stringTrack: { shape: /** @type {StringTrack['shape']} */ (value) } }),
-    extra: (value, s) => stringTrackExtra('shape', /** @type {StringTrack['shape']} */ (value), s),
+    action: (value, s) => ({ type: 'setStringTrack', stringTrack: shapeChange(/** @type {StringTrack['shape']} */ (value), s) }),
+    extra: (value, s) => stringTrackMessage({ ...s.stringTrack, ...shapeChange(/** @type {StringTrack['shape']} */ (value), s) }, s.units),
+  });
+
+  // The free-form editor is not part of the panel yet: a line names the
+  // track and its number of points.
+  const freeformLine = h('p', { class: 'hint', 'data-testid': 'track-freeform-summary' });
+  renderers.push((s) => {
+    freeformLine.hidden = s.stringTrack.shape !== 'freeform';
+    freeformLine.textContent = s.stringTrack.shape === 'freeform' ? freeformSummary(s.stringTrack) : '';
   });
 
   /**
@@ -1398,7 +1469,7 @@ export function createSettings(panel, store) {
     h('fieldset', { class: 'group', 'data-testid': 'settings-geometry' }, h('legend', {}, 'Bow geometry'), ...GEOMETRY_FIELDS.map(field)),
     h('fieldset', { class: 'group', 'data-testid': 'settings-force' }, h('legend', {}, 'Draw force'), ...FORCE_FIELDS.map(field), customHint),
     group('limbs', 'Limbs', limbMode, limbModeHint, ...LIMB_FIELDS.map(field), limbTable()),
-    group('string-track', 'String track', trackShape, ...TRACK_FIELDS.map(field)),
+    group('string-track', 'String track', trackShape, freeformLine, ...TRACK_FIELDS.map(field)),
     group('cords', 'Cords', ...CORD_FIELDS.map(field)),
     group('cam-body', 'Cam body', ...BODY_FIELDS.map(field)),
     units,

@@ -43,8 +43,9 @@ import {
   trackMark, trackOffsets,
 } from './outline.js';
 import { plausibility } from './plausibility.js';
-import { createSupport, stringTrackSupport, toSupportData } from './support.js';
-import { FIELDS, validate } from '../state/schema.js';
+import { GROOVE_MARGIN, createSupport, rhoLimitFor, stringTrackSupport, toSupportData } from './support.js';
+import { offsetValues } from './freeform.js';
+import { FIELDS, FREEFORM_VALUE, validate } from '../state/schema.js';
 
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('./diagnostics.js').SolveDiagnostic} SolveDiagnostic */
@@ -54,21 +55,6 @@ import { FIELDS, validate } from '../state/schema.js';
 /** @typedef {import('./outline.js').Mark} Mark */
 
 const DEG = Math.PI / 180;
-/** Margin of the groove bottom radius of curvature over d/2 (m). */
-export const GROOVE_MARGIN = 0.2e-3;
-
-/**
- * Smallest allowed radius of curvature of a pitch line, ρ_lim: the minimum
- * bend radius, and at least the cord radius plus GROOVE_MARGIN, so the
- * groove bottom stays convex.
- * @param {{ minBendRadius: number }} body
- * @param {number} d cord diameter (m)
- * @returns {number} (m)
- */
-function rhoLimitFor(body, d) {
-  return Math.max(body.minBendRadius, d / 2 + GROOVE_MARGIN);
-}
-
 /**
  * Largest force difference between the achieved curve of a fitted cable
  * track and the target that still counts as meeting the target: this
@@ -376,6 +362,7 @@ function solveState(state, resolution, maxIterations, trials) {
   }
   const fmt = formatter(state.units);
   const { geometry, cords, body } = state;
+  const freeform = state.stringTrack.shape === 'freeform';
   // Validation accepts the first and last curve point within 1e-9 m of brace
   // and full draw; the solver places them exactly there, so the first grid
   // sample is the brace sample of the inverse model.
@@ -422,7 +409,7 @@ function solveState(state, resolution, maxIterations, trials) {
         diagnostic(
           'invalid-input',
           `The bow cannot be built at brace: ${created.error}`,
-          'Increase the string track radius or reduce its offset',
+          freeform ? outwardText(fmt) : 'Increase the string track radius or reduce its offset',
         ),
       );
       return res;
@@ -496,7 +483,7 @@ function solveState(state, resolution, maxIterations, trials) {
         : diagnostic(
           'no-convergence',
           `The string closure of the inverse model did not converge at ${fmt.draw(at)}`,
-          'Increase the string track radius or reduce its offset, then solve again',
+          `${freeform ? outwardText(fmt) : 'Increase the string track radius or reduce its offset'}, then solve again`,
           { xRange: [at, xFull] },
         ),
     );
@@ -625,7 +612,7 @@ function solveState(state, resolution, maxIterations, trials) {
         diagnostic(
           'no-convergence',
           `No cable track meets the radius limit of ${fmt.size(rhoLimitCable)} and the lever arm limit of ${fmt.size(pMin)} (fit status: ${status})`,
-          'Reduce let-off or the peak draw force, or increase the string track radius',
+          `Reduce let-off or the peak draw force, or ${freeform ? 'offset the free-form track outward' : 'increase the string track radius'}`,
         ),
       );
     }
@@ -679,7 +666,7 @@ function solveState(state, resolution, maxIterations, trials) {
             `The power cable wraps ${fmt.angle(wrap)} on its track at full draw, including the ${fmt.angle(body.leadInWrap)} lead-in wrap; a groove holds less than one turn`,
             body.leadInWrap > reduce
               ? `Reduce the lead-in wrap to at most ${fmt.angle(body.leadInWrap - reduce)}`
-              : 'Increase the string track radius, so the cam turns less over the draw',
+              : `${freeform ? outwardText(fmt) : 'Increase the string track radius'}, so the cam turns less over the draw`,
             { psiRange: [active.start - body.leadInWrap, active.end] },
           ),
         );
@@ -830,7 +817,7 @@ function solveState(state, resolution, maxIterations, trials) {
     phi: forward.phi, psiS: forward.psiS, psiC: forward.psiC, pS: forward.pS, pC: forward.pC,
     axleX: forward.axleX, axleY: forward.axleY, spanS: forward.spanS, spanC: forward.spanC,
   };
-  forwardDiagnostics(forward, diags, fmt);
+  forwardDiagnostics(forward, diags, fmt, freeform);
 
   // Outlines, posts, marks.
   const tOutline2 = now();
@@ -1528,22 +1515,29 @@ export function leadInTrials(wrap) {
 }
 
 /**
- * Increases of the string track radius, or of both semi-axes of an
- * elliptical string track, that the closing-blend diagnostic tries, smallest
- * first (m).
+ * Increases of the string track radius, of both semi-axes of an elliptical
+ * string track, or outward offsets of a free-form track, that the
+ * closing-blend diagnostic tries, smallest first (m).
  */
 export const STRING_TRACK_TRIALS = Object.freeze([5e-3, 10e-3, 15e-3, 20e-3]);
 
 /**
  * The project state with the string track radius, or both semi-axes of an
- * elliptical string track, larger by dr (a new state that shares the
- * unchanged sections); null when that exceeds the field range.
+ * elliptical string track, larger by dr, or every value of a free-form
+ * track larger by dr (a parallel track: ρ grows by exactly dr and the shape
+ * stays). A new state that shares the unchanged sections; null when that
+ * exceeds the field range.
  * @param {ProjectState} state
  * @param {number} dr (m)
  * @returns {ProjectState | null}
  */
 export function largerStringTrack(state, dr) {
   const t = state.stringTrack;
+  if (t.shape === 'freeform') {
+    const values = offsetValues(t.freeform.values, dr);
+    if (!(Math.max(...values) <= FREEFORM_VALUE.max)) return null;
+    return { ...state, stringTrack: { ...t, freeform: { ...t.freeform, values } } };
+  }
   const track = t.shape === 'ellipse'
     ? { ...t, semiMajor: t.semiMajor + dr, semiMinor: t.semiMinor + dr }
     : { ...t, radius: t.radius + dr };
@@ -1551,6 +1545,17 @@ export function largerStringTrack(state, dr) {
     ? track.semiMajor <= FIELDS['stringTrack.semiMajor'].max
     : track.radius <= FIELDS['stringTrack.radius'].max;
   return fits ? { ...state, stringTrack: track } : null;
+}
+
+/**
+ * Suggestion to enlarge a free-form string track: a uniform outward offset,
+ * which raises the radius of curvature by the same amount and keeps the
+ * shape.
+ * @param {ReturnType<typeof formatter>} fmt
+ * @param {number} [amount] smallest offset that helps (m); left out when unknown
+ */
+function outwardText(fmt, amount) {
+  return `Offset the free-form track outward${amount === undefined ? '' : ` by at least ${fmt.size(amount)}`}`;
 }
 
 /**
@@ -1620,7 +1625,7 @@ function closingDiagnostic(closed, active, state, rhoLimit, pMin, step, fmt, try
  */
 export function changeSuggestion(state, tooSharp, fmt, passes) {
   const { body, cords } = state;
-  const ellipse = state.stringTrack.shape === 'ellipse';
+  const shape = state.stringTrack.shape;
   const tried = body.leadInWrap > 0 ? ['a lead-in wrap down to 0°'] : [];
   let largest = 0;
   for (const dr of STRING_TRACK_TRIALS) {
@@ -1629,12 +1634,18 @@ export function changeSuggestion(state, tooSharp, fmt, passes) {
     largest = dr;
     if (passes(larger)) {
       const t = larger.stringTrack;
-      return (ellipse
-        ? `Increase both semi-axes of the string track by ${fmt.size(dr)}, to ${fmt.size(t.semiMajor)} and ${fmt.size(t.semiMinor)}`
-        : `Increase the string track radius to ${fmt.size(t.radius)}`) + '; the cam then closes the track and passes every check';
+      const change = {
+        ellipse: () => `Increase both semi-axes of the string track by ${fmt.size(dr)}, to ${fmt.size(t.semiMajor)} and ${fmt.size(t.semiMinor)}`,
+        freeform: () => `Offset the free-form track outward by ${fmt.size(dr)}`,
+        eccentric: () => `Increase the string track radius to ${fmt.size(t.radius)}`,
+      }[shape]();
+      return `${change}; the cam then closes the track and passes every check`;
     }
   }
-  if (largest > 0) tried.push(`${ellipse ? 'string track semi-axes' : 'a string track radius'} up to ${fmt.size(largest)} larger`);
+  if (largest > 0) {
+    const what = { ellipse: 'string track semi-axes', freeform: 'a free-form track offset outward', eccentric: 'a string track radius' }[shape];
+    tried.push(`${what} up to ${fmt.size(largest)}${shape === 'freeform' ? '' : ' larger'}`);
+  }
   const groove = cords.cableDiameter / 2 + GROOVE_MARGIN;
   if (tooSharp && body.minBendRadius > groove) {
     const bend = Math.max(body.minBendRadius / 2, groove, FIELDS['body.minBendRadius'].min);
@@ -1662,17 +1673,22 @@ function checkStringTrack(s, state, psiFull, fmt, diags) {
   const { body, cords, stringTrack: track } = state;
   const d = cords.stringDiameter;
   const rhoLimit = rhoLimitFor(body, d);
-  const low = minimumOn((psi) => s.rho(psi), 0, 2 * Math.PI, 720);
+  // Exact minimum over one turn for every shape: sampling can miss the
+  // minima at the knots of a free-form track.
+  const low = s.minRho(0, 2 * Math.PI);
+  const freeform = track.shape === 'freeform';
   if (!(low.value >= rhoLimit)) {
     const need = rhoLimit - low.value;
     diags.push(
       diagnostic(
         'string-radius',
-        `The string track has a radius of curvature of ${fmt.size(low.value)} at ${fmt.angle(low.at)}; the limit is ${fmt.size(rhoLimit)}`,
+        `The string track has a radius of curvature of ${fmt.size(low.value)} at ${fmt.angle(low.psi)}; the limit is ${fmt.size(rhoLimit)}`,
         track.shape === 'ellipse'
           ? `Increase the semi-minor axis or reduce the semi-major axis, so b²/a grows by at least ${fmt.size(need)}`
-          : `Increase the string track radius by at least ${fmt.size(need)}`,
-        { psiRange: [low.at, low.at] },
+          : freeform
+            ? outwardText(fmt, need)
+            : `Increase the string track radius by at least ${fmt.size(need)}`,
+        { psiRange: [low.psi, low.psi] },
       ),
     );
   }
@@ -1684,7 +1700,9 @@ function checkStringTrack(s, state, psiFull, fmt, diags) {
       diagnostic(
         'string-clearance',
         `The string groove comes within ${fmt.size(near.value)} of the axle at ${fmt.angle(near.at)}; the bore and the wall need ${fmt.size(wall)}`,
-        `Increase the string track radius or reduce its offset by at least ${fmt.size(wall - near.value)}`,
+        freeform
+          ? outwardText(fmt, wall - near.value)
+          : `Increase the string track radius or reduce its offset by at least ${fmt.size(wall - near.value)}`,
         { psiRange: [near.at, near.at] },
       ),
     );
@@ -1710,9 +1728,10 @@ function checkStringWrap(s, state, psiFull, fmt, diags) {
     const mean = (s.P(psiFull) - s.P(0)) / psiFull;
     const radius = mean * (psiFull / (psiFull - excess) - 1);
     const options = [];
-    if (psiFull > excess) options.push(`Increase the string track radius by at least ${fmt.size(radius)}`);
+    const freeform = state.stringTrack.shape === 'freeform';
+    if (psiFull > excess) options.push(freeform ? outwardText(fmt, radius) : `Increase the string track radius by at least ${fmt.size(radius)}`);
     if (body.residualWrap > excess) options.push(`reduce the residual wrap to at most ${fmt.angle(body.residualWrap - excess)}`);
-    const text = options.length > 0 ? options.join(', or ') : 'Increase the string track radius';
+    const text = options.length > 0 ? options.join(', or ') : freeform ? outwardText(fmt) : 'Increase the string track radius';
     diags.push(
       diagnostic(
         'string-wrap',
@@ -1760,8 +1779,10 @@ function checkCableClearance(cable, closed, state, fmt, diags) {
  * @param {import('./forward.js').ForwardResult} forward
  * @param {SolveDiagnostic[]} diags receives the new diagnostics
  * @param {ReturnType<typeof formatter>} fmt
+ * @param {boolean} [freeform] the string track is free-form: a suggestion
+ *   to enlarge it names an outward offset; default false
  */
-export function forwardDiagnostics(forward, diags, fmt) {
+export function forwardDiagnostics(forward, diags, fmt, freeform = false) {
   const have = new Set(diags.map((d) => d.code));
   /** @param {SolveDiagnostic} d */
   const add = (d) => {
@@ -1799,7 +1820,7 @@ export function forwardDiagnostics(forward, diags, fmt) {
           if (forward.psiC[i] - forward.cableTermination >= 2 * Math.PI) cable = true;
         }
         const code = cable && !string ? 'cable-wrap' : 'string-wrap';
-        add(diagnostic(code, `The ${code === 'string-wrap' ? 'string' : 'power cable'} of the final cam wraps a full turn or more${range}`, 'Increase the string track radius', where));
+        add(diagnostic(code, `The ${code === 'string-wrap' ? 'string' : 'power cable'} of the final cam wraps a full turn or more${range}`, freeform ? outwardText(fmt) : 'Increase the string track radius', where));
         break;
       }
       case 'cable-lever':
@@ -1832,4 +1853,4 @@ function finishStringOnly(res, stringSupport, state, settings) {
   res.marks = [trackMark(stringSupport, 0, 'string-brace')];
 }
 
-export { CODES };
+export { CODES, GROOVE_MARGIN, rhoLimitFor };

@@ -172,6 +172,26 @@ describe('inputs of the report', () => {
     expect(groups[3].rows[0]).toEqual({ label: 'Shape', text: 'Eccentric circle' });
   });
 
+  it('list the number of points and every value of a free-form string track', () => {
+    const free = { ...state, stringTrack: { ...state.stringTrack, shape: /** @type {const} */ ('freeform') } };
+    const track = /** @type {import('../../src/ui/settings.js').InputGroup} */ (inputGroups(free).find((g) => g.title === 'String track'));
+    const labels = track.rows.map((r) => r.label);
+    expect(labels.slice(0, 2)).toEqual(['Shape', 'Points']);
+    expect(labels).not.toContain('Radius');
+    expect(labels).not.toContain('Centre offset from the axle');
+    expect(labels).not.toContain('Phase');
+    expect(track.rows[0].text).toBe('Free-form');
+    expect(track.rows[1].text).toBe('12');
+    expect(track.rows).toHaveLength(14);
+    expect(track.rows[2]).toEqual({ label: 'Point 1 at 0°: groove radius', text: '33.34 mm' });
+    expect(track.rows[3]).toEqual({ label: 'Point 2 at 30°: groove radius', text: '25.58 mm' });
+    const inches = inputGroups({ ...free, units: { ...free.units, dims: 'in' } }).find((g) => g.title === 'String track');
+    expect(inches?.rows[2].text).toBe('1.3127 in');
+    const sixteen = { ...free, stringTrack: { ...free.stringTrack, freeform: { values: Array(16).fill(0.03) } } };
+    const rows = inputGroups(sixteen).find((g) => g.title === 'String track')?.rows ?? [];
+    expect(rows[3]).toEqual({ label: 'Point 2 at 22.5°: groove radius', text: '30.00 mm' });
+  });
+
   it('list the points of a custom curve and mark the parameters it does not use', () => {
     const s = { ...state, curve: { ...state.curve, mode: /** @type {const} */ ('custom') } };
     const force = inputGroups(s)[1].rows;

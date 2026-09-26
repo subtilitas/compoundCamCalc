@@ -12,7 +12,7 @@ This file is the running record of the project. Each slice updates it.
 | Topic | Decision |
 |---|---|
 | Cam system | Twin cam: two identical cams; the power cable of each cam is anchored at the opposite axle (yoke at the axle centre) |
-| Free degree of freedom | User shapes the string track parametrically; the solver computes the cable track |
+| Free degree of freedom | User shapes the string track, parametrically (eccentric circle, ellipse) or as a free-form track; the solver computes the cable track |
 | Geometry model | 2D, top/bottom symmetric: rigid limb levers rotate about a pivot (pseudo-rigid-body model), axles move on an arc, string and cable contacts solved at every draw step |
 | Draw length convention | AMO (Archery Manufacturers Organization) / ATA (Archery Trade Association): draw length = nock to grip pivot point + 1.75 in; brace height = grip pivot point to string |
 | Exported curves | Pitch line (cord centre), groove bottom (pitch − d/2) and flange edge (groove bottom + groove depth), each labelled |
@@ -128,6 +128,43 @@ results are in `docs/model.md`.
   unstrung and fitted by the C2 monotone quintic of `src/core/interp.js`.
 - Outputs: draw energy W and total limb energy including preload, reported
   separately; axle travel in mm.
+
+### String track representation
+
+- Shapes: eccentric circle and ellipse (exact analytic support functions;
+  exports keep true circles), and free-form. Old files load unchanged,
+  schemaVersion stays 1, missing fields take their defaults.
+- Free-form: `stringTrack.freeform = { values }`, N groove-bottom support
+  values p_i (m) at ψ_i = 2π·i/N, N from 8 to 16, default 12. The groove
+  bottom is the periodic C2 cubic spline through (ψ_i, p_i), period 2π; the
+  pitch line is that spline offset by d/2 (`stringTrackSupport`). No new
+  support kind. The track closes by construction and ρ = p + p'' is linear
+  in the values.
+- N ≤ 16: one value moves ρ at its knot by −15 mm per mm at N = 12 and by
+  −63 mm per mm at N = 24.
+- The default free-form values are the default eccentric track sampled at
+  N = 12, so the Shape select switches to free-form without changing the
+  cam (one undo step). Sampling any analytic track at N = 12 keeps the cam
+  size within 0.1 mm and the largest force difference within 0.05 N on the
+  four sample designs.
+- Validation checks structure only: an array of 8 to 16 finite values from
+  2 mm to 150 mm. Convexity and bore clearance stay solver diagnostics
+  (`string-radius`, `string-clearance`) with the rule of the other shapes,
+  ρ ≥ `rhoLimitFor(body, d)` on the pitch line. As validation errors they
+  would make `fromJSON` replace a saved design by the default after a
+  later edit of the bend radius or the string diameter.
+- `checkStringTrack` takes the exact `minRho(0, 2π)` for every shape; the
+  clearance check keeps its 720 samples.
+- A larger free-form track is a uniform outward offset of every value: ρ
+  grows by exactly the offset and the shape stays. Every suggestion that
+  names a larger string track says "Offset the free-form track outward"
+  for a free-form track, with the amount where it is computed.
+- `src/core/freeform.js` holds the pure functions the editor and the
+  optimiser build on: sampling and resampling, the pitch-line minimum of ρ,
+  shape modifiers (size, shift, oval, rounded triangle, rounded square,
+  egg) with their largest amount by bisection on the spline, the drag bump
+  (raised cosine over ±2 points) with its limit by bisection to 1 µm, and
+  the contact points X(ψ_i) = p·n + p'·t of the knots.
 
 ### Inverse model (target force curve → cable track)
 
@@ -407,8 +444,8 @@ Independent set; everything else is derived and shown read-only.
   generator (rise length, valley width).
 - Limbs: stiffness mode (see Limb), preload, maximum limb rotation.
 - String track: shape (eccentric circle: radius, offset, phase; ellipse:
-  semi-axes, offset, phase), defined on the groove bottom as the user measures
-  it.
+  semi-axes, offset, phase; free-form: 8 to 16 groove radii at equal
+  angles), defined on the groove bottom as the user measures it.
 - Cords: string diameter, cable diameter, groove depth per track.
 - Cam body: axle bore diameter, minimum wall, layer table (flange, string
   groove, flange, cable groove, flange: thickness of each), post diameter,
@@ -829,6 +866,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export. Hand-written R2000 writer, five plate profiles with post holes in the flange plates, ZIP of all files, no mirror option (decisions of the user); exports use the last cam that met every check |
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
 | 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
+| 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter
