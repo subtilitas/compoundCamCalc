@@ -1180,7 +1180,9 @@ both halves; the unit tests check this on the default design with +1 mm
 top cable.
 
 The string plan draws the bottom half from its own pose under the mirror
-y → −y. The timing string plan (DXF) holds both halves at x_brace and
+y → −y. A draw position x of the design maps to the same fraction of the
+changed draw, x_T = x_brace,T + u·(x_end,T − x_brace,T) with
+u = (x − x_brace)/(x_f − x_brace) clamped to [0, 1]. The timing string plan (DXF) holds both halves at x_brace and
 x_end; the timing table (CSV) holds every sample from x_brace to x_end.
 The design files do not change; the timing files carry the design id and
 a timing id, six hex digits of an FNV-1a hash of the four settings.

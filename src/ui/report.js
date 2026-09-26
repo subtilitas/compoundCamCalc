@@ -20,7 +20,7 @@ import { inputGroups } from './settings.js';
 import { staticChartModel, staticChartSvg } from './staticchart.js';
 import { statItems } from './stats.js';
 import { createStringPlan, planDims } from './stringplan.js';
-import { timingItems } from './timing.js';
+import { timingItems, timingProblems } from './timing.js';
 import { hasChangedTiming } from '../core/timinglayout.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
@@ -68,8 +68,10 @@ const LOADS_WIDTH = 640;
  * @property {{ head: string[], rows: string[][] }} table force table at 10 % steps
  * @property {import('./timing.js').TimingItem[]} timing results of the Timing
  *   settings, empty without an analysis of the settings listed in the inputs
- * @property {boolean} timingChanged the cords differ from the design: the
- *   string plan shows the changed bow
+ * @property {{ code: string, message: string }[]} timingProblems problems of
+ *   the analysis, listed with the timing results
+ * @property {boolean} timingChanged the cords of the settings listed differ
+ *   from the design: the string plan shows the changed bow
  * @property {string} note
  */
 
@@ -118,7 +120,8 @@ export function reportData(src) {
     loads: ctx ? loadMaxima(ctx.loads, units) : [],
     table: ctx ? loadTable(ctx, units) : { head: [], rows: [] },
     timing,
-    timingChanged: hasChangedTiming(src.result),
+    timingProblems: timing.length > 0 ? timingProblems(src.result) : [],
+    timingChanged: sameTiming && hasChangedTiming(src.result),
     note: MODEL_NOTE,
   };
 }
@@ -207,7 +210,8 @@ export function buildReport(src) {
 
   const planBody = h('div', { class: 'cam-body' });
   const plan = createStringPlan(planBody);
-  plan.render(src.result, ctx, units, false);
+  // The changed bow only for the settings listed in the inputs.
+  plan.render(data.timingChanged ? src.result : { ...src.result, analysis: null, analysisReference: null }, ctx, units, false);
   plan.setPose(brace, units);
   // The build lengths have their own section.
   planBody.querySelector('.plan-dims')?.remove();
@@ -227,6 +231,9 @@ export function buildReport(src) {
 
   const timingSection = data.timing.length > 0
     ? [section('timing', 'Timing (analysis only)', list(data.timing),
+        ...(data.timingProblems.length > 0
+          ? [h('h3', {}, 'Problems of the analysis'), h('ol', { class: 'report-diagnostics' }, ...data.timingProblems.map((d) => h('li', {}, h('p', {}, d.message))))]
+          : []),
         h('p', {}, 'Results of the length changes in the Timing settings. The cam, the results and the build lengths above are those of the design.'))]
     : [];
 

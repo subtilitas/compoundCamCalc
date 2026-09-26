@@ -202,8 +202,23 @@ export function timingHalves(tp) {
 }
 
 /**
- * Text under the plan of the changed bow at a draw position: nock height
- * and cam timing, positive with the top cam ahead.
+ * Draw position of the changed bow for a draw position of the design: the
+ * same fraction of the draw, from brace to full draw of the design onto
+ * brace to the end of the draw of the changed bow, so the draw-position
+ * control reaches both ends of the changed draw.
+ * @param {LayoutContext} ctx
+ * @param {TimingLayout} tl
+ * @param {number} x draw position of the design (m)
+ */
+export function timingX(ctx, tl, x) {
+  const span = ctx.xFull - ctx.xBrace;
+  const u = span > 0 ? Math.min(1, Math.max(0, (x - ctx.xBrace) / span)) : 0;
+  return tl.xBrace + u * (tl.xEnd - tl.xBrace);
+}
+
+/**
+ * Text under the plan of the changed bow at a draw position: draw length,
+ * nock height and cam timing, positive with the top cam ahead.
  * @param {TimingPose} tp
  * @param {Units} units
  */
@@ -213,7 +228,7 @@ export function timingPoseText(tp, units) {
   const decimals = units.dims === 'mm' ? 2 : 3;
   const v = fromSI(tp.y, 'length', units.dims);
   const y = `${Math.abs(v) < 0.5 * 10 ** -decimals ? '' : v > 0 ? '+' : '−'}${fixed(Math.abs(v), decimals)} ${units.dims}`;
-  return `Timing settings at the draw position: nock height ${y}, cam timing ${t}`;
+  return `Timing settings at draw ${drawText(tp.x, units)} ${units.draw}: nock height ${y}, cam timing ${t}`;
 }
 
 /**
@@ -498,7 +513,7 @@ export function createStringPlan(container) {
     setPose(pose, units) {
       lastPose = pose;
       const ok = ctx !== null && pose !== null && Number.isFinite(pose.theta);
-      const tp = ok && tl ? timingPoseAt(tl, /** @type {BowPose} */ (pose).x) : null;
+      const tp = ok && tl && ctx ? timingPoseAt(tl, timingX(ctx, tl, /** @type {BowPose} */ (pose).x)) : null;
       current.group.style.display = ok ? '' : 'none';
       current.mirror.style.display = ok && !tl ? '' : 'none';
       currentBottom.flip.style.display = tp ? '' : 'none';
@@ -509,7 +524,7 @@ export function createStringPlan(container) {
         return;
       }
       if (tl) {
-        // The changed bow, clamped to its draw; no load arrow.
+        // The changed bow at the same fraction of its draw; no load arrow.
         if (!tp) {
           current.group.style.display = 'none';
           load.textContent = '';

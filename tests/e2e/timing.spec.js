@@ -71,7 +71,7 @@ test.describe('Timing', () => {
     await expect(page.getByTestId('plan-timing-end')).toHaveText(/ in$/);
     await expect(page.getByTestId('legend-plan-full')).toHaveText('At the first stop (dotted)');
     await expect(page.getByTestId('legend-plan-load')).toBeHidden();
-    await expect(page.getByTestId('plan-load-text')).toHaveText(/^Timing settings at the draw position: nock height /);
+    await expect(page.getByTestId('plan-load-text')).toHaveText(/^Timing settings at draw \d+\.\d+ in: nock height /);
     await page.getByTestId('export-timing-table').scrollIntoViewIfNeeded();
     const [file] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-timing-table').click()]);
     expect(file.suggestedFilename()).toMatch(/^cam-\d{8}-[0-9a-f]{6}-timing-[0-9a-f]{6}\.csv$/);

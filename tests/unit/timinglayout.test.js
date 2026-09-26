@@ -6,7 +6,8 @@ import { TIMING_CSV_COLUMNS, writeTimingCsv } from '../../src/export/csv.js';
 import { exportFiles } from '../../src/export/files.js';
 import { defaultState } from '../../src/state/presets.js';
 import { reportData } from '../../src/ui/report.js';
-import { planBounds, planDims, planLabel, timingHalves, timingPoseText } from '../../src/ui/stringplan.js';
+import { planBounds, planDims, planLabel, timingHalves, timingPoseText, timingX } from '../../src/ui/stringplan.js';
+import { sampleState } from '../../src/state/samples.js';
 import { readDxf } from './dxf-reader.js';
 
 const MM = 1e-3;
@@ -171,12 +172,24 @@ describe('string plan of the changed bow', () => {
     expect(bottom.theta).toBe(tp.bottom.theta);
     const b = planBounds([top, bottom], 0);
     expect(b.maxY).toBeGreaterThanOrEqual(Math.max(top.axleY, bottom.axleY));
-    expect(timingPoseText(tp, changed.state.units)).toMatch(/^Timing settings at the draw position: nock height −6\.1\d mm, cam timing \+6\.89°$/);
+    expect(timingPoseText(tp, changed.state.units)).toMatch(/^Timing settings at draw \d+\.\d+ in: nock height −6\.1\d mm, cam timing \+6\.89°$/);
     const dims = planDims(changed.ctx, changed.state.units, tl);
     expect(dims.map((d) => d.key)).toEqual(['string', 'cable', 'ataBrace', 'ataFull', 'brace', 'draw', 'timing-brace', 'timing-end']);
     expect(planDims(changed.ctx, changed.state.units).map((d) => d.key)).not.toContain('timing-end');
     expect(planLabel(0.8, true, false, changed.state.units, true)).toContain('top and bottom with the timing settings');
     expect(planLabel(0.8, true, false, changed.state.units)).toContain('top and bottom symmetric');
+  });
+
+  it('maps the draw of the design onto the whole changed draw', () => {
+    // +50 mm string: the changed draw ends past full draw of the design.
+    const long = solved({ string: 50 * MM });
+    const tl = /** @type {import('../../src/core/timinglayout.js').TimingLayout} */ (createTimingLayout(long.result, long.ctx));
+    expect(tl.xEnd).toBeGreaterThan(long.ctx.xFull);
+    expect(timingX(long.ctx, tl, long.ctx.xBrace)).toBe(tl.xBrace);
+    expect(timingX(long.ctx, tl, long.ctx.xFull)).toBe(tl.xEnd);
+    expect(timingX(long.ctx, tl, long.ctx.xBrace - 0.1)).toBe(tl.xBrace);
+    expect(timingX(long.ctx, tl, long.ctx.xFull + 0.1)).toBe(tl.xEnd);
+    expect(timingX(long.ctx, tl, 0.5 * (long.ctx.xBrace + long.ctx.xFull))).toBeCloseTo(0.5 * (tl.xBrace + tl.xEnd), 12);
   });
 });
 
@@ -189,7 +202,20 @@ describe('report of the timing settings', () => {
     expect(Object.fromEntries(d.timing.map((i) => [i.key, i.text]))['timing-end']).toBe('+6.89°, top cam ahead');
     // Settings changed since the solve: their results are not yet known.
     const now = { ...changed.state, tuning: { ...changed.state.tuning, topCable: 2 * MM } };
-    expect(reportData({ ...src, now }).timing).toEqual([]);
+    const stale = reportData({ ...src, now });
+    expect(stale.timing).toEqual([]);
+    // The string plan then shows the design bow, not the changed bow of the old settings.
+    expect(stale.timingChanged).toBe(false);
     expect(reportData({ ...src, result: plain.result, state: plain.state, now: plain.state }).timingChanged).toBe(false);
+    expect(d.timingProblems).toEqual([]);
+  });
+
+  it('lists the problems of the analysis with the timing results', () => {
+    const state = sampleState('youth');
+    state.tuning = { topCable: -20 * MM, bottomCable: -20 * MM, string: 50 * MM, nockHeight: 0 };
+    const result = solve(state, { analysis: { offsets: state.tuning } });
+    const d = reportData({ result, state, now: state, name: 'Youth', version: '0.2.0', date });
+    expect(d.timing.length).toBeGreaterThan(0);
+    expect(d.timingProblems.map((p) => p.code)).toContain('analysis-no-stop');
   });
 });

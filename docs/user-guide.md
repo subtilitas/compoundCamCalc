@@ -504,9 +504,12 @@ and the caption says "Bow with the timing settings; the cam and the
 lengths listed are those of the design". Each half is drawn from its own
 pose: the cams turn by different angles and the nock sits off the axis.
 The outlines show brace and the end of the draw of the changed bow (the
-first stop, or full draw when no stop is reached). The draw position is
-clamped to that range. The load arrows are left out; the line under the
-drawing gives the nock height and the cam timing at the draw position.
+first stop, or full draw when no stop is reached). The draw position
+moves over that range at the same fraction of the draw: brace of the
+design shows brace of the changed bow, full draw of the design shows the
+end of its draw. The load arrows are left out; the line under the drawing
+gives the draw length, the nock height and the cam timing of the pose
+shown.
 The list adds the brace height and the end of the draw of the changed
 bow. The cam and the listed cord lengths stay those of the design.
 
@@ -678,8 +681,9 @@ display units selected now. The report contains:
   string plan shows the changed bow;
 - the build lengths of the string plan;
 - the loads chart and the largest loads;
-- the values of the Timing panel, when the timing settings listed are
-  those the cam was solved with;
+- the values and the problems of the Timing panel, when the timing
+  settings listed are those the cam was solved with; otherwise the string
+  plan shows the design bow;
 - a force table at 10 % steps of the draw from brace to full draw: draw
   force, string tension, cable tension, limb tip load and cam rotation;
 - the note that the model is static.
