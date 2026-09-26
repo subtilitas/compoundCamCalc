@@ -24,7 +24,7 @@ listed in [docs/PLAN.md](docs/PLAN.md). Changes are recorded in
 ## Coverage
 
 <!-- coverage:start -->
-Line coverage of `src/core`, `src/state` and `src/export`: **99 %**
+Line coverage of `src/core`, `src/state` and `src/export`: **98 %**
 <!-- coverage:end -->
 
 UI code is covered by the Playwright tests and is not part of this figure.
