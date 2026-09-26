@@ -197,6 +197,38 @@ describe('elastic cords', () => {
     expect(ANALYSIS_CODES['analysis-no-second-stop']).toMatch(/second cam/);
   });
 
+  it('give dΔθ/dL_c,t of the elastic closures at a fixed nock', () => {
+    const a = analyseTiming({ ...base, nock: 'board', stiffness: equal });
+    const i1 = firstIndex(a);
+    // A draw board holds the nock: the sensitivity is the fixed-nock rate at the first stop.
+    expect(Math.abs(a.dThetaDL[i1] - a.sensitivity)).toBeLessThanOrEqual(1e-6 * Math.abs(a.sensitivity));
+    const r = analyseTiming({ ...base, nock: 'board' });
+    // Stretch lowers the rate: 66.7 rad/m against 116 rad/m of the rigid closures at that pose.
+    expect(a.dThetaDL[i1]).toBeLessThan(0.7 * r.dThetaDL[r.n - 1]);
+    const plain = analyseTiming({ ...base, nock: 'board', stiffness: equal, rates: false });
+    expect(plain.dThetaDL[i1]).toBeNaN();
+    expect(plain.sensitivity).toBeNaN();
+    expect(plain.x).toEqual(a.x);
+    expect(codes(analyseTiming({ ...base, rates: /** @type {any} */ ('yes') }))).toEqual(['analysis-invalid-input']);
+  });
+
+  it('take the force limit of the second-stop search from every solved pose, whatever the sample count', () => {
+    const offsets = { topCable: -20 * MM };
+    const sparse = analyseTiming({ ...base, stiffness: equal, offsets, samples: 2 });
+    const dense = analyseTiming({ ...base, stiffness: equal, offsets });
+    expect(sparse.stops.second).toBe(dense.stops.second);
+    expect(Math.abs(sparse.stops.x2 - dense.stops.x2)).toBeLessThan(1e-9);
+    expect(codes(sparse)).not.toContain('analysis-no-second-stop');
+  });
+
+  it('report a wall stiffness that cannot be solved', () => {
+    const a = analyseTiming({ ...base, stiffness: { string: 8.04e10, topCable: 2.62e4, bottomCable: 1.31e13 } });
+    expect(a.stops.second).not.toBeNull();
+    expect(a.stops.wallStiffness).toBeNaN();
+    expect(a.status).toBe('no-convergence');
+    expect(a.diagnostics[0].message).toMatch(/^The closures of the changed bow did not converge: the wall stiffness at the second stop: /);
+  });
+
   it('refuse a stiffness out of range', () => {
     for (const bad of [0, -1, NaN, Infinity, STIFFNESS_MIN / 2, STIFFNESS_MAX * 2]) {
       const a = analyseTiming({ ...base, stiffness: { ...equal, topCable: bad } });

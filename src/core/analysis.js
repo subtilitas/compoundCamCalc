@@ -169,6 +169,8 @@ export const ANALYSIS_CODES = /** @type {Record<AnalysisCode, string>} */ ({
  * @property {'free' | 'board'} [nock] default 'free'
  * @property {number} [samples] from brace to full draw, default {@link ANALYSIS_SAMPLES}
  * @property {number} [maxIterations] Newton iteration limit per closure, default 30
+ * @property {boolean} [rates] default true; false leaves dThetaDL and
+ *   sensitivity at NaN, for a run that needs only the draw
  */
 
 /**
@@ -828,6 +830,7 @@ function analyseChecked(input) {
   if (!Number.isInteger(samples) || samples < 2 || samples > MAX_SAMPLES) {
     return failed('analysis-invalid-input', `the sample count must be an integer from 2 to ${MAX_SAMPLES}`);
   }
+  if (input.rates !== undefined && typeof input.rates !== 'boolean') return failed('analysis-invalid-input', 'rates must be true or false');
   const maxIterations = input.maxIterations ?? MAX_ITERATIONS;
   if (!Number.isInteger(maxIterations) || maxIterations < 1 || maxIterations > MAX_ITERATION_LIMIT) {
     return failed('analysis-invalid-input', `the iteration limit must be an integer from 1 to ${MAX_ITERATION_LIMIT}`);
@@ -961,6 +964,7 @@ function solveBrace(ctx, pose, x0, slope) {
  *   the second is not
  * @property {boolean} capped the second-stop search ended at FORCE_CAP
  * @property {number} wallStiffness dF/dx with both cams on their stops (N/m)
+ * @property {string} wallFailure why the wall stiffness could not be solved, '' otherwise
  */
 
 /**
@@ -997,10 +1001,12 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
   /** @type {March} */
   const march = {
     samples: [{ x: grid[0], pose: copyPose(pose) }], failure: '', failedAt: NaN, noStop: false, fold: false, first: null,
-    firstIndex: -1, second: null, noSecond: false, capped: false, wallStiffness: NaN,
+    firstIndex: -1, second: null, noSecond: false, capped: false, wallStiffness: NaN, wallFailure: '',
   };
-  // Draw force limit of the second-stop search (N).
+  // Draw force limit of the second-stop search (N), from the peak over every
+  // solved pose before the first stop, sampled or not.
   let cap = Infinity;
+  let peak = ctx.elastic ? /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, pose)).F : 0;
   // The last two solved poses, sampled or not.
   let last = march.samples[0];
   /** @type {{ x: number, pose: Pose } | null} */
@@ -1026,6 +1032,7 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     const hitTop = stop !== null && !trial.active[0] && stopGap(stop, trial.top) <= GAP_TOLERANCE;
     const hitBottom = stop !== null && !trial.active[1] && stopGap(stop, trial.bottom) <= GAP_TOLERANCE;
     if (!hitTop && !hitBottom) {
+      if (ctx.elastic && march.first === null) peak = Math.max(peak, /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, trial)).F);
       if (sample) march.samples.push({ x, pose: trial });
       before = last;
       last = { x, pose: trial };
@@ -1064,7 +1071,7 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     march.samples.push({ x: e.x, pose: e.pose });
     if (second) {
       march.second = e.which;
-      march.wallStiffness = wallStiffness(ctx, march.samples[march.samples.length - 1]);
+      setWall(march, wallStiffness(ctx, march.samples[march.samples.length - 1]));
       return march;
     }
     march.first = both ? 'both' : e.which;
@@ -1072,12 +1079,11 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     if (!ctx.elastic) return march;
     if (both) {
       march.second = 'both';
-      march.wallStiffness = wallStiffness(ctx, march.samples[march.samples.length - 1]);
+      setWall(march, wallStiffness(ctx, march.samples[march.samples.length - 1]));
       return march;
     }
     // Elastic cords: on with the stopped cam held by its stop.
-    let peak = 0;
-    for (const s of march.samples) peak = Math.max(peak, /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, s.pose)).F);
+    peak = Math.max(peak, /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, e.pose)).F);
     cap = FORCE_CAP * peak;
     const held = copyPose(e.pose);
     held.active[e.which === 'top' ? 0 : 1] = 1;
@@ -1093,21 +1099,69 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
 }
 
 /**
+ * @param {March} march
+ * @param {number | string} wall the wall stiffness (N/m) or why it failed
+ */
+function setWall(march, wall) {
+  if (typeof wall === 'string') march.wallFailure = wall;
+  else march.wallStiffness = wall;
+}
+
+/**
  * Wall stiffness at the second stop: dF/dx with both cams on their stops,
- * by a forward difference over WALL_STEP (N/m); NaN when a solve fails.
+ * by a forward difference over WALL_STEP (N/m); the reason when a solve
+ * fails.
  * @param {Context} ctx
  * @param {{ x: number, pose: Pose }} sample
+ * @returns {number | string}
  */
 function wallStiffness(ctx, sample) {
   const p = copyPose(sample.pose);
   p.active[0] = 1;
   p.active[1] = 1;
   p.jac = null;
-  if (solveAt(ctx, p, sample.x)) return NaN;
+  const r0 = solveAt(ctx, p, sample.x);
+  if (r0) return r0;
   const f0 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
-  if (solveAt(ctx, p, sample.x + WALL_STEP)) return NaN;
+  const r1 = solveAt(ctx, p, sample.x + WALL_STEP);
+  if (r1) return r1;
   const f1 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
   return (f1 - f0) / WALL_STEP;
+}
+
+/**
+ * dΔθ/dL_c,t of an elastic pose at a fixed nock: the Jacobian of the
+ * elastic residual over (q, λ) by forward differences, the stops of the
+ * pose held, solved for a unit change of the top cable length (rad/m).
+ * NaN when the residual cannot be evaluated.
+ * @param {Context} ctx
+ * @param {{ x: number, pose: Pose }} sample
+ */
+function elasticTimingRate(ctx, sample) {
+  const p = copyPose(sample.pose);
+  /** @type {(0 | 1)[]} */
+  const stops = [];
+  if (p.active[0]) stops.push(0);
+  if (p.active[1]) stops.push(1);
+  const size = 4 + stops.length;
+  const z = new Float64Array(size);
+  z.set(p.q);
+  stops.forEach((w, j) => { z[4 + j] = p.lambda[w]; });
+  /** @param {Float64Array} v */
+  const setZ = (v) => {
+    for (let i = 0; i < 4; i++) p.q[i] = v[i];
+    stops.forEach((w, j) => { p.lambda[w] = v[4 + j]; });
+  };
+  // The pose is converged: its residual is below ELASTIC_TOLERANCE, zero
+  // within the accuracy of the forward differences.
+  const r = new Float64Array(size);
+  const J = elasticJacobian(ctx, p, sample.x, z, r, setZ);
+  if (!J) return NaN;
+  // R(z, L) = 0 with ∂R_1/∂L_c,t = −1: J·dz = e_1·dL.
+  const e = new Array(size).fill(0);
+  e[1] = 1;
+  const dz = solveLinear(J, e, size);
+  return dz ? dz[0] - dz[2] : NaN;
 }
 
 /**
@@ -1186,6 +1240,7 @@ function locateStop(ctx, last, xb, which) {
  */
 function finish(ctx, march, brace, nock, xFull, input) {
   const list = march.samples;
+  const rates = input.rates ?? true;
   const n = list.length;
   const arr = () => new Float64Array(n);
   const r = {
@@ -1230,7 +1285,7 @@ function finish(ctx, march, brace, nock, xFull, input) {
     r.psiCableTop[i] = pose.top.cable.psi;
     r.psiCableBottom[i] = pose.bottom.cable.psi;
     r.ky[i] = ctx.free ? pose.ky : NaN;
-    r.dThetaDL[i] = d ? d[0] - d[2] : NaN;
+    r.dThetaDL[i] = !rates ? NaN : ctx.elastic ? elasticTimingRate(ctx, list[i]) : d ? d[0] - d[2] : NaN;
     det[i] = determinant(J, 4);
     offTrack[i] = leaves(pose.top) || leaves(pose.bottom) ? 1 : 0;
   }
@@ -1269,6 +1324,12 @@ function finish(ctx, march, brace, nock, xFull, input) {
       xRange: [r.x[n - 1], march.failedAt],
       message: `${ANALYSIS_CODES['analysis-fold']}: the draw ends at ${(r.x[n - 1] * 1000).toFixed(1)} mm`,
     });
+  } else if (march.wallFailure) {
+    diagnostics.unshift({
+      code: 'analysis-no-convergence',
+      xRange: [r.x[n - 1], r.x[n - 1]],
+      message: `${ANALYSIS_CODES['analysis-no-convergence']}: the wall stiffness at the second stop: ${march.wallFailure}`,
+    });
   } else if (march.failure) {
     diagnostics.unshift({
       code: 'analysis-no-convergence',
@@ -1281,7 +1342,7 @@ function finish(ctx, march, brace, nock, xFull, input) {
   let end = n - 1;
   if (!stopped) while (end >= 0 && r.x[end] > xFull + 1e-12) end--;
   return {
-    status: march.failure && !march.fold ? 'no-convergence' : diagnostics.length > 0 ? 'infeasible' : 'ok',
+    status: (march.failure && !march.fold) || march.wallFailure ? 'no-convergence' : diagnostics.length > 0 ? 'infeasible' : 'ok',
     diagnostics,
     nock,
     n,
@@ -1300,7 +1361,7 @@ function finish(ctx, march, brace, nock, xFull, input) {
     fullDraw: xFull,
     end,
     // At the first stop, before any cam rests on its stop; the end of the draw without one.
-    sensitivity: f >= 0 ? sensitivityAt(ctx, list[f]) : end >= 0 ? sensitivityAt(ctx, list[end]) : NaN,
+    sensitivity: !rates ? NaN : f >= 0 ? sensitivityAt(ctx, list[f]) : end >= 0 ? sensitivityAt(ctx, list[end]) : NaN,
     iterations: ctx.iterations,
   };
 }

@@ -972,8 +972,11 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
     } catch {
       fields = null;
     }
-    /** @param {unknown} offsets */
-    const run = (offsets) => analyseTiming({
+    /**
+     * @param {unknown} offsets
+     * @param {boolean} [rates]
+     */
+    const run = (offsets, rates = true) => analyseTiming({
       geometry,
       stringTrack: stringPitch,
       cableTrack: cablePitch,
@@ -987,12 +990,14 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
       nock: fields?.nock,
       samples: fields?.samples,
       maxIterations,
+      rates,
     });
     res.analysis = !fields ? analyseTiming(/** @type {any} */ (null)) : run(fields.offsets);
     // The reference: unchanged cords of the same stiffness on the same
     // grid, so that the changes of peak and let-off compare samples of one
     // kind.
-    res.analysisReference = fields && res.analysis.brace && unchanged(res.analysis) ? res.analysis : fields ? run({}) : null;
+    // Its timing rates are not used: it runs without them.
+    res.analysisReference = fields && res.analysis.brace && unchanged(res.analysis) ? res.analysis : fields ? run({}, false) : null;
     res.timings.analysis = now() - tAnalysis;
   }
   res.warnings = plausibility({

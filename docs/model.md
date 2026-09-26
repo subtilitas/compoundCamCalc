@@ -1092,7 +1092,8 @@ solve only: `analysis: true` for unchanged cords and a free nock, or
 holds the result, `timings.analysis` its time; without the option, in a
 coarse solve or without a cam it is null. `result.analysisReference` holds
 the analysis with unchanged cords and the same options, stiffness
-included, the reference of the changes of peak and let-off; with unchanged cords it is
+included, the reference of the changes of peak and let-off; it runs with
+`rates: false`, which leaves dΔθ/dL_c,t and `sensitivity` at NaN; with unchanged cords it is
 `result.analysis` itself. The two analyses re-solve their own brace, so
 their 300-sample grids differ slightly: over the default design, the nine
 samples and five sets of changes, the peak and let-off changes differ from
@@ -1136,10 +1137,16 @@ does no work, since the gap stays 0.
   stop until the gap of the other cam closes at x₂, located as the first
   stop. `end` is the sample at x₂. When both cams stop together, x₂ = x₁.
   The search for x₂ ends at the end of the stop search, 10 % of the design
-  draw beyond x_f, or when the draw force exceeds 5 times its peak before
-  x₁; then the result reports `analysis-no-second-stop`.
+  draw beyond x_f, or when the draw force exceeds 5 times its peak over
+  every solved pose before x₁, sampled or not; then the result reports
+  `analysis-no-second-stop`.
 - **Wall stiffness.** dF/dx with both cams on their stops, a forward
-  difference over 10 µm at x₂.
+  difference over 10 µm at x₂. A solve that fails there gives
+  `analysis-no-convergence`.
+- **Timing rate.** dΔθ/dL_c,t at a fixed nock per sample from the elastic
+  Jacobian over (q, λ), formed by forward differences at the sample with
+  its stops held: J·dz = e_c,t. With EA = 3e5 N on the default design it
+  is 66.7 rad/m at the stop, against 116 rad/m from the rigid Jacobian.
 - **Energy.** The work of the draw force equals the limb energy plus the
   cord energy, ½·Σ_k C_k·T_k².
 
@@ -1474,7 +1481,8 @@ Measured values are the largest errors over the tested samples.
 | Elastic cords: trapezoid work of F on 3000 samples against E1(α_t) + E1(α_b) + ½·Σ C_k·T_k², to x₁ and to x₂ | 1e-7 and 1e-5 relative | 3.1e-9, 2.3e-7 |
 | Elastic cords: Δθ at x₁ from EA 2e5 N and 4e5 N on the cables against dΔθ/dL_c,t times the differential stretch | 2 % | 0.38 % |
 | Elastic cords: wall stiffness at x₂ against the closed form of [Elastic cords](#elastic-cords) | 1 % | 0.10 % |
-| Asymmetric analysis with elastic cords, EA 2.97e5 N, top cable 1 mm longer, with its reference, timed in the worker thread | 60 ms, tested with a factor 5 margin | 55 ms to 61 ms median after warm-up |
+| Asymmetric analysis with elastic cords, EA 2.97e5 N, top cable 1 mm longer, with its reference, timed in the worker thread | 60 ms, tested with a factor 5 margin | 58 ms to 61 ms median after warm-up, on a machine where the rigid analysis above measures 20 ms to 26 ms |
+| Elastic cords: dΔθ/dL_c,t at the first stop against the finite-difference sensitivity, draw board | 1e-6 relative | passes |
 | Coarse solve with point 2 at 10 in and 50 N, where no lead-in wrap closes the track: no trial solves, timed in the worker thread | 10 times the 30 ms coarse budget | 75 ms to 89 ms after warm-up; 75 ms to 99 ms in the coverage run (spread of 7 runs) |
 
 Realistic twin cam of the tests: default geometry (ATA 33 in, brace height
