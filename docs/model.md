@@ -1144,8 +1144,9 @@ the cam can reach its stop again. `stops.releases` counts the releases.
   every solved pose before x₁, sampled or not; then the result reports
   `analysis-no-second-stop`.
 - **Wall stiffness.** dF/dx with both cams on their stops, a forward
-  difference over 10 µm at x₂. A solve that fails there gives
-  `analysis-no-convergence`.
+  difference over 10 µm at x₂, from a fresh copy of the pose at x₂; a
+  failed solve is tried again in 4 and then 16 sub-steps. A solve that
+  still fails gives `analysis-no-convergence`.
 - **Timing rate.** dΔθ/dL_c,t at a fixed nock per sample from the elastic
   Jacobian over (q, λ), formed by forward differences at the sample with
   its stops held: J·dz = e_c,t. With EA = 3e5 N on the default design it

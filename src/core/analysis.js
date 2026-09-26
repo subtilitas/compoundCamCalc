@@ -113,8 +113,9 @@ const ELASTIC_TOLERANCE = 1e-14;
 const FD_STEP = 1e-7;
 /** The elastic Jacobian is formed again when an iteration reduces the residual by less than this factor. */
 const JAC_REFRESH = 0.25;
-/** Draw step of the wall stiffness (m). */
+/** Draw step of the wall stiffness (m), and the sub-steps of its retries. */
 const WALL_STEP = 1e-5;
+const WALL_RETRY_STEPS = Object.freeze([4, 16]);
 /** The search for the second stop ends when the draw force exceeds this multiple of the peak before the first stop. */
 const FORCE_CAP = 5;
 /** Range of the axial stiffness EA of a cord (N). */
@@ -1210,17 +1211,36 @@ function setWall(march, wall) {
  * @returns {number | string}
  */
 function wallStiffness(ctx, sample) {
-  const p = copyPose(sample.pose);
-  p.active[0] = 1;
-  p.active[1] = 1;
-  p.jac = null;
-  const r0 = solveAt(ctx, p, sample.x);
-  if (r0) return r0;
-  const f0 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
-  const r1 = solveAt(ctx, p, sample.x + WALL_STEP);
-  if (r1) return r1;
-  const f1 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
-  return (f1 - f0) / WALL_STEP;
+  /**
+   * Both stops held, from a fresh copy of the sample, to x + WALL_STEP in
+   * the given number of steps.
+   * @param {number} steps
+   * @returns {number | string}
+   */
+  const attempt = (steps) => {
+    const p = copyPose(sample.pose);
+    p.active[0] = 1;
+    p.active[1] = 1;
+    p.jac = null;
+    p.ky = NaN;
+    const r0 = solveAt(ctx, p, sample.x);
+    if (r0) return r0;
+    const f0 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
+    for (let k = 1; k <= steps; k++) {
+      const r = solveAt(ctx, p, sample.x + (WALL_STEP * k) / steps);
+      if (r) return r;
+    }
+    const f1 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
+    return (f1 - f0) / WALL_STEP;
+  };
+  // Retries in smaller steps, so that the start pose from the march does
+  // not decide whether the wall solves.
+  let result = attempt(1);
+  for (const steps of WALL_RETRY_STEPS) {
+    if (typeof result === 'number') break;
+    result = attempt(steps);
+  }
+  return result;
 }
 
 /**

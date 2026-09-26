@@ -240,6 +240,19 @@ describe('elastic cords', () => {
     expect(analyseTiming({ ...base, stiffness: equal, offsets: { topCable: 1 * MM } }).stops.releases).toBe(0);
   });
 
+  it('give the same second stop and wall stiffness at any sample count', () => {
+    const stiffness = { string: 76412905.27, topCable: 3924711.71, bottomCable: 47385.41 };
+    const offsets = { topCable: 3.14688 * MM, bottomCable: 4.50055 * MM, string: 3.0285 * MM, nockHeight: 1.41769 * MM };
+    const dense = analyseTiming({ ...base, stiffness, offsets });
+    expect(dense.status).toBe('ok');
+    for (const samples of [2, 3, 5, 10, 50]) {
+      const a = analyseTiming({ ...base, stiffness, offsets, samples });
+      expect(a.status, String(samples)).toBe('ok');
+      expect(Math.abs(a.stops.x2 - dense.stops.x2)).toBeLessThan(1e-9);
+      expect(Math.abs(a.stops.wallStiffness - dense.stops.wallStiffness)).toBeLessThanOrEqual(1e-6 * dense.stops.wallStiffness);
+    }
+  });
+
   it('report a wall stiffness that cannot be solved', () => {
     const a = analyseTiming({ ...base, stiffness: { string: 8.04e10, topCable: 2.62e4, bottomCable: 1.31e13 } });
     expect(a.stops.second).not.toBeNull();
