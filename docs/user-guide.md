@@ -157,9 +157,10 @@ focus moves to the next useful button.
   change, string length change (whole string) and nocking point above the
   string centre, measured along the string. Positive values lengthen the
   cord or raise the nocking point. Ranges: cables −20 mm to 20 mm, string
-  and nocking point −50 mm to 50 mm; default 0. These values change only
-  the [Timing](#timing) panel; the cam, its checks, the results above and
-  the exports stay the same.
+  and nocking point −50 mm to 50 mm; default 0. These values change the
+  [Timing](#timing) panel, the [string plan](#string-plan) and two extra
+  export files; the cam, its checks, the results above and the design
+  export files stay the same.
 - **Units**: draw length in in, mm or cm; force in N or lbf; dimensions in
   mm or in; energy in J or ft·lbf; stiffness in N/mm or lbf/in. The model works in SI units (metre, newton, joule); the units only
   change the display and the default unit of typed values.
@@ -497,6 +498,21 @@ The list under the drawing gives:
 The cord lengths show in both dimension units. They do not include the
 wrap around a post, loops, serving or stretch. Add these for the build.
 
+**With timing settings.** When any value of the Timing settings is not 0,
+the plan shows the changed bow of the [Timing](#timing) analysis instead,
+and the caption says "Bow with the timing settings; the cam and the
+lengths listed are those of the design". Each half is drawn from its own
+pose: the cams turn by different angles and the nock sits off the axis.
+The outlines show brace and the end of the draw of the changed bow (the
+first stop, or full draw when no stop is reached). The draw position
+moves over that range at the same fraction of the draw: brace of the
+design shows brace of the changed bow, full draw of the design shows the
+end of its draw. The load arrows are left out; the line under the drawing
+gives the draw length, the nock height and the cam timing of the pose
+shown.
+The list adds the brace height and the end of the draw of the changed
+bow. The cam and the listed cord lengths stay those of the design.
+
 ## Loads
 
 The chart shows three forces against the draw length:
@@ -551,7 +567,8 @@ example a cord that runs off its track, are listed under the values; they
 do not change the status of the cam.
 
 While an input is dragged, the panel keeps the values of the last full
-solve and says so. Limitations: the cords do not stretch, so the second
+solve and says so. The [string plan](#string-plan) draws the changed bow,
+and the Export panel adds a timing string plan and a timing table. Limitations: the cords do not stretch, so the second
 stop and the wall stiffness are not computed, and the draw ends at the
 first stop.
 
@@ -580,10 +597,24 @@ data, the file list and the warnings. Each file also has its own button.
 | Force table (CSV) | One row per solved draw position, in this column order: draw length (AMO), nock to pivot point, target draw force, achieved draw force, cam rotation from brace, limb rotation, string tension, tension of each cable, load on each limb tip. Each header carries its unit |
 | Stacked cam (STEP) | All five plates as solids, plate 5 at the bottom and plate 1 on top, with the pitch lines of both tracks as wireframe in the middle of their groove plates |
 | Plates 1 to 5 (STEP) | One solid per file, on z = 0 to its thickness |
+| Timing string plan (DXF) | Only with timing settings not 0. Both halves of the changed bow at its brace (layer BRACE) and at the end of its draw (END), each half from its own pose, and a text block with the settings, the brace height, the end of the draw, the first stop and the cam timing |
+| Timing table (CSV) | Only with timing settings not 0. One row per analysis sample from brace to the end of the draw: draw length (AMO), nock to pivot point, nock height, draw force, top and bottom cam rotation, cam timing, string and cable tension of each half |
 
 File names read `cam-<date>-<design id>-<part>`, for example
 `cam-20260925-187dd8-plate1-string-flange.dxf`. The design id changes with
-every input except the display units, so files of one design share it.
+every input except the display units and the Timing settings, so files of
+one design share it. The timing files add a timing id of six hex digits
+from the four Timing settings, for example
+`cam-20260925-187dd8-timing-3fa2c1.csv` and
+`cam-20260925-187dd8-timing-3fa2c1-string-plan.dxf`. The Export panel
+shows them in the group "Timing (analysis only)" when the exported cam
+has timing settings not 0 and they are the timing settings of the current
+inputs; while an edited timing setting is being solved, the group and the
+ZIP leave them out. Problems of the analysis, for example a cord that runs
+off its track, are listed in the text block of the timing string plan and
+in the README. When the analysis finds no braced bow for the timing
+settings, the timing files are left out and a warning under the buttons
+and in the README names the problem.
 
 **Plates.** The plates stack from the string side (+Z towards the viewer):
 
@@ -652,9 +683,13 @@ display units selected now. The report contains:
   with its problems and suggestions;
 - the force chart with the target and the achieved curve, and lines at
   brace and full draw;
-- the cam and the string plan at brace;
+- the cam and the string plan at brace; with timing settings not 0 the
+  string plan shows the changed bow;
 - the build lengths of the string plan;
 - the loads chart and the largest loads;
+- the values and the problems of the Timing panel, when the timing
+  settings listed are those the cam was solved with; otherwise the string
+  plan shows the design bow;
 - a force table at 10 % steps of the draw from brace to full draw: draw
   force, string tension, cable tension, limb tip load and cam rotation;
 - the note that the model is static.

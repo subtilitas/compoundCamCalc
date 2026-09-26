@@ -4,14 +4,21 @@
  * the draw position (solid), with the load on the limb tip as an arrow.
  * The lengths are listed under the drawing.
  *
+ * With changed cords in the Timing settings (core/timinglayout) the plan
+ * shows the changed bow instead: each half from the analysis, the outlines
+ * at its brace and at the end of its draw (the first stop), the nock off
+ * the axis. The cam and the listed lengths stay those of the design.
+ *
  * World frame as in core/geometry (origin at the grip pivot point, x
  * towards the archer, y up); the SVG user space flips y. The bottom half is
- * the top half under scale(1, −1).
+ * the top half under scale(1, −1); with changed cords it is drawn from its
+ * own pose, in its mirror frame under scale(1, −1).
  * @module ui/stringplan
  */
 
 import { fromSI } from '../core/units.js';
 import { bowPoseAt, createBowPose } from '../core/layout.js';
+import { createTimingLayout, timingPoseAt } from '../core/timinglayout.js';
 import { pathOf } from './camview.js';
 import { DEGREE, dimsText, drawText, fixed, forceText } from './display.js';
 import { h, setAttrs, svg } from './dom.js';
@@ -22,11 +29,36 @@ import { FIT_PADDING, KEYS_HELP, coord, createViewport, viewBoxFor } from './vie
 /** @typedef {import('../core/layout.js').BowPose} BowPose */
 /** @typedef {import('../state/schema.js').Units} Units */
 /** @typedef {import('./viewport.js').Bounds} Bounds */
+/** @typedef {import('../core/timinglayout.js').TimingLayout} TimingLayout */
+/** @typedef {import('../core/timinglayout.js').TimingPose} TimingPose */
+/** @typedef {import('../core/timinglayout.js').HalfPose} HalfPose */
+
+/**
+ * One half as the plan draws it, in its own frame: a BowPose, or a half of
+ * the changed bow with the nock at height nockY.
+ * @typedef {object} PlanPose
+ * @property {number} x nock position (m)
+ * @property {number} [nockY] nock height in the frame of the half (m), 0 when absent
+ * @property {number} pivotX
+ * @property {number} pivotY
+ * @property {number} axleX
+ * @property {number} axleY
+ * @property {number} theta
+ * @property {number} stringX
+ * @property {number} stringY
+ * @property {number} cableX
+ * @property {number} cableY
+ * @property {number} anchorX
+ * @property {number} anchorY
+ */
 
 /** Caption over a stale plan. */
 export const STALE_CAPTION = 'Bow of the last cam that met every check';
 /** Caption over the plan while newer inputs are being solved. */
 export const OUTDATED_CAPTION = 'Bow of the previous inputs; solving the current inputs';
+
+/** Caption of the changed bow of the Timing settings. */
+export const TIMING_CAPTION = 'Bow with the timing settings; the cam and the lengths listed are those of the design';
 
 /** Sentence added to a stale caption while the current inputs are being solved. */
 export const SOLVING_SUFFIX = '; solving the current inputs';
@@ -38,11 +70,15 @@ export const SOLVING_SUFFIX = '; solving the current inputs';
  * @param {boolean} hasFull the solve reached full draw
  * @param {boolean} stale the plan shows the last cam that met every check
  * @param {Units} units
+ * @param {boolean} [timing] the plan shows the changed bow of the Timing settings
  */
-export function planLabel(ataBrace, hasFull, stale, units) {
+export function planLabel(ataBrace, hasFull, stale, units, timing = false) {
   const ata = Number.isFinite(ataBrace) ? `, axle-to-axle ${dimsText(ataBrace, units)} at brace` : '';
-  const outlines = hasFull ? 'outlines at brace and full draw' : 'outline at brace; full draw not solved';
-  return `String plan, side view of the bow, top and bottom symmetric${ata}; ${outlines}, `
+  const outlines = timing
+    ? 'outlines at brace and at the end of the draw'
+    : hasFull ? 'outlines at brace and full draw' : 'outline at brace; full draw not solved';
+  const halves = timing ? 'top and bottom with the timing settings' : 'top and bottom symmetric';
+  return `String plan, side view of the bow, ${halves}${ata}; ${outlines}, `
     + `solid at the draw position; ${KEYS_HELP}${stale ? '; last cam that met every check' : ''}`;
 }
 
@@ -82,8 +118,9 @@ export function camRadius(result) {
 
 /**
  * Bounds of the plan: the riser, both axles, the nock and the cams at
- * brace and at full draw, and the grip.
- * @param {BowPose[]} poses
+ * brace and at full draw, and the grip. A half in its mirror frame counts
+ * for both halves.
+ * @param {PlanPose[]} poses
  * @param {number} radius cam radius (m)
  * @returns {Bounds}
  */
@@ -107,7 +144,7 @@ export function planBounds(poses, radius) {
   for (const p of poses) {
     add(p.pivotX, p.pivotY);
     add(p.axleX, p.axleY, radius);
-    add(p.x, 0);
+    add(p.x, p.nockY ?? 0);
   }
   return { minX, maxX, minY, maxY };
 }
@@ -151,12 +188,58 @@ export function planPoses(ctx) {
 }
 
 /**
- * Lengths listed under the plan: label, test id and text.
+ * The two halves of the changed bow as the plan draws them.
+ * @param {TimingPose} tp
+ * @returns {[PlanPose, PlanPose]}
+ */
+export function timingHalves(tp) {
+  /** @param {HalfPose} hp */
+  const plan = (hp) => ({
+    x: tp.x, nockY: hp.nockY, pivotX: tp.pivotX, pivotY: tp.pivotY, axleX: hp.axleX, axleY: hp.axleY, theta: hp.theta,
+    stringX: hp.stringX, stringY: hp.stringY, cableX: hp.cableX, cableY: hp.cableY, anchorX: hp.anchorX, anchorY: hp.anchorY,
+  });
+  return [plan(tp.top), plan(tp.bottom)];
+}
+
+/**
+ * Draw position of the changed bow for a draw position of the design: the
+ * same fraction of the draw, from brace to full draw of the design onto
+ * brace to the end of the draw of the changed bow, so the draw-position
+ * control reaches both ends of the changed draw.
+ * @param {LayoutContext} ctx
+ * @param {TimingLayout} tl
+ * @param {number} x draw position of the design (m)
+ */
+export function timingX(ctx, tl, x) {
+  const span = ctx.xFull - ctx.xBrace;
+  const u = span > 0 ? Math.min(1, Math.max(0, (x - ctx.xBrace) / span)) : 0;
+  return tl.xBrace + u * (tl.xEnd - tl.xBrace);
+}
+
+/**
+ * Text under the plan of the changed bow at a draw position: draw length,
+ * nock height and cam timing, positive with the top cam ahead.
+ * @param {TimingPose} tp
+ * @param {Units} units
+ */
+export function timingPoseText(tp, units) {
+  const dTheta = ((tp.top.theta - tp.bottom.theta) * 180) / Math.PI;
+  const t = Math.abs(dTheta) < 0.005 ? `0.00${DEGREE}` : `${dTheta > 0 ? '+' : '−'}${fixed(Math.abs(dTheta), 2)}${DEGREE}`;
+  const decimals = units.dims === 'mm' ? 2 : 3;
+  const v = fromSI(tp.y, 'length', units.dims);
+  const y = `${Math.abs(v) < 0.5 * 10 ** -decimals ? '' : v > 0 ? '+' : '−'}${fixed(Math.abs(v), decimals)} ${units.dims}`;
+  return `Timing settings at draw ${drawText(tp.x, units)} ${units.draw}: nock height ${y}, cam timing ${t}`;
+}
+
+/**
+ * Lengths listed under the plan: label, test id and text. With a layout of
+ * the changed bow, the brace height and the end of its draw follow.
  * @param {LayoutContext} ctx
  * @param {Units} units
+ * @param {TimingLayout | null} [tl]
  * @returns {{ label: string, key: string, text: string }[]}
  */
-export function planDims(ctx, units) {
+export function planDims(ctx, units, tl = null) {
   /** @param {number} v */
   const both = (v) => {
     if (!Number.isFinite(v)) return '—';
@@ -176,6 +259,12 @@ export function planDims(ctx, units) {
     },
     { label: 'Brace height', key: 'brace', text: `${fixed(fromSI(ctx.xBrace, 'length', units.draw), 2)} ${units.draw}` },
     { label: 'Draw length (AMO)', key: 'draw', text: `${drawText(ctx.xFull, units)} ${units.draw}` },
+    ...(tl
+      ? [
+          { label: 'Brace height, timing settings', key: 'timing-brace', text: `${fixed(fromSI(tl.xBrace, 'length', units.draw), 2)} ${units.draw}` },
+          { label: 'End of the draw (AMO), timing settings', key: 'timing-end', text: `${drawText(tl.xEnd, units)} ${units.draw}` },
+        ]
+      : []),
   ];
 }
 
@@ -217,17 +306,31 @@ function poseGroup(id, cls) {
 }
 
 /**
+ * A pose group of the bottom half with its own pose, in its mirror frame.
+ * @param {string} cls
+ * @returns {PoseGroup & { flip: SVGGElement }}
+ */
+function bottomGroup(cls) {
+  const g = poseGroup('', cls);
+  g.group.removeAttribute('id');
+  const flip = svg('g', { transform: 'scale(1,-1)', class: 'plan-bottom' });
+  flip.append(g.group);
+  return { ...g, flip };
+}
+
+/**
  * @param {PoseGroup} g
- * @param {BowPose} p
+ * @param {PlanPose} p
  * @param {number} r dot radius (m)
  */
 function placePose(g, p, r) {
+  const ny = coord(-(p.nockY ?? 0));
   setAttrs(g.limb, { x1: coord(p.pivotX), y1: coord(-p.pivotY), x2: coord(p.axleX), y2: coord(-p.axleY) });
   setAttrs(g.cam, { transform: `translate(${coord(p.axleX)} ${coord(-p.axleY)}) rotate(${coord((p.theta * 180) / Math.PI)})` });
-  setAttrs(g.string, { x1: coord(p.stringX), y1: coord(-p.stringY), x2: coord(p.x), y2: 0 });
+  setAttrs(g.string, { x1: coord(p.stringX), y1: coord(-p.stringY), x2: coord(p.x), y2: ny });
   setAttrs(g.cable, { x1: coord(p.cableX), y1: coord(-p.cableY), x2: coord(p.anchorX), y2: coord(-p.anchorY) });
   setAttrs(g.axle, { cx: coord(p.axleX), cy: coord(-p.axleY), r });
-  setAttrs(g.nock, { cx: coord(p.x), cy: 0, r });
+  setAttrs(g.nock, { cx: coord(p.x), cy: ny, r });
 }
 
 /**
@@ -266,11 +369,16 @@ export function createStringPlan(container) {
   const full = poseGroup(`plan-${n}-full`, 'plan-full');
   const current = poseGroup(`plan-${n}-current`, 'plan-current');
   current.group.setAttribute('data-testid', 'plan-current');
+  const braceBottom = bottomGroup('plan-brace');
+  const fullBottom = bottomGroup('plan-full');
+  const currentBottom = bottomGroup('plan-current');
+  currentBottom.group.setAttribute('data-testid', 'plan-current-bottom');
   const arrow = svg('path', { class: 'plan-load', 'data-testid': 'plan-load', fill: 'none', 'vector-effect': 'non-scaling-stroke' });
   const arrowMirror = svg('path', { class: 'plan-load', fill: 'none', 'vector-effect': 'non-scaling-stroke', transform: 'scale(1,-1)' });
   const drawing = svg('g', { class: 'cam-drawing plan-drawing' });
   drawing.append(
-    statics, brace.group, brace.mirror, full.group, full.mirror, current.group, current.mirror, arrow, arrowMirror,
+    statics, brace.group, brace.mirror, braceBottom.flip, full.group, full.mirror, fullBottom.flip,
+    current.group, current.mirror, currentBottom.flip, arrow, arrowMirror,
   );
   root.append(drawing);
   drawing.style.display = 'none';
@@ -300,6 +408,9 @@ export function createStringPlan(container) {
   // The full-draw row shows only while the full-draw outline does.
   const fullItem = /** @type {HTMLElement} */ (legend.querySelector('[data-testid="legend-plan-full"]'));
   fullItem.hidden = true;
+  const fullText = /** @type {Text} */ (fullItem.lastChild);
+  // The load arrow shows for the design bow only.
+  const loadItem = /** @type {HTMLElement} */ (legend.querySelector('[data-testid="legend-plan-load"]'));
   const caption = h('p', { class: 'camview-caption', 'data-testid': 'plan-caption', 'aria-live': 'polite' });
   caption.hidden = true;
   container.append(viewport.controls, root, load, legend, dims, caption);
@@ -311,8 +422,17 @@ export function createStringPlan(container) {
   let shownResult = null;
   let radius = 0;
   let size = 1;
-  /** @type {BowPose | null} */
+  /** @type {PlanPose | null} */
   let lastPose = null;
+  /** @type {TimingLayout | null} */
+  let tl = null;
+
+  /** @param {boolean} on show the own bottom halves in place of the mirrors */
+  const showTiming = (on) => {
+    for (const g of [brace, full, current]) g.mirror.style.display = on ? 'none' : '';
+    for (const g of [braceBottom, fullBottom, currentBottom]) g.flip.style.display = on ? '' : 'none';
+  };
+  showTiming(false);
 
   topCam.addEventListener('click', () => {
     const p = lastPose ?? null;
@@ -329,10 +449,13 @@ export function createStringPlan(container) {
       ctx = next;
       shownResult = result;
       viewport.setUnit(units.dims);
-      const text = next ? ageCaption(stale, outdated, STALE_CAPTION, OUTDATED_CAPTION) : '';
-      root.classList.toggle('cam-stale', text !== '');
+      tl = result && next ? createTimingLayout(result, next) : null;
+      const age = next ? ageCaption(stale, outdated, STALE_CAPTION, OUTDATED_CAPTION) : '';
+      root.classList.toggle('cam-stale', age !== '');
+      const text = [tl ? TIMING_CAPTION : '', age].filter(Boolean).join('. ');
       caption.textContent = text;
       caption.hidden = text === '';
+      root.dataset.timing = tl ? 'changed' : '';
       if (!result || !next) {
         viewport.clear();
         drawing.style.display = 'none';
@@ -344,39 +467,75 @@ export function createStringPlan(container) {
       }
       drawing.style.display = '';
       radius = camRadius(result);
-      const { brace: b, end: f, hasFull } = planPoses(next);
+      const design = planPoses(next);
+      const tb = tl ? timingPoseAt(tl, tl.xBrace) : null;
+      const te = tl ? timingPoseAt(tl, tl.xEnd) : null;
+      const timing = tl !== null && tb !== null && te !== null;
+      if (!timing) tl = null;
+      /** @type {PlanPose[]} */
+      const braces = timing ? timingHalves(/** @type {TimingPose} */ (tb)) : [design.brace];
+      /** @type {PlanPose[]} */
+      const ends = timing ? timingHalves(/** @type {TimingPose} */ (te)) : [design.end];
+      const hasFull = timing || design.hasFull;
+      showTiming(timing);
       full.group.style.display = hasFull ? '' : 'none';
-      full.mirror.style.display = hasFull ? '' : 'none';
+      if (!timing) full.mirror.style.display = hasFull ? '' : 'none';
       fullItem.hidden = !hasFull;
-      const base = viewBoxFor(planBounds([b, f], radius), FIT_PADDING);
+      fullText.data = timing
+        ? (tl?.analysis.stops.first ? 'At the first stop (dotted)' : 'At the end of the draw (dotted)')
+        : 'At full draw (dotted)';
+      loadItem.hidden = timing;
+      const base = viewBoxFor(planBounds([...braces, ...ends], radius), FIT_PADDING);
       size = base.size;
       viewport.setBase(base);
       const stringD = result.outlines.stringPitch ? pathOf(result.outlines.stringPitch) : '';
       const cableD = result.outlines.cablePitch ? pathOf(result.outlines.cablePitch) : '';
-      for (const g of [brace, full, current]) {
+      for (const g of [brace, full, current, braceBottom, fullBottom, currentBottom]) {
         setAttrs(g.stringTrack, { d: stringD || null });
         setAttrs(g.cableTrack, { d: cableD || null });
       }
       const r = 0.006 * size;
-      placePose(brace, b, r);
-      if (hasFull) placePose(full, f, r);
+      placePose(brace, braces[0], r);
+      if (hasFull) placePose(full, ends[0], r);
+      if (timing) {
+        placePose(braceBottom, braces[1], r);
+        placePose(fullBottom, ends[1], r);
+      }
+      const b = braces[0];
       setAttrs(riser, { x1: coord(b.pivotX), y1: coord(-b.pivotY), x2: coord(b.pivotX), y2: coord(b.pivotY) });
-      setAttrs(axis, { x1: 0, y1: 0, x2: coord(next.xFull), y2: 0 });
+      setAttrs(axis, { x1: 0, y1: 0, x2: coord(Math.max(next.xFull, tl ? tl.xEnd : 0)), y2: 0 });
       setAttrs(grip, { cx: 0, cy: 0, r: 1.5 * r });
       dims.replaceChildren(
-        ...planDims(next, units).flatMap((d) => [h('dt', {}, d.label), h('dd', { 'data-testid': `plan-${d.key}` }, d.text)]),
+        ...planDims(next, units, tl).flatMap((d) => [h('dt', {}, d.label), h('dd', { 'data-testid': `plan-${d.key}` }, d.text)]),
       );
-      setAttrs(root, { 'aria-label': planLabel(next.lengths.ataBrace, hasFull, stale, units) });
+      setAttrs(root, { 'aria-label': planLabel(next.lengths.ataBrace, hasFull, stale, units, timing) });
     },
     setPose(pose, units) {
       lastPose = pose;
       const ok = ctx !== null && pose !== null && Number.isFinite(pose.theta);
+      const tp = ok && tl && ctx ? timingPoseAt(tl, timingX(ctx, tl, /** @type {BowPose} */ (pose).x)) : null;
       current.group.style.display = ok ? '' : 'none';
-      current.mirror.style.display = ok ? '' : 'none';
-      arrow.style.display = ok ? '' : 'none';
-      arrowMirror.style.display = ok ? '' : 'none';
+      current.mirror.style.display = ok && !tl ? '' : 'none';
+      currentBottom.flip.style.display = tp ? '' : 'none';
+      arrow.style.display = ok && !tl ? '' : 'none';
+      arrowMirror.style.display = ok && !tl ? '' : 'none';
       if (!ok || !ctx) {
         load.textContent = '';
+        return;
+      }
+      if (tl) {
+        // The changed bow at the same fraction of its draw; no load arrow.
+        if (!tp) {
+          current.group.style.display = 'none';
+          load.textContent = '';
+          return;
+        }
+        const [top, bottom] = timingHalves(tp);
+        lastPose = top;
+        placePose(current, top, 0.006 * size);
+        placePose(currentBottom, bottom, 0.006 * size);
+        const text = timingPoseText(tp, units);
+        if (load.textContent !== text) load.textContent = text;
         return;
       }
       const p = /** @type {BowPose} */ (pose);

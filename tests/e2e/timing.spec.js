@@ -60,6 +60,31 @@ test.describe('Timing', () => {
     await expect(page.getByTestId('field-top-cable')).toHaveValue('1.00');
   });
 
+  test('the string plan and the exports show the changed bow', async ({ page }) => {
+    await expect(page.getByTestId('plan-caption')).toBeHidden();
+    await expect(page.getByTestId('export-timing-table')).toBeHidden();
+    await setField(page, 'top-cable', '1');
+    await solved(page);
+    await expect(page.getByTestId('plan-caption')).toHaveText(/^Bow with the timing settings; the cam and the lengths listed are those of the design/);
+    await expect(page.getByTestId('string-plan')).toHaveAttribute('data-timing', 'changed');
+    await expect(page.getByTestId('plan-current-bottom')).toHaveCount(1);
+    await expect(page.getByTestId('plan-timing-end')).toHaveText(/ in$/);
+    await expect(page.getByTestId('legend-plan-full')).toHaveText('At the first stop (dotted)');
+    await expect(page.getByTestId('legend-plan-load')).toBeHidden();
+    await expect(page.getByTestId('plan-load-text')).toHaveText(/^Timing settings at draw \d+\.\d+ in: nock height /);
+    await page.getByTestId('export-timing-table').scrollIntoViewIfNeeded();
+    const [file] = await Promise.all([page.waitForEvent('download'), page.getByTestId('export-timing-table').click()]);
+    expect(file.suggestedFilename()).toMatch(/^cam-\d{8}-[0-9a-f]{6}-timing-[0-9a-f]{6}\.csv$/);
+    await expect(page.getByTestId('export-timing-string-plan')).toBeVisible();
+
+    await setField(page, 'top-cable', '0');
+    await solved(page);
+    await expect(page.getByTestId('plan-caption')).toBeHidden();
+    await expect(page.getByTestId('string-plan')).toHaveAttribute('data-timing', '');
+    await expect(page.getByTestId('legend-plan-load')).toBeVisible();
+    await expect(page.getByTestId('export-timing-table')).toBeHidden();
+  });
+
   test('rejects a change outside its range', async ({ page }) => {
     await setField(page, 'top-cable', '25');
     await expect(page.getByTestId('field-top-cable-msg')).toContainText('Top cable length change');

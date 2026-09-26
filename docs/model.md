@@ -1156,6 +1156,37 @@ Neither length includes the wrap around a post, loops, serving or
 stretch. The axle-to-axle length at full draw is 2·O_y at the last sample.
 It is not given when the solve stopped before full draw.
 
+## Layout of the changed bow
+
+`createTimingLayout(result, frame)` in `src/core/timinglayout.js` builds
+the layout of the asymmetric analysis when its cords differ from the
+design (`analysis !== analysisReference`). `frame` gives the limb pivot Q,
+R_L and β_b, from the layout context of the same result.
+`timingPoseAt(tl, x)` gives both halves at nock position x, clamped to
+[x_brace, x_end] of the analysis. Neither function throws.
+
+Each half is given in its own mirror frame, as in the analysis. Between
+two samples θ, α, ψ_s, ψ_c, y, F and the four tensions are linear in x.
+Every point follows from them:
+
+    β = β_b − α,   O = Q + R_L·(cos β, sin β)
+    A = (O_x', −O_y')          O' axle of the other half
+    X_s = O + R(−θ)·X(ψ_s),    X_c = O + R(−θ)·X(ψ_c)
+    N = (x, y) top frame,      N = (x, −y) bottom frame
+
+At a sample the free string span N − X_s and the free cable span A − X_c
+are normal to the support normal (cos(ψ − θ), sin(ψ − θ)) to 1e-9, for
+both halves; the unit tests check this on the default design with +1 mm
+top cable.
+
+The string plan draws the bottom half from its own pose under the mirror
+y → −y. A draw position x of the design maps to the same fraction of the
+changed draw, x_T = x_brace,T + u·(x_end,T − x_brace,T) with
+u = (x − x_brace)/(x_f − x_brace) clamped to [0, 1]. The timing string plan (DXF) holds both halves at x_brace and
+x_end; the timing table (CSV) holds every sample from x_brace to x_end.
+The design files do not change; the timing files carry the design id and
+a timing id, six hex digits of an FNV-1a hash of the four settings.
+
 ## Export geometry
 
 `src/core/bspline.js` and `src/export/` turn the solved tracks into CAD
