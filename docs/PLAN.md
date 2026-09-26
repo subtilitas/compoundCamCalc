@@ -146,7 +146,11 @@ results are in `docs/model.md`.
   N = 12, so the Shape select switches to free-form without changing the
   cam (one undo step). Sampling any analytic track at N = 12 keeps the cam
   size within 0.1 mm and the largest force difference within 0.05 N on the
-  sample designs.
+  sample designs. A strongly elliptical track takes the smallest N from 12
+  to 16 whose spline keeps the smallest groove ρ within max(1 mm, 10 %)
+  and p within 50 µm of the exact track (`sampleAnalytic`), or 16 with a
+  message when none does; the Shape switch, the presets and Optimise use
+  the same sampling.
 - Validation checks structure only: an array of 8 to 16 finite values from
   2 mm to 150 mm. Convexity and bore clearance stay solver diagnostics
   (`string-radius`, `string-clearance`) with the rule of the other shapes,
@@ -173,7 +177,9 @@ results are in `docs/model.md`.
   only"). A drag projects the pointer onto n_i and moves the bump, stopped
   by `dragLimit`; values are rounded to 0.1 µm and step back by 1 µm when
   the rounded track misses the limit. A track that misses the limit
-  already is limited by the value range only. Keyboard: one tab stop
+  already is limited by the value range only. The stop reason, bend limit
+  or value range, sets the status text, `aria-valuetext` and the style of
+  the handle. Keyboard: one tab stop
   (roving focus), Left and Right pick the point, Up and Down change one
   value by 0.1 mm (Shift 0.5 mm) or 0.005 in (Shift 0.02 in), refused when
   it crosses the limit. An `aria-live` line reads out the point, its value
@@ -186,15 +192,19 @@ results are in `docs/model.md`.
 - Shape presets (the modifiers in the user interface): Oval, Rounded
   triangle, Rounded square, Egg, Size and Shift, each with Amount and
   Angle, applied to the current track. The amount starts at the nominal
-  amount clamped by `largestAmount` with a 0.5 mm margin. An eccentric or
-  elliptical track is sampled at 12 points in the same action, so one undo
+  amount clamped by `presetRoom` with a 0.5 mm margin; the line under it
+  says what limits it, and tells a track below the limit from one inside
+  the margin. Size on such a track starts at the smallest amount that
+  restores the margin; Shift is limited by the value range and the bore
+  clearance only. An eccentric or elliptical track is sampled
+  (`sampleAnalytic`, 12 to 16 points) in the same action, so one undo
   step reverts it. The panel says that a preset can make the design fail
   and that the solve shows why.
 
 ### Optimise
 
 A search for a free-form string track that improves one goal of a design
-that meets every check (`src/core/optimise.js`, run by
+that meets every check, plausibility warnings allowed (`src/core/optimise.js`, run by
 `src/worker/optimise.worker.js`, a second module worker; the solver
 client's latest-request-wins scheduler would drop the solves of a search).
 
@@ -204,7 +214,9 @@ client's latest-request-wins scheduler would drop the solves of a search).
   achieved and the target samples). A third goal, the gentlest cable
   track, is left out: the constrained fit pins the smallest cable ρ at its
   limit on every sample design.
-- Constraints with margins: status ok, no diagnostic, no warning; pitch
+- Constraints with margins: status ok, no diagnostic, no warning the
+  current design does not have (a cam-size warning is what the cam goal
+  is for, and a candidate may clear it); pitch
   string ρ ≥ ρ_lim + max(1 mm, 10 % of ρ_lim), or the start's own smallest
   ρ when that is lower (a start inside the margin keeps at least its own
   bend); string and cable wrap ≤ 350°; for the cam goal a force difference
@@ -214,8 +226,12 @@ client's latest-request-wins scheduler would drop the solves of a search).
   k = 1 … min(4, N/2); the modes up to N/2 join once the step is below
   0.2 mm. Moving single values stalls: on a round track p(ψ) + p(ψ + π) is
   the same in every direction, so a single value makes the cam larger on
-  one side (146 solves left the crossbow at 86.0 mm and the mini bow at
-  26.4 mm; modes reached 70.4 mm and 18.5 mm).
+  one side (before the force-curve rule of the cam goal, 146 solves over
+  single values left the crossbow at 86.0 mm and the mini bow at 26.4 mm,
+  where modes reached 70.4 mm and 18.5 mm; with the rule, modes take the
+  crossbow from 86.0 mm to 69.8 mm in 157 solves and leave the mini bow at
+  26.4 mm after 84 solves, since every smaller cam found there raises its
+  force difference above the start's 1.28 N).
 - Compass search: poll order low mode first, + before −, the last
   successful direction first; opportunistic (the first improvement by
   more than 1e-9 is accepted). The step starts at 5 % of the mean value,
@@ -225,19 +241,24 @@ client's latest-request-wins scheduler would drop the solves of a search).
 - Each candidate is rounded to 0.1 µm and prescreened on the spline (value
   range, pitch-line ρ with its margin, bore clearance); a rejected
   candidate is not solved. Solves are cached on the rounded values. The
-  cam goal solves coarse (the cam size agrees with a full solve to
-  0.001 mm) and confirms each improvement with a full solve; the force
-  goal solves full throughout (a coarse force difference reads 0.03 N to
-  0.6 N low).
+  cam goal solves coarse (on the default design and the nine samples the
+  cam size agrees with a full solve to within 0.003 mm, 0.0025 mm at most
+  on the hunting bow) and confirms each improvement with a full solve; the
+  force goal solves full throughout (a coarse force difference reads
+  0.01 N to 0.62 N low: 0.012 N on the youth bow, 0.620 N on the
+  crossbow). A current design whose coarse solve fails a check while the
+  full one passes ends the cam goal at once (`start-coarse`).
 - Budget: 600 solves, plus the full (and for the cam goal the coarse)
   solve of the current design, which also warms up the worker; 120 s
   wall-clock as a safety stop. Measured in Node.js: the default design
-  with the cam goal converges after 178 solves in 4.5 s, 98.2 mm →
+  with the cam goal converges after 178 solves in 4.8 s, 98.2 mm →
   93.9 mm at a force difference of 3.56 N (start 3.71 N); the force goal
   uses all 600 solves in 22 s, 3.71 N → 2.48 N at a cam of 98.2 mm. The
   hunting sample goes from 132.2 mm to 96.4 mm (cam goal, 600 solves), the
   crossbow from 86.0 mm to 69.8 mm (cam goal, 157 solves) and from 11.87 N
-  to 3.35 N (force goal).
+  to 3.35 N (force goal). Over the nine samples and both goals a run takes
+  2.1 s (mini bow, cam goal, 84 solves) to 42.6 s (youth bow, force goal,
+  600 solves).
 - The worker posts the start figures, progress after each solve, every
   confirmed improvement and the outcome. Stop terminates the worker and
   keeps the last improvement. A change of the design (units aside) or

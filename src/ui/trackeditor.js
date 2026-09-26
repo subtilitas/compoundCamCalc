@@ -8,8 +8,9 @@
  *   groove. The working arc of the latest result (brace to full-draw
  *   contact) is drawn thick; handles outside it shape the outline only.
  * - A drag moves a smooth bump along the direction of the value and stops
- *   exactly at the bend limit (core/freeform dragLimit). One drag is one
- *   undo step.
+ *   exactly at the bend limit or at the end of the value range
+ *   (core/freeform dragLimit); the stopped handle and its text say which.
+ *   One drag is one undo step.
  * - Keyboard: one tab stop for the handles (roving focus). Left and Right
  *   pick a point, Up and Down change its value by 0.1 mm (Shift 0.5 mm), in
  *   inch mode 0.005 in (Shift 0.02 in).
@@ -17,16 +18,17 @@
  *   select (8, 12 or 16, resampling the spline).
  * - Shape presets (core/freeform modifiers) add a term to the current track
  *   and turn an eccentric or elliptical track into a free-form one; the
- *   default amount is clamped to the bend limit plus PRESET_MARGIN.
+ *   default amount is clamped to the bend limit plus PRESET_MARGIN, and the
+ *   panel says what limits it (core/freeform presetRoom).
  *
  * Every change is one store action and one undo step.
  * @module ui/trackeditor
  */
 
 import {
-  FREEFORM_POINTS, FREEFORM_RANGE, MODIFIERS, MODIFIER_MAX_AMOUNT, VALUE_RESOLUTION, applyModifier, contactPoints,
-  defaultAmount, dragBump, dragLimit, freeformLimit, knotAngles, largestAmount, offsetValues, pitchMinRho,
-  resampleChecked, sampleTrack, withinLimit,
+  FREEFORM_RANGE, LIMIT_TOLERANCE, MODIFIERS, MODIFIER_MAX_AMOUNT, VALUE_RESOLUTION, applyModifier, contactPoints,
+  dragBump, dragLimit, freeformLimit, knotAngles, offsetValues, pitchMinRho, pointsFor, presetRoom, resample,
+  resampleChecked, roomDefault, sampleAnalytic, withinLimit,
 } from '../core/freeform.js';
 import { createSupport, freeformSupport } from '../core/support.js';
 import { fromSI, parseQuantity, toSI } from '../core/units.js';
@@ -42,6 +44,8 @@ import { infoButton } from './glossary.js';
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../core/freeform.js').FreeformLimit} FreeformLimit */
 /** @typedef {import('../core/freeform.js').ModifierId} ModifierId */
+/** @typedef {import('../core/freeform.js').PresetRoom} PresetRoom */
+/** @typedef {import('../core/freeform.js').SampledTrack} SampledTrack */
 
 /** Decimals of free-form track values in the table and the report, per dimension unit. */
 export const VALUE_DECIMALS = Object.freeze({ mm: 2, in: 4 });
@@ -78,14 +82,120 @@ export function roundValues(values) {
   return values.map((v) => Number(v.toFixed(digits)));
 }
 
+/** Sampled analytic tracks, per track object: the panel renders often. */
+/** @type {WeakMap<StringTrack, SampledTrack>} */
+const sampledTracks = new WeakMap();
+
 /**
- * Values of the current track: the free-form values, or the eccentric or
- * elliptical track sampled at FREEFORM_POINTS.default points.
+ * The current track as free-form values with their check: the free-form
+ * values, or the eccentric or elliptical track sampled by
+ * core/freeform sampleAnalytic (12 to 16 points).
+ * @param {StringTrack} track
+ * @returns {SampledTrack}
+ */
+export function trackSample(track) {
+  let out = sampledTracks.get(track);
+  if (!out) {
+    out = sampleAnalytic(track);
+    sampledTracks.set(track, out);
+  }
+  return out;
+}
+
+/**
+ * Values of the current track, as {@link trackSample}.
  * @param {StringTrack} track
  * @returns {number[]} (m)
  */
 export function trackValues(track) {
-  return track.shape === 'freeform' ? [...track.freeform.values] : sampleTrack(track, FREEFORM_POINTS.default);
+  return [...trackSample(track).values];
+}
+
+/** Names of the analytic shapes in the sampling note. */
+const SHAPE_NAMES = Object.freeze({ eccentric: 'eccentric circle', ellipse: 'ellipse', freeform: 'free-form track' });
+
+/**
+ * Note on an eccentric or elliptical track sampled for a free-form track
+ * that does not follow it within SAMPLE_TOLERANCE of core/freeform, or ''
+ * when it does.
+ * @param {SampledTrack} sampled
+ * @param {StringTrack['shape']} shape shape of the sampled track
+ * @param {Units} units
+ */
+export function sampledText(sampled, shape, units) {
+  if (sampled.within) return '';
+  return `The ${SHAPE_NAMES[shape]} sampled at ${sampled.points} points does not follow it closely: `
+    + `the groove radius differs by up to ${dimsText(sampled.pError, units)}, and the sharpest bend of the groove is `
+    + `${dimsText(sampled.minRho, units)} against ${dimsText(sampled.exactMinRho, units)}.`;
+}
+
+/**
+ * Range of the groove radius in the dimension unit: "2 to 150 mm", or
+ * "0.079 to 5.906 in (2 to 150 mm)".
+ * @param {Units} units
+ */
+export function rangeText(units) {
+  const mm = `${plain(FREEFORM_RANGE.min * 1e3)} to ${plain(FREEFORM_RANGE.max * 1e3)} mm`;
+  if (units.dims === 'mm') return mm;
+  return `${fixed(fromSI(FREEFORM_RANGE.min, 'length', 'in'), 3)} to ${fixed(fromSI(FREEFORM_RANGE.max, 'length', 'in'), 3)} in (${mm})`;
+}
+
+/**
+ * A signed length in the dimension unit with the table decimals and a
+ * minus sign, without unit: "−21.01".
+ * @param {number} v (m)
+ * @param {Units} units
+ */
+function signedText(v, units) {
+  return valueText(v, units).replace(/^-/, '−');
+}
+
+/**
+ * First error of free-form values in the words of the editor: "Point 2
+ * would get a groove radius of −1.20 mm; groove radii stay from 2 to
+ * 150 mm", with the numbers in the dimension unit (see {@link rangeText});
+ * null without error.
+ * @param {readonly number[]} values (m)
+ * @param {Units} units
+ * @returns {string | null}
+ */
+export function valuesError(values, units) {
+  const error = freeformErrors(values)[0];
+  if (!error) return null;
+  const index = /\[(\d+)\]$/.exec(error.path);
+  if (!index) return error.message;
+  const i = Number(index[1]);
+  const v = values[i];
+  const got = Number.isFinite(v) ? ` would get a groove radius of ${signedText(v, units)} ${units.dims};` : ': the groove radius is not a number;';
+  return `Point ${i + 1}${got} groove radii stay from ${rangeText(units)}`;
+}
+
+/**
+ * Range of an offset of all values that keeps them in FREEFORM_RANGE (m).
+ * @param {readonly number[]} values (m)
+ * @returns {{ min: number, max: number }}
+ */
+export function offsetRange(values) {
+  return { min: FREEFORM_RANGE.min - Math.min(...values), max: FREEFORM_RANGE.max - Math.max(...values) };
+}
+
+/**
+ * Message of an offset outside {@link offsetRange}, or null within it.
+ * The bounds are rounded inwards to the table decimals.
+ * @param {readonly number[]} values (m)
+ * @param {number} delta (m)
+ * @param {Units} units
+ * @returns {string | null}
+ */
+export function offsetError(values, delta, units) {
+  const range = offsetRange(values);
+  // Rounding of the typed value: 1 nm.
+  if (delta >= range.min - 1e-9 && delta <= range.max + 1e-9) return null;
+  const d = VALUE_DECIMALS[units.dims];
+  const scale = 10 ** d;
+  const lo = fixed(Math.ceil(fromSI(range.min, 'length', units.dims) * scale - 1e-6) / scale, d).replace(/^-/, '−');
+  const hi = fixed(Math.floor(fromSI(range.max, 'length', units.dims) * scale + 1e-6) / scale, d).replace(/^-/, '−');
+  return `The offset must be from ${lo} to ${hi} ${units.dims}, so every groove radius stays from ${rangeText(units)}`;
 }
 
 /**
@@ -99,6 +209,11 @@ export function limitOf(s, margin = 0) {
 }
 
 /**
+ * Why a drag stopped: the bend limit, or the end of the value range.
+ * @typedef {'bend' | 'range'} StopReason
+ */
+
+/**
  * Values after a drag of the bump at index by delta, stopped at the limit.
  * A track that misses the limit already is limited by the value range only,
  * so it can still be moved. The values are rounded; a rounded track that
@@ -107,11 +222,12 @@ export function limitOf(s, margin = 0) {
  * @param {number} index
  * @param {number} delta requested move (m), positive outwards
  * @param {FreeformLimit} limit
- * @returns {{ values: number[], moved: number, stopped: boolean }} moved:
- *   the move applied (m); stopped: the move is shorter than requested
+ * @returns {{ values: number[], moved: number, stopped: boolean, reason: StopReason | null }}
+ *   moved: the move applied (m); stopped: the move is shorter than
+ *   requested; reason: what stopped it, null when not stopped
  */
 export function dragValues(values, index, delta, limit) {
-  if (delta === 0 || !Number.isFinite(delta)) return { values: [...values], moved: 0, stopped: false };
+  if (delta === 0 || !Number.isFinite(delta)) return { values: [...values], moved: 0, stopped: false, reason: null };
   const direction = delta > 0 ? 1 : -1;
   const bound = withinLimit(values, limit) ? limit : { ...limit, rho: -Infinity, margin: 0 };
   const most = Math.abs(dragLimit(values, index, direction, bound));
@@ -122,7 +238,28 @@ export function dragValues(values, index, delta, limit) {
     out = roundValues(dragBump(values, index, direction * t));
   }
   if (t === 0) out = [...values];
-  return { values: out, moved: direction * t, stopped: Math.abs(delta) > t };
+  const stopped = Math.abs(delta) > t;
+  /** @type {StopReason | null} */
+  let reason = null;
+  if (stopped) {
+    // A value just past the stop outside the range: the range stopped it.
+    const past = dragBump(values, index, direction * (most + 2 * LIMIT_TOLERANCE));
+    const inRange = past.every((v) => v >= FREEFORM_RANGE.min && v <= FREEFORM_RANGE.max);
+    reason = bound.rho === -Infinity || !inRange ? 'range' : 'bend';
+  }
+  return { values: out, moved: direction * t, stopped, reason };
+}
+
+/**
+ * Text of a stopped drag: ", stopped at the bend limit" or ", stopped at
+ * the end of the groove radius range, 2 to 150 mm"; '' when not stopped.
+ * @param {StopReason | null} reason
+ * @param {Units} units
+ */
+export function stoppedText(reason, units) {
+  if (reason === 'bend') return ', stopped at the bend limit';
+  if (reason !== 'range') return '';
+  return `, stopped at the end of the groove radius range, ${rangeText(units)}`;
 }
 
 /**
@@ -266,7 +403,7 @@ export function presetText(id, amount, angle, units) {
 
 /**
  * Values of a track with a preset added, rounded. An eccentric or
- * elliptical track is sampled at FREEFORM_POINTS.default points first.
+ * elliptical track is sampled first, as {@link trackSample}.
  * @param {StringTrack} track
  * @param {ModifierId} id
  * @param {number} amount (m)
@@ -274,6 +411,100 @@ export function presetText(id, amount, angle, units) {
  */
 export function presetValues(track, id, amount, angle) {
   return roundValues(applyModifier(trackValues(track), id, amount, angle));
+}
+
+/**
+ * Bore radius plus minimum wall of a design, the clearance a Shift keeps (m).
+ * @param {ProjectState} s
+ */
+export function wallOf(s) {
+  return s.body.boreDiameter / 2 + s.body.minWall;
+}
+
+/**
+ * An amount rounded up to the table decimals of the dimension unit, so
+ * the amount shown still reaches the limit it was found for (m).
+ * @param {number} amount (m)
+ * @param {Units} units
+ */
+export function roundUp(amount, units) {
+  const scale = 10 ** VALUE_DECIMALS[units.dims];
+  // 1e-6 of a display step absorbs the rounding of the conversion.
+  return toSI(Math.ceil(fromSI(amount, 'length', units.dims) * scale - 1e-6) / scale, 'length', units.dims);
+}
+
+/**
+ * Room of a preset on a track and the amount to fill in: the clamped
+ * default of core/freeform, and for Size on a track that misses the
+ * margin the smallest amount that restores it, rounded up to the table
+ * decimals.
+ * @param {readonly number[]} values (m)
+ * @param {ModifierId} id
+ * @param {number} angle (rad)
+ * @param {ProjectState} s
+ * @returns {{ room: PresetRoom, amount: number, rho: number }} rho: the
+ *   sharpest bend of the pitch line of the track the preset changes (m)
+ */
+export function presetPlan(values, id, angle, s) {
+  const limit = limitOf(s, PRESET_MARGIN);
+  const room = presetRoom(values, id, angle, limit, wallOf(s));
+  const raw = Math.max(0, roomDefault(values, id, room));
+  let amount = raw;
+  if (id === 'size' && room.track !== 'within' && raw > 0) {
+    // The nearest amount of the table decimals when it reaches the margin
+    // (the bisection ends up to 1 µm above the exact amount), else the next one up.
+    const near = toSI(Number(valueText(raw, s.units)), 'length', s.units.dims);
+    amount = near > 0 && withinLimit(applyModifier(values, 'size', near, 0), limit) ? near : roundUp(raw, s.units);
+  }
+  const rho = pitchMinRho(resample(values, pointsFor(id, values.length)), limit.d).value;
+  return { room, amount, rho };
+}
+
+/**
+ * Text of the room of a preset, for the line under the amount.
+ * - A track below the bend limit, or within it but inside the margin: says
+ *   so with the sharpest bend; Size names the smallest amount that brings
+ *   the track within the limit and the margin.
+ * - Otherwise the largest amount and what limits it: the bend limit with
+ *   its margin, the groove radius range, the bore clearance (Shift) or the
+ *   largest amount a preset takes. Without room it says which limit blocks
+ *   the preset, and names a negative amount that fits.
+ * @param {{ room: PresetRoom, amount: number, rho: number }} plan
+ * @param {ModifierId} id
+ * @param {ProjectState} s
+ */
+export function presetRoomText(plan, id, s) {
+  const { room, amount, rho } = plan;
+  const units = s.units;
+  const limit = limitOf(s);
+  const margin = dimsText(PRESET_MARGIN, units);
+  const bend = `sharpest bend ${dimsText(rho, units)}, limit ${dimsText(limit.rho, units)}`;
+  const size = () => (amount > 0
+    ? ` A Size of at least ${valueText(amount, units)} ${units.dims} brings it within the limit and the ${margin} margin.`
+    : ` No Size up to ${plain(fromSI(MODIFIER_MAX_AMOUNT, 'length', units.dims))} ${units.dims} brings it within the limit and the ${margin} margin.`);
+  if (id !== 'shift' && room.track === 'below') {
+    return `The track bends more sharply than the limit: ${bend}.${id === 'size' ? size() : ' Size raises every bend.'}`;
+  }
+  if (id !== 'shift' && room.track === 'margin') {
+    return `The track is within the bend limit but inside the ${margin} margin of the presets: ${bend}.`
+      + `${id === 'size' ? size() : ' Size raises every bend.'}`;
+  }
+  const range = `the groove radius range, ${rangeText(units)}`;
+  if (room.most > 0) {
+    const within = room.stop === 'bend' ? `within the bend limit and a ${margin} margin`
+      : room.stop === 'range' ? `within ${range}`
+        : room.stop === 'bore' ? 'that keeps the groove clear of the bore and its wall'
+          : 'this preset takes';
+    const note = id === 'shift' ? '. Shift moves the track and does not change its bend' : '';
+    return `Largest amount ${within}: ${valueText(room.most, units)} ${units.dims}${note}`;
+  }
+  const blocked = room.stop === 'range' ? `${range[0].toUpperCase()}${range.slice(1)}, leaves no room for this preset in this direction`
+    : room.stop === 'bore' ? 'The bore clearance leaves no room for this preset in this direction'
+      : `The track is at the bend limit and the ${margin} margin for this preset at this angle`;
+  const other = room.negative < 0
+    ? `; a negative amount down to ${signedText(room.negative, units)} ${units.dims} fits.`
+    : '; try another angle.';
+  return `${blocked}${other}`;
 }
 
 /**
@@ -366,7 +597,7 @@ export function createTrackEditor(store) {
   const bendLine = h('p', { class: 'hint', 'data-testid': 'track-editor-bend' });
   const arcLine = h('p', { class: 'hint', 'data-testid': 'track-editor-arc-note' });
   const help = h('p', { class: 'hint', id: helpId },
-    'Drag a point along its line: its neighbours follow in a smooth bump, and the drag stops at the bend limit. ',
+    'Drag a point along its line: its neighbours follow in a smooth bump, and the drag stops at the bend limit or at the end of the groove radius range. ',
     'Keyboard: Tab to the points, Left and Right pick a point, Up and Down change its groove radius by ',
     '0.1 mm (Shift: 0.5 mm) or 0.005 in (Shift: 0.02 in). ',
     'Each point sits where the tangent line of its value touches the groove, so points move sideways when their neighbours change.');
@@ -443,8 +674,11 @@ export function createTrackEditor(store) {
   /** @type {WorkingArc | null} */
   let arc = null;
   let selected = 0;
-  /** Index of the handle whose last drag stopped at the limit, −1 for none. */
+  /** Index of the handle whose last drag stopped at a limit, −1 for none. */
   let stopped = -1;
+  /** What stopped that drag. */
+  /** @type {StopReason | null} */
+  let stoppedReason = null;
   /** Values the stopped mark belongs to. */
   /** @type {readonly number[] | null} */
   let stoppedValues = null;
@@ -461,7 +695,7 @@ export function createTrackEditor(store) {
    * Active drag: pointer start in client coordinates, the values at the
    * start and the scale of the view (mm per CSS px).
    * @type {{ index: number, pointerId: number, cx: number, cy: number, base: number[], scale: number, moved: boolean,
-   *   stopped: boolean } | null}
+   *   stopped: StopReason | null } | null}
    */
   let drag = null;
   let amountTouched = false;
@@ -502,8 +736,8 @@ export function createTrackEditor(store) {
    * @returns {string | null} error message
    */
   function setValues(next) {
-    const error = freeformErrors(next)[0];
-    if (error) return error.message;
+    const error = valuesError(next, store.getState().units);
+    if (error) return error;
     const errors = store.dispatch({ type: 'setStringTrack', stringTrack: { shape: 'freeform', freeform: { values: next } } });
     return errors.length > 0 ? errors[0].message : null;
   }
@@ -599,15 +833,17 @@ export function createTrackEditor(store) {
       const outside = arc !== null && !inArc(p.psi, arc);
       g.classList.toggle('outside', outside);
       g.classList.toggle('selected', i === selected);
-      g.classList.toggle('stopped', isStopped && i === stopped);
+      const stop = isStopped && i === stopped ? stoppedReason : null;
+      g.classList.toggle('stopped', stop === 'bend');
+      g.classList.toggle('stopped-range', stop === 'range');
       const value = fromSI(vals[i], 'length', units.dims);
       setAttrs(g, {
         'aria-label': `Point ${i + 1} at ${knotDegrees(i, n)}${outside ? ', outline only' : ''}`,
         'aria-valuemin': plain(lo),
         'aria-valuemax': plain(hi),
         'aria-valuenow': plain(value),
-        'aria-valuetext': `${valueText(vals[i], units)} ${units.dims}${isStopped && i === stopped ? ', stopped at the bend limit' : ''}`,
-        'data-stopped': isStopped && i === stopped ? 'true' : null,
+        'aria-valuetext': `${valueText(vals[i], units)} ${units.dims}${stoppedText(stop, units)}`,
+        'data-stopped': stop,
       });
     });
   }
@@ -679,7 +915,7 @@ export function createTrackEditor(store) {
     const n = vals.length;
     valueHead.textContent = `Groove radius (${units.dims})`;
     drawHead.textContent = `String leaves here at (${units.draw})`;
-    tableNote.textContent = `The groove radius is the distance from the axle to the tangent line of the groove bottom at the angle of the point. The lever arm of the string, measured on its pitch line, is half the string diameter larger (${dimsText(s.cords.stringDiameter / 2, units)}). The draw length column is blank for points outside the working arc.`;
+    tableNote.textContent = `The groove radius is the distance from the axle to the tangent line of the groove bottom at the angle of the point. The lever arm of the string, measured on its pitch line, is half the string diameter larger (${dimsText(s.cords.stringDiameter / 2, units)}). The column "String leaves here at" is blank for points outside the working arc.`;
     if (cells.length !== n) makeRows(n);
     const angles = knotAngles(n);
     const key = JSON.stringify([vals, units.dims]);
@@ -715,18 +951,16 @@ export function createTrackEditor(store) {
     angleField.hidden = id === 'size';
     const angle = presetAngle();
     const vals = trackValues(s.stringTrack);
-    const limit = limitOf(s, PRESET_MARGIN);
     if (!Number.isFinite(angle)) {
       largest.textContent = 'Enter an angle to see the largest amount.';
       return;
     }
-    const most = largestAmount(vals, id, angle, limit);
-    largest.textContent = most > 0
-      ? `Largest amount within the bend limit and a ${dimsText(PRESET_MARGIN, units)} margin: ${valueText(most, units)} ${units.dims}`
-      : 'The current track misses the bend limit; any amount keeps it below.';
+    const plan = presetPlan(vals, id, angle, s);
+    const sampled = s.stringTrack.shape === 'freeform' ? '' : sampledText(trackSample(s.stringTrack), s.stringTrack.shape, units);
+    const room = presetRoomText(plan, id, s);
+    largest.textContent = sampled ? `${room}${room.endsWith('.') ? '' : '.'} ${sampled}` : room;
     if (!amountTouched || amountFor !== s.stringTrack) {
-      const amount = Math.max(0, defaultAmount(vals, id, angle, limit));
-      amountInput.value = valueText(amount, units);
+      amountInput.value = valueText(plan.amount, units);
       amountInput.setAttribute('aria-invalid', 'false');
       amountTouched = false;
       amountFor = s.stringTrack;
@@ -768,7 +1002,8 @@ export function createTrackEditor(store) {
     presetError.textContent = error ?? '';
     amountInput.setAttribute('aria-invalid', String(error !== null));
     if (error) return;
-    const text = `${presetText(id, amount, angle, units)}: ${next.length} points. ${bendText(next, limitOf(s), units)}.`;
+    const sampled = s.stringTrack.shape === 'freeform' ? '' : sampledText(trackSample(s.stringTrack), s.stringTrack.shape, units);
+    const text = `${presetText(id, amount, angle, units)}: ${next.length} points. ${bendText(next, limitOf(s), units)}.${sampled ? ` ${sampled}` : ''}`;
     show(presetMsg, text);
   });
 
@@ -781,6 +1016,12 @@ export function createTrackEditor(store) {
     const delta = parseQuantity(offsetInput.value, 'length', units.dims);
     if (!Number.isFinite(delta)) {
       offsetMsg.textContent = 'The offset must be a number';
+      offsetInput.setAttribute('aria-invalid', 'true');
+      return;
+    }
+    const outside = offsetError(s.stringTrack.freeform.values, delta, units);
+    if (outside) {
+      offsetMsg.textContent = outside;
       offsetInput.setAttribute('aria-invalid', 'true');
       return;
     }
@@ -850,9 +1091,10 @@ export function createTrackEditor(store) {
     const s = store.getState();
     if (d.moved && commit) {
       stopped = d.stopped ? d.index : -1;
+      stoppedReason = d.stopped;
       stoppedValues = d.stopped ? s.stringTrack.freeform.values : null;
       const vals = s.stringTrack.freeform.values;
-      say(`${pointText(d.index, vals, s.units)}${d.stopped ? ', stopped at the bend limit' : ''}. ${bendText(vals, limitOf(s), s.units)}`);
+      say(`${pointText(d.index, vals, s.units)}${stoppedText(d.stopped, s.units)}. ${bendText(vals, limitOf(s), s.units)}`);
     }
     render(s);
   }
@@ -866,7 +1108,7 @@ export function createTrackEditor(store) {
     const r = root.getBoundingClientRect();
     drag = {
       index: i, pointerId: e.pointerId, cx: e.clientX, cy: e.clientY, base: [...current()],
-      scale: (2 * R) / (r.width || 1), moved: false, stopped: false,
+      scale: (2 * R) / (r.width || 1), moved: false, stopped: null,
     };
     root.setPointerCapture(e.pointerId);
     store.beginTransaction();
@@ -882,8 +1124,8 @@ export function createTrackEditor(store) {
     const psi = (2 * Math.PI * drag.index) / drag.base.length;
     const delta = (dx * Math.cos(psi) + dy * Math.sin(psi)) * 1e-3;
     const out = dragValues(drag.base, drag.index, delta, limitOf(store.getState()));
-    drag.stopped = out.stopped;
-    root.dataset.stopped = String(out.stopped);
+    drag.stopped = out.reason;
+    root.dataset.stopped = out.reason ?? 'false';
     if (out.values.some((v, j) => v !== current()[j])) setValues(out.values);
   });
 
@@ -974,6 +1216,7 @@ export function createTrackEditor(store) {
     if (s.stringTrack !== previous.stringTrack && !drag) {
       if (stoppedValues !== s.stringTrack.freeform.values) {
         stopped = -1;
+        stoppedReason = null;
         stoppedValues = null;
       }
       // Changed elsewhere (undo, load, a settings field): the old messages

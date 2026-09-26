@@ -173,7 +173,13 @@ points around the axle, one every 30°, joined by a smooth closed curve.
 Each point holds the groove radius at its angle: the distance from the
 axle centre to the line that touches the groove bottom there. Switching
 samples the current eccentric circle or ellipse, so the cam stays the same
-within 0.1 mm; one undo step goes back. The radius, offset and phase
+within 0.1 mm on the sample designs; one undo step goes back. A strongly
+elliptical track takes up to 16 points: the switch uses the fewest points
+from 12 to 16 whose curve stays within 50 µm of the ellipse and within
+1 mm (or 10 %, when that is more) of its sharpest bend. When 16 points do
+not reach that, for example on an ellipse of 60 mm by 25 mm, a message
+under the Shape select gives the difference and the sharpest bend of both
+tracks. The radius, offset and phase
 fields do not apply to a free-form track and are hidden; they keep their
 values for a switch back. The settings show the line "Free-form track, 12
 points" and the [editor](#free-form-editor), and the print report lists
@@ -208,8 +214,10 @@ point values.
   not kink at the point. The drag stops exactly at the bend limit, the
   larger of the minimum bend radius and half the string diameter plus
   0.2 mm, or at the value range of 2 mm to 150 mm. A point stopped at the
-  limit turns red with a dashed ring, and the status line under the view
-  says "stopped at the bend limit". One drag is one undo step. The points
+  bend limit turns red with a dashed ring, and the status line under the
+  view says "stopped at the bend limit"; a point stopped at the value range
+  gets a dashed ring in the text colour, and the line says "stopped at the
+  end of the groove radius range, 2 to 150 mm". One drag is one undo step. The points
   take pointer, pen and touch input; a press within 22 px of a point
   catches it.
 - Keyboard: the points are one tab stop. Left and Right pick the previous
@@ -223,12 +231,15 @@ point values.
   45.7 mm, limit 5.0 mm". Screen readers announce it.
 - **Points** changes the number of values to 8, 12 or 16. The new values
   lie on the old curve, but the curve through them differs slightly: the
-  default track at 8 points keeps its groove radius within 25 µm and its
+  default track at 8 points keeps its groove radius within 26 µm and its
   radius of curvature within 1.4 mm. A track close to the limit can fall
   below it; a message then says so, and Undo goes back.
 - **Offset all points** moves the whole track outwards by the amount in the
   field (default 0.5 mm, negative values move it inwards). This is the
-  change the solve suggests for a track that bends too sharply.
+  change the solve suggests for a track that bends too sharply. An offset
+  that would take a groove radius outside 2 mm to 150 mm changes nothing,
+  and the message gives the offsets that fit, for example "The offset must
+  be from −21.01 to 83.01 mm" on the default track.
 - **Point values** opens the table: the angle of each point, the draw
   length at which the string leaves the track there (from the latest
   result, blank outside the working arc) and the groove radius. Type a
@@ -254,19 +265,36 @@ size and position, which is what makes the cam work:
 a is the **Amount** and φ the **Angle** (Size has no angle). The amount
 starts at 1 mm (0.5 mm for the square), reduced when needed so the track
 keeps the bend limit plus a 0.5 mm margin; the line under the field names
-the largest such amount. **Apply preset** turns an eccentric circle or an
-ellipse into a free-form track first; the rounded triangle and the egg
-need at least 12 points and the rounded square 16, so a track with fewer
-points is resampled. Each application is one undo step.
+the largest such amount and what limits it: the bend limit and the
+margin, the groove radius range of 2 mm to 150 mm, or for Shift the bore
+clearance. Shift moves the track without changing its bend, so only the
+value range and the bore clearance limit it. The line also covers the
+cases without room:
+
+- The track bends more sharply than the limit, or it is within the limit
+  but less than 0.5 mm above it: the line says which, with the sharpest
+  bend and the limit. Size then starts at the smallest amount that brings
+  the track within the limit and the margin, and the line names it; the
+  other shape presets start at 0.
+- The value range leaves no room in this direction, or the track already
+  sits at the limit and the margin for this preset and angle (after a
+  preset at its largest amount, for example): the line says so and names
+  a negative amount that fits, when there is one.
+
+**Apply preset** turns an eccentric circle or an ellipse into a
+free-form track first, sampled as for the Shape switch; the rounded
+triangle and the egg need at least 12 points and the rounded square 16,
+so a track with fewer points is resampled. Each application is one undo
+step.
 
 A preset within the bend limit can still make the design fail, for
 example because the cable track can no longer follow; the solve shows why
 in Results. The default amount scales with the track: a track with a mean
 groove radius below 40 mm starts at a proportionally smaller amount. On
-the eight sample designs at the default amounts and angle 0°, the rounded
+the nine sample designs at the default amounts and angle 0°, the rounded
 square fails on "Compound bow, hunting (70 lbf)" and "Compound bow, light
 hunting (50 lbf)", and Size fails on "Compound bow, youth (20 lbf)"; the
-other 45 combinations solve without problems.
+other 51 of the 54 combinations solve without problems.
 
 ## Optimise
 
@@ -281,8 +309,10 @@ select offers two goals:
   difference smaller. The largest cam dimension stays at its current value
   or below.
 
-Every track the search keeps meets every check, has no warning, and keeps
-margins, so the result does not sit on the edge of a limit:
+Every track the search keeps meets every check, has no warning that the
+current design does not have (a warning of the current design may stay
+or go away; the cam goal suits a design whose cam is wider than 35 % of
+the axle-to-axle length), and keeps margins, so the result does not sit on the edge of a limit:
 
 - the string pitch line bends no sharper than the limit plus 1 mm, or plus
   10 % of the limit when that is more;
@@ -292,15 +322,20 @@ margins, so the result does not sit on the edge of a limit:
   bore and the wall.
 
 The button is enabled once the full solve of the current design has
-finished and the design meets every check; otherwise a line under it says
-why. It needs a browser that runs Web Workers.
+finished and the design meets every check; warnings do not disable it.
+Otherwise a line under it says why. It needs a browser that runs Web
+Workers. The cam goal compares candidates on the coarse solve; in the
+rare case that the current design fails a check there while the full
+solve passes, the run ends at once and says so.
 
 A run works on the free-form points: an eccentric circle or an ellipse is
-sampled at 12 points first. The search changes the whole track at once,
+sampled first, at 12 to 16 points as for the Shape switch. When 16 points
+do not follow the track closely, the message at the end of the run says
+so; the Before column shows the eccentric circle or ellipse. The search changes the whole track at once,
 in smooth patterns around the axle (a uniform offset, a shift, an oval, a
 triangle, a square and finer patterns), and keeps each change that
 improves the goal. It solves the cam for each candidate track. A run takes
-up to 600 solves, usually 5 s to 40 s, and stops after 120 s at the
+up to 600 solves, usually 2 s to 45 s, and stops after 120 s at the
 latest. Candidates that break a margin on the track shape alone are
 rejected before a solve and do not count.
 

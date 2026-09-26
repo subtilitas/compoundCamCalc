@@ -8,7 +8,9 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 - Free-form string track (`src/core/freeform.js`): Shape → Free-form
   samples the current eccentric or elliptical track at 12 points (one
-  undo step, the cam stays within 0.1 mm). The track is the periodic cubic
+  undo step, the cam stays within 0.1 mm), or at up to 16 points for a
+  strongly elliptical track; when 16 points do not follow it within 50 µm
+  and 1 mm (or 10 %) of its sharpest bend, a message says so. The track is the periodic cubic
   spline through 8 to 16 groove radii at equal angles. Validation checks
   their number and the 2 mm to 150 mm range only; a track that bends too
   sharply or comes too close to the bore loads and gets the
@@ -23,17 +25,23 @@ All notable changes are listed here. Versions follow semantic versioning.
 - Free-form track editor (`src/ui/trackeditor.js`) in the String track
   group: a round view at most 280 px wide with one point per value, the
   working arc of the latest result (brace to full draw) and grey points
-  outside it. A drag moves a smooth bump and stops at the bend limit (one
-  undo step); the keyboard picks a point with Left and Right and changes
+  outside it. A drag moves a smooth bump and stops at the bend limit or
+  at the 2 mm to 150 mm value range, and says which (one undo step); the keyboard picks a point with Left and Right and changes
   it by 0.1 mm (Shift 0.5 mm) with Up and Down. A status line reads out the
   point and the sharpest bend. The Point values table takes typed groove
   radii and shows the draw length at which the string leaves each point.
-  "Offset all points" and a Points select (8, 12, 16) with a warning when
-  resampling bends the track past the limit.
+  "Offset all points", which names the offsets that keep every value in
+  range, and a Points select (8, 12, 16) with a warning when resampling
+  bends the track past the limit. Value errors name the point and its
+  groove radius in the display unit.
 - Shape presets: Oval, Rounded triangle, Rounded square, Egg, Size and
   Shift with Amount and Angle, added to the current track in one undo
   step. The default amount is clamped to the bend limit plus a 0.5 mm
-  margin. Glossary term "working arc"; the help dialog lists the editor
+  margin; the line under it names what limits it, tells a track below the
+  limit from one inside the margin, and names a negative amount when the
+  positive side has no room. Size on a track inside the margin starts at
+  the smallest amount that restores it; Shift is limited by the value
+  range and the bore clearance only. Glossary term "working arc"; the help dialog lists the editor
   keys.
 - Optimise (`src/core/optimise.js`, `src/worker/optimise.worker.js`,
   `src/ui/optimise.js`): **Optimise shape** in the String track group
@@ -42,8 +50,10 @@ All notable changes are listed here. Versions follow semantic versioning.
   than now". A compass search over Fourier modes of the track values in a
   second module worker, up to 600 solves (120 s at most), with margins:
   pitch-line radius of curvature at least 1 mm (or 10 %) over its limit,
-  string and cable wrap at most 350°, no diagnostic and no warning. The
-  run shows solves, step halvings, elapsed time and the best value; Stop
+  string and cable wrap at most 350°, no diagnostic and no warning the
+  current design does not have (a design with a cam-size warning can
+  start). The run shows solves, step halvings, elapsed time and the best
+  value; Stop
   keeps the best track so far; a change of the design or another design
   discards the run. A before/after table (cam size, force difference,
   let-off, sharpest string bend) offers Apply, one undo step, and

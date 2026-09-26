@@ -23,15 +23,18 @@ const DEG = Math.PI / 180;
  * @param {number} f.rho smallest pitch-line radius of curvature (m)
  * @param {'coarse' | 'full'} f.resolution
  * @param {number} [f.wrap] string and cable wrap (rad)
- * @param {boolean} [f.warn] add a plausibility warning
+ * @param {boolean | string[]} [f.warn] add a plausibility warning
+ *   (true: ata-ratio), or the warnings of these codes
+ * @param {'ok' | 'infeasible'} [f.status] infeasible adds a diagnostic
  * @returns {SolveResult}
  */
-function fakeResult({ cam, force, rho, resolution, wrap = 300 * DEG, warn = false }) {
+function fakeResult({ cam, force, rho, resolution, wrap = 300 * DEG, warn = false, status = 'ok' }) {
   const x = Float64Array.from([0, 0.1, 0.2]);
+  const codes = warn === true ? ['ata-ratio'] : warn === false ? [] : warn;
   return /** @type {SolveResult} */ (/** @type {unknown} */ ({
-    status: 'ok',
-    diagnostics: [],
-    warnings: warn ? [{ code: 'ata-ratio', message: 'fake' }] : [],
+    status,
+    diagnostics: status === 'ok' ? [] : [{ code: 'string-radius', message: 'fake' }],
+    warnings: codes.map((code) => ({ code, message: 'fake' })),
     resolution,
     target: { x, F: Float64Array.from([0, 100, 20]) },
     achieved: { x, F: Float64Array.from([0, 100, 20]) },
@@ -107,7 +110,7 @@ describe('optimise helpers', () => {
   it('reads the figures of a solve, with the force difference from the curves when the cam is not fitted', () => {
     const r = fakeResult({ cam: 0.09, force: 3, rho: 0.04, resolution: 'full' });
     const e = evaluate(r);
-    expect(e).toMatchObject({ ok: true, camSize: 0.09, forceDifference: 3, letOff: 0.8, stringMinRho: 0.04 });
+    expect(e).toMatchObject({ ok: true, warnings: [], camSize: 0.09, forceDifference: 3, letOff: 0.8, stringMinRho: 0.04 });
     // The tolerance is 3 % of the peak, at least 2 N.
     expect(e.tolerance).toBe(3);
     const exact = /** @type {SolveResult} */ ({
@@ -118,7 +121,9 @@ describe('optimise helpers', () => {
     });
     expect(evaluate(exact).forceDifference).toBeCloseTo(48.5, 12);
     expect(evaluate(exact).tolerance).toBe(2);
-    expect(evaluate(fakeResult({ cam: 0.09, force: 3, rho: 0.04, resolution: 'full', warn: true })).ok).toBe(false);
+    // A plausibility warning keeps the design ok; the limits compare its codes.
+    expect(evaluate(fakeResult({ cam: 0.09, force: 3, rho: 0.04, resolution: 'full', warn: ['cam-size'] })))
+      .toMatchObject({ ok: true, warnings: ['cam-size'] });
     expect(evaluate({ ...r, status: 'infeasible' }).ok).toBe(false);
     expect(evaluate({ ...r, metrics: null }).camSize).toBeNaN();
   });
@@ -137,12 +142,13 @@ describe('optimise helpers', () => {
     expect(force.force).toBe(Infinity);
     expect(force.cam).toBe(0.09);
     expect(limitsFor('cam', { ...e, forceDifference: 5 }).force).toBe(5);
+    expect(limitsFor('cam', { ...e, warnings: ['cam-size'] }).warnings).toEqual(['cam-size']);
     expect(RHO_MARGIN).toEqual({ min: 1e-3, share: 0.1 });
   });
 
   it('keeps a candidate only within every limit', () => {
     const e = evaluate(fakeResult({ cam: 0.09, force: 2, rho: 0.04, resolution: 'full' }));
-    const limits = { rho: 6 * MM, force: 2.4, cam: 0.09 };
+    const limits = { rho: 6 * MM, force: 2.4, cam: 0.09, warnings: ['cam-size'] };
     expect(meetsLimits(e, limits)).toBe(true);
     expect(meetsLimits({ ...e, stringMinRho: 5.9 * MM }, limits)).toBe(false);
     expect(meetsLimits({ ...e, stringWrap: WRAP_LIMIT + 1e-6 }, limits)).toBe(false);
@@ -150,6 +156,10 @@ describe('optimise helpers', () => {
     expect(meetsLimits({ ...e, forceDifference: 2.5 }, limits)).toBe(false);
     expect(meetsLimits({ ...e, camSize: 0.0901 }, limits)).toBe(false);
     expect(meetsLimits({ ...e, ok: false }, limits)).toBe(false);
+    // A warning the current design has too is allowed; a new one is not.
+    expect(meetsLimits({ ...e, warnings: ['cam-size'] }, limits)).toBe(true);
+    expect(meetsLimits({ ...e, warnings: ['cam-overlap'] }, limits)).toBe(false);
+    expect(meetsLimits({ ...e, warnings: ['cam-size'] }, { ...limits, warnings: [] })).toBe(false);
     expect(WRAP_LIMIT).toBeCloseTo(350 * DEG, 12);
     expect(objectiveOf('cam', e)).toBe(0.09);
     expect(objectiveOf('force', e)).toBe(2);
@@ -164,9 +174,16 @@ describe('optimise helpers', () => {
     expect(prescreen([...round.slice(1), 1 * MM], { rho: -1, d, wall: 0 })).toBe(false);
   });
 
-  it('starts from the free-form values, or the analytic track sampled at 12 points', () => {
+  it('starts from the free-form values, or the analytic track sampled at 12 to 16 points', () => {
     const s = defaultState();
     expect(startValues(s)).toEqual(sampleTrack(s.stringTrack, 12));
+    // A strongly elliptical track takes 16 points.
+    const ellipse = { ...s, stringTrack: { ...s.stringTrack, shape: /** @type {const} */ ('ellipse'), semiMajor: 0.06, semiMinor: 0.025, offset: 0, phase: 0 } };
+    expect(startValues(ellipse)).toEqual(sampleTrack(ellipse.stringTrack, 16));
+    // The outcome says how the search sampled the start.
+    const out = optimise({ state: ellipse, goal: 'cam', solve: syntheticSolve().fn, budget: 1 });
+    expect(out.sampled).toMatchObject({ points: 16, within: false });
+    expect(optimise({ state: withTrack([...START]), goal: 'cam', solve: syntheticSolve().fn, budget: 1 }).sampled).toBeNull();
     const f = withTrack([...START]);
     expect(startValues(f)).toEqual(START);
     expect(startValues(f)).not.toBe(f.stringTrack.freeform.values);
@@ -297,12 +314,38 @@ describe('optimise search', () => {
     expect(time.reason).toBe('time');
     expect(time.elapsed).toBeGreaterThan(1000);
 
-    const failing = syntheticSolve(() => ({ warn: true }));
+    const failing = syntheticSolve(() => ({ status: 'infeasible' }));
     const start = optimise({ state: withTrack([...START]), goal: 'cam', solve: failing.fn });
     expect(start.reason).toBe('start');
     expect(start.solves).toBe(0);
     expect(start.best).toBeNull();
     expect(failing.calls).toHaveLength(1);
+
+    // The full solve passes, the coarse one the candidates are compared with does not.
+    const coarse = syntheticSolve((_values, resolution) => (resolution === 'coarse' ? { status: 'infeasible' } : {}));
+    const second = optimise({ state: withTrack([...START]), goal: 'cam', solve: coarse.fn });
+    expect(second.reason).toBe('start-coarse');
+    expect(second.solves).toBe(0);
+    expect(coarse.calls.map((c) => c.resolution)).toEqual(['full', 'coarse']);
+  });
+
+  it('starts from a design with a warning, clears it when it can and never adds another one', () => {
+    // The start (mean 45 mm) has a cam-size warning below a mean of 44 mm
+    // it goes; a cos 2ψ amplitude above 3.5 mm adds a cam-overlap warning.
+    const psi = knotAngles(12);
+    const mean = (/** @type {number[]} */ v) => v.reduce((a, x) => a + x, 0) / v.length;
+    const amp = (/** @type {number[]} */ v) => (2 / v.length) * v.reduce((a, x, i) => a + x * Math.cos(2 * psi[i]), 0);
+    const { fn } = syntheticSolve((values) => ({
+      warn: [...(mean(values) > 44 * MM ? ['cam-size'] : []), ...(amp(values) > 3.5 * MM ? ['cam-overlap'] : [])],
+    }));
+    const out = optimise({ state: withTrack([...START]), goal: 'cam', solve: fn });
+    expect(out.start).toMatchObject({ ok: true, warnings: ['cam-size'] });
+    const best = /** @type {NonNullable<typeof out.best>} */ (out.best);
+    expect(best).not.toBeNull();
+    expect(out.reason).toBe('converged');
+    expect(mean(best.values)).toBeLessThan(44 * MM);
+    expect(amp(best.values)).toBeLessThanOrEqual(3.5 * MM);
+    expect(best.evaluation.warnings).toEqual([]);
   });
 });
 

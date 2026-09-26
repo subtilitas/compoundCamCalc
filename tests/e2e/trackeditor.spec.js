@@ -127,7 +127,7 @@ test.describe('free-form track editor', () => {
     await page.mouse.down();
     await page.mouse.move(x + 200, y, { steps: 20 });
     await page.mouse.up();
-    await expect(handle).toHaveAttribute('data-stopped', 'true');
+    await expect(handle).toHaveAttribute('data-stopped', 'bend');
     await expect(handle).toHaveClass(/stopped/);
     await expect(page.getByTestId('track-editor-live')).toContainText('stopped at the bend limit');
     await expect(page.getByTestId('track-editor-bend')).toHaveText('Sharpest bend 5.0 mm, limit 5.0 mm.');
@@ -146,7 +146,7 @@ test.describe('free-form track editor', () => {
     await page.getByTestId('btn-undo').click();
     expect(await tableValues(page)).toEqual(DEFAULT_VALUES);
     await expect(page.getByTestId('choice-track-shape')).toHaveValue('freeform');
-    await expect(handle).not.toHaveAttribute('data-stopped', 'true');
+    await expect(handle).not.toHaveAttribute('data-stopped');
     await expect(page.getByTestId('btn-undo')).toBeEnabled();
   });
 
@@ -188,6 +188,7 @@ test.describe('free-form track editor', () => {
     await freeform(page);
     await openValues(page);
     await expect(page.getByTestId('track-values-note')).toContainText('half the string diameter larger (1.3 mm)');
+    await expect(page.getByTestId('track-values-note')).toContainText('The column "String leaves here at" is blank');
     const cell = page.getByTestId('track-value-3');
     await cell.fill('1');
     await cell.press('Enter');
@@ -205,6 +206,13 @@ test.describe('free-form track editor', () => {
     await page.getByTestId('track-offset-apply').click();
     expect(await tableValues(page)).toEqual(DEFAULT_VALUES.map((v) => (Number(v) + 0.5).toFixed(2)));
     await page.getByTestId('btn-undo').click();
+    expect(await tableValues(page)).toEqual(DEFAULT_VALUES);
+    // An offset beyond the value range names the allowed range and changes nothing.
+    await page.getByTestId('track-offset').fill('-25');
+    await page.getByTestId('track-offset-apply').click();
+    await expect(page.getByTestId('track-offset-msg')).toHaveText(
+      'The offset must be from −21.01 to 83.01 mm, so every groove radius stays from 2 to 150 mm');
+    await expect(page.getByTestId('track-offset')).toHaveAttribute('aria-invalid', 'true');
     expect(await tableValues(page)).toEqual(DEFAULT_VALUES);
 
     const points = page.getByTestId('track-points');

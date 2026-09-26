@@ -15,6 +15,7 @@ import {
   freeformSummary,
   seedLimbTable,
   shapeChange,
+  shapeChangeNote,
   sliderStep,
   stringTrackExtra,
   stringTrackMessage,
@@ -143,6 +144,21 @@ describe('free-form string track settings', () => {
     );
     // The eccentric track does not look at the free-form values.
     expect(stringTrackMessage({ ...s.stringTrack, freeform: { values: [] } }, s.units)).toBeNull();
+  });
+
+  it('switch a strongly elliptical track to free-form at 16 points and say that it does not follow closely', () => {
+    const s = defaultState();
+    const strong = { ...s, stringTrack: { ...s.stringTrack, shape: /** @type {const} */ ('ellipse'), semiMajor: 0.06, semiMinor: 0.025, offset: 0, phase: 0 } };
+    expect(shapeChange('freeform', strong).freeform?.values).toEqual(sampleTrack(strong.stringTrack, 16));
+    expect(shapeChangeNote('freeform', strong)).toBe('The ellipse sampled at 16 points does not follow it closely: the groove radius '
+      + 'differs by up to 0.1 mm, and the sharpest bend of the groove is 9.2 mm against 10.4 mm. '
+      + 'Check the sharpest bend in the editor; Undo goes back.');
+    // 14 points follow this ellipse: no note.
+    const moderate = { ...s, stringTrack: { ...strong.stringTrack, semiMajor: 0.05, semiMinor: 0.035, offset: 0.02, phase: 1 } };
+    expect(shapeChange('freeform', moderate).freeform?.values).toHaveLength(14);
+    expect(shapeChangeNote('freeform', moderate)).toBe('');
+    expect(shapeChangeNote('ellipse', strong)).toBe('');
+    expect(shapeChangeNote('freeform', s)).toBe('');
   });
 
   it('switch to free-form by sampling the current track at 12 points', () => {

@@ -17,10 +17,13 @@
  *   pitch-line radius of curvature with its margin, bore clearance), which
  *   takes microseconds and does not count as a solve. Solves are cached on
  *   the values rounded to VALUE_RESOLUTION.
- * - The cam goal solves candidates coarse (the cam size agrees with the
- *   full solve to 0.001 mm) and confirms each improvement with a full
- *   solve; the force goal solves full throughout, since the coarse force
- *   difference reads 0.03 N to 0.6 N low.
+ * - The cam goal solves candidates coarse (on the sample designs the cam
+ *   size agrees with the full solve to within 0.003 mm) and confirms each
+ *   improvement with a full solve; the force goal solves full throughout,
+ *   since the coarse force difference reads 0.01 N to 0.62 N low.
+ * - The current design may carry plausibility warnings (a cam-size warning
+ *   is what the cam goal is for); a candidate must not add a warning the
+ *   current design does not have, and may clear one.
  *
  * The solve function is a parameter, so the search runs with the real
  * solver in a worker and with a synthetic objective in tests.
@@ -28,9 +31,8 @@
  * @module core/optimise
  */
 
-import { FREEFORM_POINTS, VALUE_RESOLUTION, knotAngles, sampleTrack, withinLimit } from './freeform.js';
+import { VALUE_RESOLUTION, clearsBore, knotAngles, sampleAnalytic, withinLimit } from './freeform.js';
 import { FIT_FORCE_FLOOR, FIT_FORCE_TOLERANCE } from './solve.js';
-import { createSupport, freeformSupport } from './support.js';
 
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('./solve.js').SolveResult} SolveResult */
@@ -46,7 +48,7 @@ export const GOALS = Object.freeze(/** @type {const} */ ({
 /** Largest number of solves of one run, not counting the solves of the current design. */
 export const OPTIMISE_BUDGET = 600;
 
-/** Safety stop of one run: 120 s (ms). Runs measured 6 s to 36 s. */
+/** Safety stop of one run: 120 s (ms). Runs on the sample designs measured 2 s to 43 s in Node.js. */
 export const OPTIMISE_TIME_LIMIT = 120_000;
 
 /** First step: this fraction of the mean track value (0.6 mm on a 12 mm track). */
@@ -73,13 +75,11 @@ export const RHO_MARGIN = Object.freeze({ min: 1e-3, share: 0.1 });
 /** Largest string or cable wrap of a candidate: 350°, 10° under a full turn (rad). */
 export const WRAP_LIMIT = (350 * Math.PI) / 180;
 
-/** Samples of the bore clearance check over one turn. */
-const CLEARANCE_SAMPLES = 720;
-
 /**
  * Figures of one solve, the ones the goals and the result table use.
  * @typedef {object} Evaluation
- * @property {boolean} ok status ok, no diagnostic and no warning
+ * @property {boolean} ok status ok and no diagnostic
+ * @property {string[]} warnings codes of the plausibility warnings
  * @property {number} camSize largest cam dimension (m), NaN without metrics
  * @property {number} forceDifference largest difference between the
  *   achieved and the target force (N)
@@ -109,7 +109,8 @@ export function evaluate(result) {
     for (let i = 0; i < target.F.length; i++) difference = Math.max(difference, Math.abs(result.achieved.F[i] - target.F[i]));
   }
   return {
-    ok: result.status === 'ok' && result.diagnostics.length === 0 && result.warnings.length === 0 && m !== null,
+    ok: result.status === 'ok' && result.diagnostics.length === 0 && m !== null,
+    warnings: result.warnings.map((w) => w.code),
     camSize: m?.camMaxDimension ?? NaN,
     forceDifference: difference,
     tolerance: Math.max(FIT_FORCE_TOLERANCE * peak, FIT_FORCE_FLOOR),
@@ -136,6 +137,8 @@ export function objectiveOf(goal, e) {
  * @property {number} rho smallest pitch-line radius of curvature, the limit plus RHO_MARGIN (m)
  * @property {number} force largest force difference (N); Infinity for the force goal
  * @property {number} cam largest cam size (m); Infinity for the cam goal
+ * @property {readonly string[]} warnings codes of the warnings a candidate
+ *   may have: those of the current design
  */
 
 /**
@@ -154,19 +157,21 @@ export function limitsFor(goal, start) {
     // "Force curve no worse than now".
     force: goal === 'cam' ? start.forceDifference : Infinity,
     cam: goal === 'force' ? start.camSize : Infinity,
+    warnings: start.warnings,
   };
 }
 
 /**
  * True when an evaluation meets every check and the limits: status ok
- * without diagnostics or warnings, the pitch line at least limits.rho,
- * both wraps at most WRAP_LIMIT, and the force difference and cam size
- * within their limits.
+ * without diagnostics, no warning outside limits.warnings, the pitch line
+ * at least limits.rho, both wraps at most WRAP_LIMIT, and the force
+ * difference and cam size within their limits.
  * @param {Evaluation} e
  * @param {Limits} limits
  */
 export function meetsLimits(e, limits) {
   return e.ok
+    && e.warnings.every((code) => limits.warnings.includes(code))
     && e.stringMinRho >= limits.rho
     && e.stringWrap <= WRAP_LIMIT
     && e.cableWrap <= WRAP_LIMIT
@@ -184,13 +189,7 @@ export function meetsLimits(e, limits) {
  *   plus minimum wall (m)
  */
 export function prescreen(values, spec) {
-  if (!withinLimit(values, { rho: spec.rho, d: spec.d, margin: 0 })) return false;
-  const s = createSupport(freeformSupport(values));
-  for (let i = 0; i < CLEARANCE_SAMPLES; i++) {
-    const psi = (2 * Math.PI * i) / CLEARANCE_SAMPLES;
-    if (!(Math.hypot(s.p(psi), s.dp(psi)) >= spec.wall)) return false;
-  }
-  return true;
+  return withinLimit(values, { rho: spec.rho, d: spec.d, margin: 0 }) && clearsBore(values, spec.wall);
 }
 
 /**
@@ -242,13 +241,12 @@ export function withValues(state, values) {
 
 /**
  * Values the search starts from: the free-form values, or the eccentric or
- * elliptical track sampled at FREEFORM_POINTS.default points.
+ * elliptical track sampled by sampleAnalytic (12 to 16 points).
  * @param {ProjectState} state
  * @returns {number[]}
  */
 export function startValues(state) {
-  const t = state.stringTrack;
-  return t.shape === 'freeform' ? [...t.freeform.values] : sampleTrack(t, FREEFORM_POINTS.default);
+  return sampleAnalytic(state.stringTrack).values;
 }
 
 /**
@@ -272,15 +270,20 @@ export function startValues(state) {
 
 /**
  * Why a run ended: converged (step below STEP_MIN), budget (solves used
- * up), time (OPTIMISE_TIME_LIMIT), start (the current design fails a check,
- * so there is nothing to keep).
- * @typedef {'converged' | 'budget' | 'time' | 'start'} StopReason
+ * up), time (OPTIMISE_TIME_LIMIT), start (the full solve of the current
+ * design fails a check, so there is nothing to keep), start-coarse (the
+ * cam goal only: the full solve passes but the coarse solve the candidates
+ * are compared with fails a check).
+ * @typedef {'converged' | 'budget' | 'time' | 'start' | 'start-coarse'} StopReason
  */
 
 /**
  * @typedef {object} Outcome
  * @property {OptimiseGoal} goal
  * @property {Evaluation} start full solve of the current design
+ * @property {import('./freeform.js').SampledTrack | null} sampled an
+ *   eccentric or elliptical track sampled for the search; null for a
+ *   free-form track
  * @property {Improvement | null} best null when no track was better
  * @property {number} solves
  * @property {StopReason} reason
@@ -290,6 +293,7 @@ export function startValues(state) {
 /**
  * @typedef {object} OptimiseOptions
  * @property {ProjectState} state current design, which meets every check
+ *   (plausibility warnings allowed)
  * @property {OptimiseGoal} goal
  * @property {SolveFn} solve
  * @property {number} [budget] largest number of solves (default OPTIMISE_BUDGET)
@@ -324,7 +328,8 @@ export function optimise({
     d: state.cords.stringDiameter,
     wall: state.body.boreDiameter / 2 + state.body.minWall,
   };
-  let x = startValues(state);
+  const sampled = state.stringTrack.shape === 'freeform' ? null : sampleAnalytic(state.stringTrack);
+  let x = sampled ? sampled.values : startValues(state);
   const n = x.length;
   /** Objective of the incumbent at full resolution, and at the resolution candidates are compared at. */
   let bestFull = objectiveOf(goal, start);
@@ -340,12 +345,13 @@ export function optimise({
   const fullCache = new Map();
 
   /** @param {StopReason} reason @returns {Outcome} */
-  const finish = (reason) => ({ goal, start, best, solves, reason, elapsed: now() - t0 });
+  const finish = (reason) => ({ goal, start, sampled, best, solves, reason, elapsed: now() - t0 });
   const progress = () => onProgress({
     solves, budget, step, halvings: Math.log2(step0 / step), elapsed: now() - t0, best: bestFull,
   });
 
-  if (!start.ok || !coarseStart.ok) return finish('start');
+  if (!start.ok) return finish('start');
+  if (!coarseStart.ok) return finish('start-coarse');
 
   /**
    * Evaluation of values at a resolution, through the cache; the stop

@@ -125,11 +125,20 @@ values.
   and by −63 mm per mm at N = 24. N stops at 16 to keep single values
   usable.
 - Sampling: switching the shape to free-form samples the eccentric or
-  elliptical groove bottom at N = 12 points, rounded to 0.1 µm. On the
-  default eccentric track and the elliptical track of the hunting sample
-  the spline stays within 10 µm of p at N = 12 and 3 µm at N = 16, and
-  within 1.1 mm of ρ at N = 12 and 0.6 mm at N = 16 (tested with 50 µm,
-  5 µm, 3 mm and 1 mm).
+  elliptical groove bottom (`sampleAnalytic`) at the smallest N from 12 to
+  16 whose spline keeps the smallest groove ρ within max(1 mm, 10 %) of
+  the exact one and p within 50 µm of the exact support (checked every
+  0.5°), rounded to 0.1 µm; without such an N it takes 16 and the page
+  says so. Every sample design takes 12. On the default eccentric track
+  and the elliptical track of the hunting sample the spline stays within
+  10 µm of p at N = 12 and 3 µm at N = 16, and within 1.1 mm of ρ at
+  N = 12 and 0.6 mm at N = 16 (tested with 50 µm, 5 µm, 3 mm and 1 mm).
+  Strong ellipses need more points: 50 mm by 35 mm with a 20 mm offset at
+  57.3° takes 14 (12 points miss p by 62 µm); 60 mm by 25 mm (exact
+  groove ρ_min 10.42 mm) misses at every N, with 9.27 mm and 62 µm at 12
+  points and 9.23 mm and 55 µm at 16; 100 mm by 30 mm with a 10 mm offset
+  bends at 9.00 mm exactly, at −14.62 mm on 12 points and at 6.94 mm on
+  16.
 - Solve effect of that sampling (full solves): default 98.19 → 98.19 mm
   cam, 3.71 → 3.71 N largest force difference; hunting 132.2 → 132.2 mm,
   5.53 → 5.53 N; light hunting 88.4 → 88.4 mm, 5.55 → 5.54 N; long draw
@@ -138,7 +147,7 @@ values.
   1.28 N (tested within 0.1 mm and 0.05 N). The short-brace hunting
   sample is free-form already and resamples to the same values.
 - Resampling to another N evaluates the spline at the new knots. The shape
-  changes slightly: the default track at 8 points keeps p within 25 µm and
+  changes slightly: the default track at 8 points keeps p within 26 µm and
   ρ within 1.4 mm. A track at its limit can fall below it: an oval, rounded
   triangle or egg at its largest amount on 12 points bends below the limit
   on 8 points. `resampleChecked` reports that case.
@@ -174,13 +183,24 @@ Shape modifiers add a harmonic term to the values of the current track:
   clamped to it. On the default track with a 0.5 mm margin the largest
   amounts are about 12 mm (oval), 4 mm (triangle), 2.2 mm (square) and
   5 mm (egg).
+- `presetRoom` tells the cases apart for the preset panel: the track
+  (resampled to the points of the modifier) at least ρ_lim + margin, at
+  least ρ_lim but inside the margin, or below ρ_lim; and what ends the
+  largest amount (the bend with its margin, the value range, the bore
+  clearance, or the 30 mm search limit). Size (ρ + a) on a track inside
+  the margin or below the limit gets the smallest positive amount that
+  restores ρ_lim + margin, by bisection upwards to 1 µm. Shift does not
+  change ρ, so only the value range and the bore clearance (the rule of
+  `string-clearance`, 720 angles) limit it. When a track within the
+  margin has no room for a shape modifier, the largest negative amount is
+  reported instead.
 - A modifier within the limit can still fail the solve. At angle 0 and the
-  default amounts on the eight samples: the square on the hunting bow
+  default amounts on the nine samples: the square on the hunting bow
   reports `closing-blend`, the square on the light hunting bow reports
   `cable-radius` and `cable-clearance` (its fitted cam lies 7.1 N from the
   target, over the 6.7 N tolerance), Size on the youth bow reports
-  `cable-radius` and `cable-clearance`; the other 45 combinations solve
-  without diagnostics.
+  `cable-radius` and `cable-clearance`; the other 51 of the 54
+  combinations solve without diagnostics or warnings.
 
 A drag moves a raised-cosine bump: the value at index i by δ, its
 neighbours by 0.75·δ and 0.25·δ. A single value would bend the track at

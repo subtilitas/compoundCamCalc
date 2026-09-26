@@ -911,6 +911,13 @@ input[aria-invalid='true'] {
   stroke-dasharray: 2 2;
 }
 
+/* A handle stopped at the end of the value range: dashed ring in the text colour. */
+.track-handle.stopped-range .track-handle-ring {
+  stroke: var(--text);
+  stroke-width: 2px;
+  stroke-dasharray: 2 2;
+}
+
 .track-handle:focus-visible .track-handle-ring {
   stroke: var(--focus);
   stroke-width: 3px;

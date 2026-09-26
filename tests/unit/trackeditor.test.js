@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { FREEFORM_RANGE, LIMIT_TOLERANCE, dragLimit, pitchMinRho, sampleTrack, withinLimit } from '../../src/core/freeform.js';
+import {
+  FREEFORM_RANGE, LIMIT_TOLERANCE, applyModifier, dragLimit, largestAmount, offsetValues, pitchMinRho, sampleTrack, withinLimit,
+} from '../../src/core/freeform.js';
 import { defaultState } from '../../src/state/presets.js';
 import { GLOSSARY } from '../../src/ui/glossary.js';
 import {
-  EDITOR_GLOSSARY, EDIT_STEP, OFFSET_DEFAULT, PRESET_IDS, bendText, dragValues, drawAt, inArc, knotDegrees, limitOf,
-  pathOf, pointChoices, pointText, presetText, presetValues, roundValues, stepValues, trackValues, valueText, viewBox,
+  EDITOR_GLOSSARY, EDIT_STEP, OFFSET_DEFAULT, PRESET_IDS, PRESET_MARGIN, bendText, dragValues, drawAt, inArc, knotDegrees,
+  limitOf, offsetError, offsetRange, pathOf, pointChoices, pointText, presetPlan, presetRoomText, presetText, presetValues,
+  rangeText, roundValues, sampledText, stepValues, stoppedText, trackSample, trackValues, valueText, valuesError, viewBox,
   workingArc,
 } from '../../src/ui/trackeditor.js';
 
@@ -86,7 +89,7 @@ describe('drag and keyboard edits', () => {
   });
 
   it('does nothing for a zero or not finite move', () => {
-    expect(dragValues(values, 1, 0, limit)).toEqual({ values, moved: 0, stopped: false });
+    expect(dragValues(values, 1, 0, limit)).toEqual({ values, moved: 0, stopped: false, reason: null });
     expect(dragValues(values, 1, Number.NaN, limit).moved).toBe(0);
   });
 
@@ -99,6 +102,42 @@ describe('drag and keyboard edits', () => {
     const far = dragValues(values, 2, -1, tight);
     expect(far.stopped).toBe(true);
     expect(Math.min(...far.values)).toBeGreaterThanOrEqual(FREEFORM_RANGE.min);
+  });
+
+  it('says whether the bend limit or the value range stopped a drag', () => {
+    // Point 4 inwards reaches 2 mm while the sharpest bend is 6.3 mm, over the 5 mm limit.
+    const inward = dragValues(values, 3, -0.05, limit);
+    expect(inward).toMatchObject({ stopped: true, reason: 'range' });
+    expect(inward.values[3]).toBeCloseTo(FREEFORM_RANGE.min, 5);
+    expect(pitchMinRho(inward.values, limit.d).value).toBeGreaterThan(limit.rho + 1e-3);
+    // Point 1 outwards stops at the bend limit.
+    const outward = dragValues(values, 0, 0.1, limit);
+    expect(outward).toMatchObject({ stopped: true, reason: 'bend' });
+    // A track below the limit already stops only at the range.
+    expect(dragValues(values, 2, -1, { ...limit, rho: 0.2 }).reason).toBe('range');
+    expect(dragValues(values, 3, 0.2e-3, limit).reason).toBeNull();
+    expect(stoppedText('bend', mm)).toBe(', stopped at the bend limit');
+    expect(stoppedText('range', mm)).toBe(', stopped at the end of the groove radius range, 2 to 150 mm');
+    expect(stoppedText('range', inch)).toBe(', stopped at the end of the groove radius range, 0.079 to 5.906 in (2 to 150 mm)');
+    expect(stoppedText(null, mm)).toBe('');
+  });
+
+  it('words value errors as points and groove radii in the dimension unit, and checks an offset first', () => {
+    expect(rangeText(mm)).toBe('2 to 150 mm');
+    expect(valuesError(values, mm)).toBeNull();
+    expect(valuesError(offsetValues(values, -0.025), mm)).toBe('Point 2 would get a groove radius of 0.58 mm; groove radii stay from 2 to 150 mm');
+    expect(valuesError(offsetValues(values, -0.03), inch))
+      .toBe('Point 2 would get a groove radius of −0.1742 in; groove radii stay from 0.079 to 5.906 in (2 to 150 mm)');
+    expect(valuesError(values.slice(0, 7), mm)).toBe('A free-form track needs 8 to 16 values');
+    // Offset: from 2 mm minus the smallest value to 150 mm minus the largest.
+    const range = offsetRange(values);
+    expect(range.min).toBeCloseTo(FREEFORM_RANGE.min - Math.min(...values), 12);
+    expect(range.max).toBeCloseTo(FREEFORM_RANGE.max - Math.max(...values), 12);
+    expect(offsetError(values, -0.021, mm)).toBeNull();
+    expect(offsetError(values, 0.5e-3, mm)).toBeNull();
+    expect(offsetError(values, -0.025, mm)).toBe('The offset must be from −21.01 to 83.01 mm, so every groove radius stays from 2 to 150 mm');
+    expect(offsetError(values, 0.0254, inch)).toBeNull();
+    expect(offsetError(values, -0.0254, inch)).toMatch(/^The offset must be from −0\.8272 to 3\.2682 in, /);
   });
 
   it('changes one value by a keyboard step, refusing the range and the limit', () => {
@@ -118,6 +157,89 @@ describe('drag and keyboard edits', () => {
   it('has the steps of the plan: 0.1 mm (0.5 mm), 0.005 in (0.02 in)', () => {
     expect(EDIT_STEP).toEqual({ mm: { step: 0.1, large: 0.5 }, in: { step: 0.005, large: 0.02 } });
     expect(OFFSET_DEFAULT).toEqual({ mm: 0.5, in: 0.02 });
+  });
+});
+
+describe('preset panel', () => {
+  const rho = pitchMinRho(values, limit.d).value;
+  /**
+   * The default state with the free-form values and the bend limit ρ_lim of the pitch line.
+   * @param {number} rhoLimit (m)
+   * @param {number[]} [track]
+   */
+  const withLimit = (rhoLimit, track = values) => ({
+    ...state,
+    body: { ...state.body, minBendRadius: rhoLimit },
+    stringTrack: { ...state.stringTrack, shape: /** @type {const} */ ('freeform'), freeform: { values: track } },
+  });
+
+  it('names the largest amount and what limits it on a track within the margin', () => {
+    const plan = presetPlan(values, 'oval', 0, state);
+    expect(plan.room.track).toBe('within');
+    expect(plan.amount).toBe(1e-3);
+    expect(presetRoomText(plan, 'oval', state)).toMatch(/^Largest amount within the bend limit and a 0\.5 mm margin: 11\.99 mm$/);
+    expect(presetRoomText(presetPlan(values, 'size', 0, state), 'size', state)).toBe('Largest amount this preset takes: 30.00 mm');
+    const big = new Array(12).fill(0.14);
+    expect(presetRoomText(presetPlan(big, 'size', 0, state), 'size', state))
+      .toBe('Largest amount within the groove radius range, 2 to 150 mm: 10.00 mm');
+  });
+
+  it('tells a track inside the 0.5 mm margin from one below the limit, and fills Size with the amount that restores the margin', () => {
+    // (b) 0.2 mm over the limit: within it, inside the margin.
+    const inside = withLimit(rho - 0.2e-3);
+    expect(withinLimit(values, limitOf(inside))).toBe(true);
+    const size = presetPlan(values, 'size', 0, inside);
+    expect(size.room.track).toBe('margin');
+    expect(size.amount).toBeGreaterThanOrEqual(0.3e-3);
+    expect(size.amount).toBeLessThanOrEqual(0.31e-3 + 1e-12);
+    expect(withinLimit(applyModifier(values, 'size', size.amount, 0), limitOf(inside, PRESET_MARGIN))).toBe(true);
+    expect(presetRoomText(size, 'size', inside)).toBe('The track is within the bend limit but inside the 0.5 mm margin of the presets: '
+      + 'sharpest bend 45.7 mm, limit 45.5 mm. A Size of at least 0.31 mm brings it within the limit and the 0.5 mm margin.');
+    const oval = presetPlan(values, 'oval', 0, inside);
+    expect(oval.amount).toBe(0);
+    expect(presetRoomText(oval, 'oval', inside)).toMatch(/inside the 0\.5 mm margin of the presets: .*Size raises every bend\.$/);
+    // (a) 2 mm below the limit.
+    const below = withLimit(rho + 2e-3);
+    const low = presetPlan(values, 'size', 0, below);
+    expect(low.room.track).toBe('below');
+    expect(low.amount).toBeCloseTo(2.5e-3, 9);
+    expect(presetRoomText(low, 'size', below)).toBe('The track bends more sharply than the limit: sharpest bend 45.7 mm, '
+      + 'limit 47.7 mm. A Size of at least 2.50 mm brings it within the limit and the 0.5 mm margin.');
+    expect(presetRoomText(presetPlan(values, 'egg', 0, below), 'egg', below)).toBe(
+      'The track bends more sharply than the limit: sharpest bend 45.7 mm, limit 47.7 mm. Size raises every bend.');
+    // Shift does not change the bend: it keeps its amount below the limit.
+    const shift = presetPlan(values, 'shift', 0, below);
+    expect(shift.amount).toBe(1e-3);
+    expect(presetRoomText(shift, 'shift', below)).toBe('Largest amount this preset takes: 30.00 mm. Shift moves the track and does not change its bend');
+  });
+
+  it('says when the value range or the bend limit leaves no room, and names a negative amount that fits', () => {
+    // (c) Every value at 150 mm: the range blocks a positive Size and every Oval.
+    const full = new Array(12).fill(FREEFORM_RANGE.max);
+    const s = withLimit(0.005, full);
+    expect(presetRoomText(presetPlan(full, 'size', 0, s), 'size', s)).toBe(
+      'The groove radius range, 2 to 150 mm, leaves no room for this preset in this direction; a negative amount down to −30.00 mm fits.');
+    expect(presetRoomText(presetPlan(full, 'oval', 0, s), 'oval', s)).toBe(
+      'The groove radius range, 2 to 150 mm, leaves no room for this preset in this direction; try another angle.');
+    expect(presetPlan(full, 'oval', 0, s).amount).toBe(0);
+    // An oval applied at its largest amount: the same oval has no room left.
+    const edge = roundValues(applyModifier(values, 'oval', largestAmount(values, 'oval', 0, limitOf(state, PRESET_MARGIN)), 0));
+    const again = presetPlan(edge, 'oval', 0, state);
+    expect(again.room.track).toBe('within');
+    expect(presetRoomText(again, 'oval', state)).toMatch(
+      /^The track is at the bend limit and the 0\.5 mm margin for this preset at this angle; a negative amount down to −\d+\.\d\d mm fits\.$/);
+  });
+
+  it('samples a strongly elliptical track at 16 points and says it does not follow closely', () => {
+    const ellipse = { ...state.stringTrack, shape: /** @type {const} */ ('ellipse'), semiMajor: 0.06, semiMinor: 0.025, offset: 0, phase: 0 };
+    const sampled = trackSample(ellipse);
+    expect(sampled.points).toBe(16);
+    expect(trackSample(ellipse)).toBe(sampled);
+    expect(trackValues(ellipse)).toEqual(sampleTrack(ellipse, 16));
+    expect(presetValues(ellipse, 'oval', 1e-3, 0)).toHaveLength(16);
+    expect(sampledText(sampled, 'ellipse', mm)).toBe('The ellipse sampled at 16 points does not follow it closely: the groove '
+      + 'radius differs by up to 0.1 mm, and the sharpest bend of the groove is 9.2 mm against 10.4 mm.');
+    expect(sampledText(trackSample(state.stringTrack), 'eccentric', mm)).toBe('');
   });
 });
 

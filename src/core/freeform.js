@@ -6,11 +6,14 @@
  * direction of change the values that keep ρ above a limit form one
  * interval; bisection finds its ends.
  *
- * - sampleTrack and resample turn a track into values at N points.
+ * - sampleTrack and resample turn a track into values at N points;
+ *   sampleAnalytic picks the N from 12 to 16 that follows an eccentric or
+ *   elliptical track closely.
  * - Shape modifiers add a term a·cos k(ψ − φ) to the values: k = 0 is a
  *   uniform offset (ρ + a), k = 1 a translation (ρ unchanged), k = 2, 3, 4
  *   an oval, a rounded triangle and a rounded square (ρ − (k² − 1)·a·cos …).
  *   A harmonic k needs N ≥ 4k points, so the spline follows it.
+ *   presetRoom says how far a modifier can go and what stops it.
  * - dragBump moves a raised-cosine bump over ±2 points; dragLimit finds the
  *   largest move that keeps the track inside its limits.
  *
@@ -121,9 +124,69 @@ export function sampleTrack(track, n) {
 }
 
 /**
+ * Tolerance of {@link sampleAnalytic}: the groove-bottom spline keeps its
+ * smallest radius of curvature within max(1 mm, 10 %) of the exact one and
+ * p within 50 µm of the exact support (m, fraction, m).
+ */
+export const SAMPLE_TOLERANCE = Object.freeze({ rho: 1e-3, rhoShare: 0.1, p: 50e-6 });
+
+/** Samples of the p comparison of sampleAnalytic over one turn (0.5°). */
+const SAMPLE_CHECK = 720;
+
+/**
+ * Values of a string track sampled for a free-form track, with the check
+ * against the exact track.
+ * @typedef {object} SampledTrack
+ * @property {number[]} values (m)
+ * @property {number} points number of values
+ * @property {boolean} within the spline follows the exact track within SAMPLE_TOLERANCE
+ * @property {number} minRho smallest radius of curvature of the groove-bottom spline (m)
+ * @property {number} exactMinRho the same of the exact track (m)
+ * @property {number} pError largest difference of p between the spline and the exact track (m)
+ */
+
+/**
+ * Sample an eccentric or elliptical track for a free-form track: the
+ * smallest N from FREEFORM_POINTS.default to FREEFORM_POINTS.max whose
+ * spline stays within SAMPLE_TOLERANCE of the exact track, or
+ * FREEFORM_POINTS.max points when none does (within false). A strongly
+ * elliptical track needs more than 12 points: an ellipse of 100 mm by 30 mm
+ * with 10 mm offset bends at 9.0 mm exactly and at −14.6 mm on the 12-point
+ * spline. A free-form track returns a copy of its values.
+ * @param {StringTrack} track
+ * @returns {SampledTrack}
+ */
+export function sampleAnalytic(track) {
+  if (track.shape === 'freeform') {
+    const values = [...track.freeform.values];
+    const minRho = grooveMinRho(values).value;
+    return { values, points: values.length, within: true, minRho, exactMinRho: minRho, pError: 0 };
+  }
+  const exact = createSupport(stringTrackGroove(track));
+  const exactMinRho = exact.minRho(0, 2 * Math.PI).value;
+  const rhoTol = Math.max(SAMPLE_TOLERANCE.rho, SAMPLE_TOLERANCE.rhoShare * Math.abs(exactMinRho));
+  /** @type {SampledTrack | null} */
+  let last = null;
+  for (let n = FREEFORM_POINTS.default; n <= FREEFORM_POINTS.max; n++) {
+    const values = sampleTrack(track, n);
+    const s = createSupport(freeformSupport(values));
+    let pError = 0;
+    for (let i = 0; i < SAMPLE_CHECK; i++) {
+      const psi = (2 * Math.PI * i) / SAMPLE_CHECK;
+      pError = Math.max(pError, Math.abs(s.p(psi) - exact.p(psi)));
+    }
+    const minRho = s.minRho(0, 2 * Math.PI).value;
+    const within = Math.abs(minRho - exactMinRho) <= rhoTol && pError <= SAMPLE_TOLERANCE.p;
+    last = { values, points: n, within, minRho, exactMinRho, pError };
+    if (within) break;
+  }
+  return /** @type {SampledTrack} */ (last);
+}
+
+/**
  * Values of the spline through `values` at n points. The same n returns a
  * copy; another n changes the spline slightly (default track to 8 points:
- * p within 25 µm, ρ within 1.4 mm), so check it with {@link resampleChecked}.
+ * p within 26 µm, ρ within 1.4 mm), so check it with {@link resampleChecked}.
  * New values are rounded to VALUE_RESOLUTION.
  * @param {readonly number[]} values
  * @param {number} n
@@ -182,6 +245,25 @@ export function resampleChecked(values, n, limit) {
   const out = resample(values, n);
   const minRho = pitchMinRho(out, limit.d).value;
   return { values: out, minRho, below: !withinLimit(out, limit) };
+}
+
+/** Samples of the bore clearance check of {@link clearsBore} over one turn (0.5°). */
+const CLEARANCE_SAMPLES = 720;
+
+/**
+ * True when the groove bottom through the values stays at least `wall`
+ * (bore radius plus minimum wall) from the axle, the rule of the solver
+ * diagnostic string-clearance, checked at 720 angles.
+ * @param {readonly number[]} values
+ * @param {number} wall (m)
+ */
+export function clearsBore(values, wall) {
+  const s = createSupport(freeformSupport(values));
+  for (let i = 0; i < CLEARANCE_SAMPLES; i++) {
+    const psi = (2 * Math.PI * i) / CLEARANCE_SAMPLES;
+    if (!(Math.hypot(s.p(psi), s.dp(psi)) >= wall)) return false;
+  }
+  return true;
 }
 
 /**
@@ -280,19 +362,107 @@ export function largestAmount(values, id, angle, limit, sign = 1) {
 export const MODIFIER_REFERENCE = 40e-3;
 
 /**
- * Default amount of a modifier: its nominal amount, scaled down for a track
- * whose mean groove radius is below MODIFIER_REFERENCE, clamped to
- * largestAmount.
+ * Room of a modifier at an angle, for the preset panel.
+ * @typedef {object} PresetRoom
+ * @property {'within' | 'margin' | 'below'} track the track, resampled to
+ *   pointsFor, against the limit: at least rho + margin (within), at least
+ *   rho but inside the margin (margin), or below rho (below)
+ * @property {number} most largest positive amount (m); 0 for a track that
+ *   is not within, except for Shift
+ * @property {'bend' | 'range' | 'bore' | 'max'} stop what ends the positive
+ *   amounts: the bend limit with its margin, the value range, the bore
+ *   clearance (Shift only) or MODIFIER_MAX_AMOUNT
+ * @property {number} least Size on a track that is not within: the smallest
+ *   positive amount that brings it within rho + margin, NaN when none; 0
+ *   otherwise (m)
+ * @property {number} negative when most is 0 on a track within: the largest
+ *   negative amount that keeps the limit (m, ≤ 0); 0 otherwise
+ */
+
+/**
+ * Room of a modifier. Size (ρ + a) and the shape modifiers keep the bend
+ * limit with its margin and the value range; Shift moves the track without
+ * changing ρ, so only the value range and the bore clearance limit it (the
+ * bore clearance only when the track clears the bore now).
  * @param {readonly number[]} values
  * @param {ModifierId} id
  * @param {number} angle (rad)
  * @param {FreeformLimit} limit
+ * @param {number} [wall] bore radius plus minimum wall, for Shift (m); default 0
+ * @returns {PresetRoom}
+ */
+export function presetRoom(values, id, angle, limit, wall = 0) {
+  const base = resample(values, pointsFor(id, values.length));
+  const rho = pitchMinRho(base, limit.d).value;
+  const track = rho >= limit.rho + limit.margin ? 'within' : rho >= limit.rho ? 'margin' : 'below';
+  const at = (/** @type {number} */ a) => applyModifier(base, id, a, angle);
+  const inRange = (/** @type {number[]} */ v) => v.every((x) => x >= FREEFORM_RANGE.min && x <= FREEFORM_RANGE.max);
+  // The probe past the largest amount tells what ends it.
+  const past = (/** @type {number} */ most) => at(most + 2 * LIMIT_TOLERANCE);
+  if (id === 'shift') {
+    const clear = clearsBore(base, wall);
+    const most = largestTrue((a) => {
+      const v = at(a);
+      return inRange(v) && (!clear || clearsBore(v, wall));
+    }, MODIFIER_MAX_AMOUNT);
+    const stop = most >= MODIFIER_MAX_AMOUNT ? 'max' : inRange(past(most)) ? 'bore' : 'range';
+    return { track, most, stop, least: 0, negative: 0 };
+  }
+  const most = largestTrue((a) => withinLimit(at(a), limit), MODIFIER_MAX_AMOUNT);
+  const stop = most >= MODIFIER_MAX_AMOUNT ? 'max' : track === 'within' && !inRange(past(most)) ? 'range' : 'bend';
+  let least = 0;
+  if (id === 'size' && track !== 'within') {
+    // ρ and the smallest value grow with the amount: bisect upwards to the
+    // first amount that reaches rho + margin and the range minimum.
+    const reaches = (/** @type {number} */ a) => {
+      const v = at(a);
+      return pitchMinRho(v, limit.d).value >= limit.rho + limit.margin && Math.min(...v) >= FREEFORM_RANGE.min;
+    };
+    least = Number.NaN;
+    if (reaches(MODIFIER_MAX_AMOUNT)) {
+      let lo = 0;
+      let hi = MODIFIER_MAX_AMOUNT;
+      while (hi - lo > LIMIT_TOLERANCE) {
+        const mid = (lo + hi) / 2;
+        if (reaches(mid)) hi = mid;
+        else lo = mid;
+      }
+      if (inRange(at(hi))) least = hi;
+    }
+  }
+  const negative = track === 'within' && most === 0 ? largestAmount(values, id, angle, limit, -1) : 0;
+  return { track, most, stop, least, negative };
+}
+
+/**
+ * Default amount of a modifier: its nominal amount, scaled down for a track
+ * whose mean groove radius is below MODIFIER_REFERENCE, clamped to the
+ * largest amount of {@link presetRoom}. Size on a track that misses the
+ * limit plus margin takes the smallest amount that restores it instead (0
+ * when none does); the shape modifiers take 0 on such a track.
+ * @param {readonly number[]} values
+ * @param {ModifierId} id
+ * @param {number} angle (rad)
+ * @param {FreeformLimit} limit
+ * @param {number} [wall] bore radius plus minimum wall, for Shift (m); default 0
  * @returns {number} (m)
  */
-export function defaultAmount(values, id, angle, limit) {
+export function defaultAmount(values, id, angle, limit, wall = 0) {
+  return roomDefault(values, id, presetRoom(values, id, angle, limit, wall));
+}
+
+/**
+ * Default amount of a modifier from its room, as {@link defaultAmount}.
+ * @param {readonly number[]} values
+ * @param {ModifierId} id
+ * @param {PresetRoom} room
+ * @returns {number} (m)
+ */
+export function roomDefault(values, id, room) {
+  if (id === 'size' && room.track !== 'within') return Number.isNaN(room.least) ? 0 : room.least;
   const mean = values.reduce((a, v) => a + v, 0) / values.length;
   const nominal = MODIFIERS[id].amount * Math.min(1, mean / MODIFIER_REFERENCE);
-  return Math.min(nominal, largestAmount(values, id, angle, limit));
+  return Math.min(nominal, room.most);
 }
 
 /** Weights of the drag bump at offsets 0, ±1, ±2: a raised cosine ½·(1 + cos(π·j/3)). */

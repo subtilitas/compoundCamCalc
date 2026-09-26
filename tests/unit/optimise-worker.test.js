@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { withValues } from '../../src/core/optimise.js';
-import { knotAngles } from '../../src/core/freeform.js';
+import { knotAngles, sampleAnalytic } from '../../src/core/freeform.js';
 import { solve } from '../../src/core/solve.js';
 import { defaultState } from '../../src/state/presets.js';
 import { sampleState } from '../../src/state/samples.js';
 import {
-  BUDGET_PARAM, budgetFromSearch, comparisonRows, disabledReason, noResultText, progressText, resultText, sameDesign,
+  BUDGET_PARAM, budgetFromSearch, comparisonRows, disabledReason, noResultText, progressText, resultText, sameDesign, searchStartText,
 } from '../../src/ui/optimise.js';
 import { run } from '../../src/worker/optimise.worker.js';
 
@@ -68,6 +68,26 @@ describe('optimise worker', () => {
     expect(failing.map((m) => m.type)).toEqual(['start', 'done']);
   });
 
+  it('runs from a design whose only problem is a cam-size warning', () => {
+    // A crossbow with ATA 9 in, 40 mm limb travel and a 50 mm track: status
+    // ok, no diagnostic, a cam-size warning at full and coarse resolution.
+    const base = sampleState('crossbow');
+    const state = {
+      ...base, geometry: { ...base.geometry, ata: 9 * 0.0254 }, limb: { ...base.limb, travel: 0.04 },
+      stringTrack: { ...base.stringTrack, radius: 0.05 },
+    };
+    const full = solve(state, { resolution: 'full' });
+    expect(full.status).toBe('ok');
+    expect(full.warnings.map((w) => w.code)).toEqual(['cam-size']);
+    expect(disabledReason({ workers: true, latest: { result: full, state }, state })).toBe('');
+    const out = messages({ state, goal: 'cam', budget: 6 }, solve);
+    const done = /** @type {Extract<OptimiseMessage, { type: 'done' }>} */ (out.at(-1));
+    expect(done.outcome.reason).toBe('budget');
+    expect(done.outcome.solves).toBe(6);
+    expect(done.outcome.start.warnings).toEqual(['cam-size']);
+    expect(done.outcome.sampled).toMatchObject({ points: 12, within: true });
+  }, 30_000);
+
   it('posts an error when the search throws', () => {
     const out = messages({ state: defaultState(), goal: 'force' }, () => {
       throw new Error('broken solver.');
@@ -113,14 +133,14 @@ describe('optimise panel text', () => {
     const p = { solves: 37, budget: 600, step: 1e-3, halvings: 1, elapsed: 4200, best: 0.0953 };
     expect(progressText('cam', p, 4210, units)).toBe('37 of 600 solves, step halved 1 time, 4.2 s; smallest cam so far 95.3 mm');
     expect(progressText('force', { ...p, halvings: 3, best: 3.21 }, 4210, units))
-      .toBe('37 of 600 solves, step halved 3 times, 4.2 s; largest force difference so far 3.2 N');
+      .toBe('37 of 600 solves, step halved 3 times, 4.2 s; best force difference so far 3.2 N');
     expect(progressText('cam', p, 4210, inch)).toMatch(/smallest cam so far 3\.752 in$/);
   });
 
   it('lists cam size, force difference, let-off and sharpest bend before and after', () => {
     /** @type {Evaluation} */
     const before = {
-      ok: true, camSize: 0.0982, forceDifference: 3.71, tolerance: 8, letOff: 0.749, stringMinRho: 0.04625,
+      ok: true, warnings: [], camSize: 0.0982, forceDifference: 3.71, tolerance: 8, letOff: 0.749, stringMinRho: 0.04625,
       stringRhoLimit: 0.005, stringWrap: 5.3, cableWrap: 4.4,
     };
     const after = { ...before, camSize: 0.0908, forceDifference: 6.4, letOff: 0.741, stringMinRho: 0.0357 };
@@ -138,12 +158,25 @@ describe('optimise panel text', () => {
     expect(noResultText('stopped', 3)).toBe('No better shape found. Stopped after 3 solves. The track stays as it is.');
     expect(noResultText('budget', 600)).toMatch(/used all 600 solves/);
     expect(noResultText('time', 90)).toMatch(/time limit of 120 s/);
-    expect(noResultText('start', 0)).toMatch(/does not meet every check/);
+    expect(noResultText('start', 0)).toBe(
+      'The current design does not meet every check, so Optimise has nothing to keep. See Results for the problems.');
+    // The coarse start failed, not the full one.
+    expect(noResultText('start-coarse', 0)).toBe('The current design meets every check at full resolution, but not in the '
+      + 'coarse solve the search compares candidates with, so Optimise cannot start.');
     expect(resultText('stopped', 14)).toBe(
       'A better free-form track was found. Stopped after 14 solves; the best shape so far is kept. Apply sets it as the string track.');
     expect(resultText('converged', 400)).toMatch(/search ended after 400 solves/);
     expect(resultText('budget', 600)).toMatch(/used all 600 solves/);
     expect(resultText('time', 600)).toMatch(/time limit of 120 s/);
+  });
+
+  it('notes a search that starts from an ellipse 16 points do not follow closely', () => {
+    const s = defaultState();
+    const track = { ...s.stringTrack, shape: /** @type {const} */ ('ellipse'), semiMajor: 0.06, semiMinor: 0.025, offset: 0, phase: 0 };
+    const sampled = sampleAnalytic(track);
+    expect(searchStartText(sampled, 'ellipse', units)).toMatch(
+      /^The ellipse sampled at 16 points does not follow it closely: .* The search starts from this sampled track; the Before column is the ellipse\.$/);
+    expect(searchStartText(sampleAnalytic(s.stringTrack), 'eccentric', units)).toBe('');
   });
 
   it('keeps a free-form state of the result loadable', () => {

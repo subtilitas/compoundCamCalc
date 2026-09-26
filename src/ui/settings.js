@@ -9,12 +9,12 @@
  */
 
 import { AMO_OFFSET, INCH, fromSI, parseNumber, parseQuantity, toSI } from '../core/units.js';
-import { FREEFORM_POINTS, knotAngles, sampleTrack } from '../core/freeform.js';
+import { knotAngles } from '../core/freeform.js';
 import { FIELDS, MIN_POWER_STROKE, freeformErrors } from '../state/schema.js';
 import { DEGREE, DIMS_DECIMALS, FORCE_DECIMALS, dimsText, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
 import { h } from './dom.js';
 import { infoButton } from './glossary.js';
-import { VALUE_DECIMALS, createTrackEditor } from './trackeditor.js';
+import { VALUE_DECIMALS, createTrackEditor, sampledText, trackSample } from './trackeditor.js';
 
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../state/schema.js').Units} Units */
@@ -238,18 +238,31 @@ export function stringTrackExtra(key, value, s) {
 
 /**
  * String track change of the Shape select. Switching to free-form samples
- * the current eccentric or elliptical track at FREEFORM_POINTS.default
- * points, so the cam stays the same; the values of an earlier free-form
- * track are replaced. Other switches change the shape only.
+ * the current eccentric or elliptical track at the fewest points from 12
+ * to 16 that follow it within SAMPLE_TOLERANCE of core/freeform, so the
+ * cam stays about the same; the values of an earlier free-form track are
+ * replaced. Other switches change the shape only.
  * @param {StringTrack['shape']} shape
  * @param {ProjectState} s
  * @returns {Partial<StringTrack>}
  */
 export function shapeChange(shape, s) {
   if (shape === 'freeform' && s.stringTrack.shape !== 'freeform') {
-    return { shape, freeform: { values: sampleTrack(s.stringTrack, FREEFORM_POINTS.default) } };
+    return { shape, freeform: { values: [...trackSample(s.stringTrack).values] } };
   }
   return { shape };
+}
+
+/**
+ * Note after a switch of the Shape select: for a switch to free-form from
+ * a track that 16 points do not follow closely, what changed; '' otherwise.
+ * @param {StringTrack['shape']} shape
+ * @param {ProjectState} s state before the switch
+ */
+export function shapeChangeNote(shape, s) {
+  if (shape !== 'freeform' || s.stringTrack.shape === 'freeform') return '';
+  const text = sampledText(trackSample(s.stringTrack), s.stringTrack.shape, s.units);
+  return text ? `${text} Check the sharpest bend in the editor; Undo goes back.` : '';
 }
 
 /** Limits of the measured limb table. The schema needs 3 rows in table mode. */
@@ -1194,7 +1207,9 @@ export function createSettings(panel, store) {
    * shows the reason under the select and reverts it.
    * @param {{ id: string, label: string, options: readonly { value: string, label: string }[],
    *   get: (s: ProjectState) => string, action: (value: string, s: ProjectState) => Action,
-   *   extra?: (value: string, s: ProjectState) => string | null }} def
+   *   extra?: (value: string, s: ProjectState) => string | null,
+   *   note?: (value: string, s: ProjectState) => string }} def note: text
+   *   under the select after an accepted change (s: the state before it)
    */
   function choice(def) {
     const selectId = `c-${def.id}`;
@@ -1206,7 +1221,7 @@ export function createSettings(panel, store) {
       const s = store.getState();
       const message = def.extra?.(select.value, s) ?? null;
       const errors = message ? [{ message }] : store.dispatch(def.action(select.value, s));
-      msg.textContent = errors.length > 0 ? errors[0].message : '';
+      msg.textContent = errors.length > 0 ? errors[0].message : def.note?.(select.value, s) ?? '';
       select.setAttribute('aria-invalid', String(errors.length > 0));
       if (errors.length > 0) select.value = def.get(store.getState());
     });
@@ -1446,6 +1461,7 @@ export function createSettings(panel, store) {
     get: (s) => s.stringTrack.shape,
     action: (value, s) => ({ type: 'setStringTrack', stringTrack: shapeChange(/** @type {StringTrack['shape']} */ (value), s) }),
     extra: (value, s) => stringTrackMessage({ ...s.stringTrack, ...shapeChange(/** @type {StringTrack['shape']} */ (value), s) }, s.units),
+    note: (value, s) => shapeChangeNote(/** @type {StringTrack['shape']} */ (value), s),
   });
 
   // A line names the free-form track and its number of points; the editor

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BUMP, FREEFORM_POINTS, LIMIT_TOLERANCE, MODIFIERS, MODIFIER_MAX_AMOUNT, applyModifier, contactPoints, defaultAmount, dragBump,
-  dragLimit, freeformLimit, grooveMinRho, harmonicOf, knotAngles, largestAmount, offsetValues, pitchMinRho, pointsFor, resample,
-  resampleChecked, sampleTrack, withinLimit,
+  BUMP, FREEFORM_POINTS, FREEFORM_RANGE, LIMIT_TOLERANCE, MODIFIERS, MODIFIER_MAX_AMOUNT, SAMPLE_TOLERANCE, applyModifier,
+  clearsBore, contactPoints, defaultAmount, dragBump, dragLimit, freeformLimit, grooveMinRho, harmonicOf, knotAngles, largestAmount,
+  offsetValues, pitchMinRho, pointsFor, presetRoom, resample, resampleChecked, sampleAnalytic, sampleTrack, withinLimit,
 } from '../../src/core/freeform.js';
 import { createSupport, freeformSupport, stringTrackGroove, stringTrackSupport } from '../../src/core/support.js';
 import { defaultState } from '../../src/state/presets.js';
@@ -75,6 +75,34 @@ describe('free-form track support', () => {
     }
   });
 
+  it('samples a strongly elliptical track at the fewest points from 12 to 16 that keep ρ and p, or 16 with a flag', () => {
+    const ellipse = /** @type {StringTrack} */ ({
+      ...state.stringTrack, shape: 'ellipse', semiMajor: 0.06, semiMinor: 0.025, offset: 0, phase: 0,
+    });
+    // Exact ρ_min = b²/a = 10.42 mm; the splines of 12 to 16 points miss it
+    // by more than 1.04 mm (10 %) or p by more than 50 µm.
+    const strong = sampleAnalytic(ellipse);
+    expect(strong.exactMinRho).toBeCloseTo(0.025 ** 2 / 0.06, 9);
+    expect(strong.points).toBe(16);
+    expect(strong.within).toBe(false);
+    expect(strong.values).toEqual(sampleTrack(ellipse, 16));
+    expect(Math.abs(strong.minRho - strong.exactMinRho) > 1.04e-3 || strong.pError > SAMPLE_TOLERANCE.p).toBe(true);
+    // 12 and 13 points miss p by more than 50 µm; 14 points keep both.
+    const moderate = /** @type {StringTrack} */ ({ ...ellipse, semiMajor: 0.05, semiMinor: 0.035, offset: 0.02, phase: 1 });
+    const fourteen = sampleAnalytic(moderate);
+    expect(fourteen.points).toBe(14);
+    expect(fourteen.within).toBe(true);
+    expect(fourteen.pError).toBeLessThanOrEqual(SAMPLE_TOLERANCE.p);
+    expect(Math.abs(fourteen.minRho - fourteen.exactMinRho)).toBeLessThanOrEqual(0.1 * fourteen.exactMinRho);
+    expect(sampleAnalytic({ ...moderate }).values).toEqual(sampleTrack(moderate, 14));
+    // The default eccentric track and a free-form track keep 12 points.
+    const round = sampleAnalytic(state.stringTrack);
+    expect(round).toMatchObject({ points: 12, within: true, values: sampleTrack(state.stringTrack, 12) });
+    const free = sampleAnalytic({ ...state.stringTrack, shape: 'freeform' });
+    expect(free).toMatchObject({ points: 12, within: true, pError: 0, values });
+    expect(SAMPLE_TOLERANCE).toEqual({ rho: 1e-3, rhoShare: 0.1, p: 50e-6 });
+  });
+
   it('resamples the spline: the same number of points copies, another one changes the track slightly', () => {
     const same = resample(values, 12);
     expect(same).toEqual(values);
@@ -85,7 +113,7 @@ describe('free-form track support', () => {
     const b = createSupport(freeformSupport(eight));
     for (let i = 0; i < 720; i++) {
       const psi = i * 0.5 * DEG;
-      expect(Math.abs(a.p(psi) - b.p(psi))).toBeLessThan(3e-5);
+      expect(Math.abs(a.p(psi) - b.p(psi))).toBeLessThan(2.6e-5);
       expect(Math.abs(a.rho(psi) - b.rho(psi))).toBeLessThan(1.4e-3);
     }
     // A free-form track samples by resampling.
@@ -208,6 +236,81 @@ describe('shape modifiers', () => {
     const sharp = { ...limit, rho: 0.1 };
     expect(largestAmount(values, 'oval', 0, sharp)).toBe(0);
     expect(defaultAmount(values, 'oval', 0, sharp)).toBe(0);
+  });
+});
+
+describe('preset room', () => {
+  const margin = freeformLimit(state.body, state.cords.stringDiameter, 0.5e-3);
+  const rho = pitchMinRho(values, margin.d).value;
+
+  it('tells a track below the limit from one inside the margin, and Size names the smallest amount that restores it', () => {
+    // 0.2 mm over the limit, inside the 0.5 mm margin.
+    const tight = { ...margin, rho: rho - 0.2e-3 };
+    expect(withinLimit(values, { ...tight, margin: 0 })).toBe(true);
+    expect(withinLimit(values, tight)).toBe(false);
+    const size = presetRoom(values, 'size', 0, tight);
+    expect(size.track).toBe('margin');
+    // ρ + a: 0.3 mm more restores the margin, to within 1 µm.
+    expect(size.least).toBeGreaterThanOrEqual(0.3e-3 - 1e-9);
+    expect(size.least).toBeLessThanOrEqual(0.3e-3 + LIMIT_TOLERANCE);
+    expect(withinLimit(applyModifier(values, 'size', size.least, 0), tight)).toBe(true);
+    expect(defaultAmount(values, 'size', 0, tight)).toBe(size.least);
+    // A shape preset has no room in either direction here: its default is 0.
+    const oval = presetRoom(values, 'oval', 0, tight);
+    expect(oval).toMatchObject({ track: 'margin', most: 0, least: 0 });
+    expect(defaultAmount(values, 'oval', 0, tight)).toBe(0);
+    // Below the limit itself: 2 mm under it.
+    const below = { ...margin, rho: rho + 2e-3 };
+    const low = presetRoom(values, 'size', 0, below);
+    expect(low.track).toBe('below');
+    expect(low.least).toBeCloseTo(2.5e-3, 5);
+    expect(presetRoom(values, 'triangle', 0, below).track).toBe('below');
+    // No Size up to 30 mm reaches a limit 40 mm away.
+    expect(presetRoom(values, 'size', 0, { ...margin, rho: rho + 0.04 }).least).toBeNaN();
+  });
+
+  it('names the limit that ends the largest amount, and a negative amount when the positive side has no room', () => {
+    const oval = presetRoom(values, 'oval', 0, margin);
+    expect(oval).toMatchObject({ track: 'within', stop: 'bend', least: 0, negative: 0 });
+    expect(oval.most).toBeCloseTo(largestAmount(values, 'oval', 0, margin), 12);
+    expect(presetRoom(values, 'size', 0, margin)).toMatchObject({ most: MODIFIER_MAX_AMOUNT, stop: 'max' });
+    // A round track of 140 mm: Size ends at the 150 mm value range.
+    const big = new Array(12).fill(FREEFORM_RANGE.max - 10e-3);
+    const ranged = presetRoom(big, 'size', 0, margin);
+    expect(ranged).toMatchObject({ track: 'within', stop: 'range' });
+    expect(ranged.most).toBeCloseTo(10e-3, 5);
+    // The oval at its largest amount has no room left; the other sign has.
+    const edge = applyModifier(values, 'oval', oval.most, 0);
+    const stuck = presetRoom(edge, 'oval', 0, margin);
+    expect(stuck.most).toBeLessThan(2 * LIMIT_TOLERANCE);
+    expect(stuck.negative).toBeLessThan(-1e-3);
+  });
+
+  it('limits Shift by the value range and the bore clearance only, not by the bend', () => {
+    const sharp = { ...margin, rho: rho + 2e-3 };
+    const wall = state.body.boreDiameter / 2 + state.body.minWall;
+    expect(clearsBore(values, wall)).toBe(true);
+    // The track misses this limit by 2 mm, yet Shift keeps its full room:
+    // 30 mm towards 0° keeps every value in range and the groove off the bore.
+    const shift = presetRoom(values, 'shift', 0, sharp, wall);
+    expect(shift).toMatchObject({ track: 'below', most: MODIFIER_MAX_AMOUNT, stop: 'max' });
+    expect(presetRoom(values, 'oval', 0, sharp).most).toBe(0);
+    expect(clearsBore(applyModifier(values, 'shift', shift.most, 0), wall)).toBe(true);
+    expect(defaultAmount(values, 'shift', 0, sharp, wall)).toBeCloseTo(MODIFIERS.shift.amount, 12);
+    // A wall 0.5 mm inside the nearest point of the groove: the shift
+    // towards that point stops at the bore after about 0.5 mm.
+    const groove = createSupport(freeformSupport(values));
+    let near = { d: Infinity, psi: 0 };
+    for (let i = 0; i < 720; i++) {
+      const psi = (i * Math.PI) / 360;
+      const d = Math.hypot(groove.p(psi), groove.dp(psi));
+      if (d < near.d) near = { d, psi };
+    }
+    const snug = presetRoom(values, 'shift', near.psi + Math.PI, margin, near.d - 0.5e-3);
+    expect(snug.stop).toBe('bore');
+    expect(snug.most).toBeGreaterThan(0.4e-3);
+    expect(snug.most).toBeLessThan(0.6e-3);
+    expect(clearsBore(values, near.d + 1e-4)).toBe(false);
   });
 });
 

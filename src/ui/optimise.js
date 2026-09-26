@@ -12,6 +12,7 @@
 import { GOALS, OPTIMISE_BUDGET, OPTIMISE_TIME_LIMIT } from '../core/optimise.js';
 import { dimsText, fixed, forceText } from './display.js';
 import { h } from './dom.js';
+import { sampledText } from './trackeditor.js';
 
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../state/schema.js').Units} Units */
@@ -58,7 +59,9 @@ export function sameDesign(a, b) {
 }
 
 /**
- * Why "Optimise shape" is disabled, or '' when it is enabled.
+ * Why "Optimise shape" is disabled, or '' when it is enabled. A design with
+ * plausibility warnings but no diagnostic may start: the cam goal is meant
+ * for a cam-size warning.
  * @param {object} input
  * @param {boolean} input.workers the browser runs module workers
  * @param {{ result: SolveResult, state: ProjectState } | null} input.latest
@@ -95,9 +98,9 @@ export function progressText(goal, progress, elapsed, units) {
   const time = `${fixed(elapsed / 1000, 1)} s`;
   if (!progress) return `Solving the current design, ${time}`;
   const halvings = Math.round(progress.halvings);
-  const best = goal === 'cam' ? 'smallest cam' : 'largest force difference';
+  const best = goal === 'cam' ? 'smallest cam so far' : 'best force difference so far';
   return `${progress.solves} of ${progress.budget} solves, step halved ${halvings} ${halvings === 1 ? 'time' : 'times'}, ${time}; `
-    + `${best} so far ${objectiveText(goal, progress.best, units)}`;
+    + `${best} ${objectiveText(goal, progress.best, units)}`;
 }
 
 /**
@@ -124,7 +127,11 @@ export function comparisonRows(before, after, units) {
  * @param {number} solves
  */
 export function noResultText(reason, solves) {
-  if (reason === 'start') return 'The current design does not meet every check at full resolution, so Optimise has nothing to keep.';
+  if (reason === 'start') return 'The current design does not meet every check, so Optimise has nothing to keep. See Results for the problems.';
+  if (reason === 'start-coarse') {
+    return 'The current design meets every check at full resolution, but not in the coarse solve the search compares '
+      + 'candidates with, so Optimise cannot start.';
+  }
   const how = reason === 'stopped' ? `Stopped after ${solves} solves.`
     : reason === 'time' ? `The run reached the time limit of ${OPTIMISE_TIME_LIMIT / 1000} s.`
       : reason === 'budget' ? `The run used all ${solves} solves.`
@@ -143,6 +150,18 @@ export function resultText(reason, solves) {
       : reason === 'budget' ? `The run used all ${solves} solves.`
         : `The search ended after ${solves} solves.`;
   return `A better free-form track was found. ${how} Apply sets it as the string track.`;
+}
+
+/**
+ * Note on the start of a search from an eccentric or elliptical track that
+ * 16 points do not follow closely, or '' when the sampled track follows it.
+ * @param {import('../core/freeform.js').SampledTrack} sampled
+ * @param {import('../state/schema.js').StringTrack['shape']} shape
+ * @param {Units} units
+ */
+export function searchStartText(sampled, shape, units) {
+  const text = sampledText(sampled, shape, units);
+  return text ? `${text} The search starts from this sampled track; the Before column is the ${shape === 'ellipse' ? 'ellipse' : 'eccentric circle'}.` : '';
 }
 
 /**
@@ -194,7 +213,7 @@ export function createOptimise(store, options = {}) {
   const element = h('section', { class: 'optimise', 'aria-labelledby': 'optimise-title', 'data-testid': 'optimise' },
     h('h3', { id: 'optimise-title', class: 'optimise-title' }, 'Optimise'),
     h('p', { class: 'hint' }, 'Searches for a free-form track that improves the goal and keeps every check, with margins. '
-      + `A run takes up to ${budget} solves, usually 5 s to 40 s.`),
+      + `A run takes up to ${budget} solves, usually 2 s to 45 s.`),
     h('div', { class: 'field unit-field' }, h('label', { for: 'c-optimise-goal' }, 'Goal'), goalSelect),
     h('div', { class: 'optimise-actions' }, run),
     reason, running, result, message);
@@ -259,17 +278,22 @@ export function createOptimise(store, options = {}) {
    * The run has ended: show the best track, or say that there is none.
    * @param {StopReason | 'stopped'} why
    * @param {number} solves
+   * @param {import('../core/freeform.js').SampledTrack | null} [sampled]
+   *   the analytic start track sampled for the search
    */
-  function finish(why, solves) {
+  function finish(why, solves, sampled = null) {
     const hadFocus = document.activeElement === stop;
     halt();
+    const s = store.getState();
+    const shape = startState?.stringTrack.shape ?? 'freeform';
+    const sampling = sampled && why !== 'start' && why !== 'start-coarse' ? searchStartText(sampled, shape, s.units) : '';
     if (best && start) {
       phase = 'result';
-      note.textContent = resultText(why, solves);
+      note.textContent = `${resultText(why, solves)}${sampling ? ` ${sampling}` : ''}`;
       say('');
     } else {
       phase = 'idle';
-      say(noResultText(why, solves));
+      say(`${noResultText(why, solves)}${sampling ? ` ${sampling}` : ''}`);
     }
     render();
     if (hadFocus) (phase === 'result' ? apply : run).focus();
@@ -299,7 +323,7 @@ export function createOptimise(store, options = {}) {
     else if (m.type === 'progress') progress = m.progress;
     else if (m.type === 'improved') best = m.improvement;
     else if (m.type === 'done') {
-      finish(m.outcome.reason, m.outcome.solves);
+      finish(m.outcome.reason, m.outcome.solves, m.outcome.sampled);
       return;
     } else if (m.type === 'error') {
       finish('stopped', progress?.solves ?? 0);
