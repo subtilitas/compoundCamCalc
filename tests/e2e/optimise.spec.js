@@ -52,7 +52,7 @@ test.describe('Optimise', () => {
     /** @type {string[]} */
     const errors = [];
     page.on('pageerror', (err) => errors.push(err.message));
-    await openWithBudget(page, 20);
+    await openWithBudget(page, 200);
     const goal = page.getByTestId('optimise-goal');
     await expect(goal.locator('option')).toHaveText([
       'Smallest cam, force curve no worse than now',
@@ -67,11 +67,11 @@ test.describe('Optimise', () => {
     await expect(page.getByTestId('optimise-stop')).toBeVisible();
     await expect(shapeField(page)).toHaveAttribute('inert', '');
     await expect(goal).toBeDisabled();
-    await expect(page.getByTestId('optimise-progress')).toHaveText(/of 20 solves, step halved \d+ times?, \d+\.\d s; smallest cam so far \d+\.\d mm/,
+    await expect(page.getByTestId('optimise-progress')).toHaveText(/of 200 solves, step halved \d+ times?, \d+\.\d s; smallest cam so far \d+\.\d mm/,
       { timeout: 20_000 });
     await expect(section).toHaveAttribute('data-phase', 'result', { timeout: 60_000 });
     await expect(shapeField(page)).not.toHaveAttribute('inert', '');
-    await expect(page.getByTestId('optimise-note')).toHaveText(/^A better free-form track was found\. The run used all 20 solves\./);
+    await expect(page.getByTestId('optimise-note')).toHaveText(/^A better free-form track was found\. (The run used all 200 solves|The search ended after \d+ solves)\./);
 
     const rows = page.getByTestId('optimise-table').locator('tbody tr');
     await expect(rows.locator('th')).toHaveText(['Largest cam dimension', 'Largest force difference', 'Let-off', 'Sharpest string bend']);
@@ -96,7 +96,7 @@ test.describe('Optimise', () => {
   });
 
   test('Discard keeps the track and adds no undo step', async ({ page }) => {
-    await openWithBudget(page, 20);
+    await openWithBudget(page, 200);
     await page.getByTestId('optimise-goal').selectOption('force');
     await runToResult(page);
     await expect(page.getByTestId('optimise-progress')).toBeHidden();
@@ -141,7 +141,7 @@ test.describe('Optimise', () => {
   });
 
   test('opening another design discards a result that waits for Apply', async ({ page }) => {
-    await openWithBudget(page, 20);
+    await openWithBudget(page, 200);
     await runToResult(page);
     await page.getByTestId('file-menu').click();
     await page.getByTestId('file-sample').click();

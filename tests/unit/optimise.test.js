@@ -123,11 +123,14 @@ describe('optimise helpers', () => {
     expect(evaluate({ ...r, metrics: null }).camSize).toBeNaN();
   });
 
-  it('sets the limits with margins: ρ limit + max(1 mm, 10 %), force no worse than max(start, 0.8 × tolerance)', () => {
+  it('sets the limits with margins: ρ limit + max(1 mm, 10 %), force and cam no worse than the start', () => {
     const e = evaluate(fakeResult({ cam: 0.09, force: 1, rho: 0.04, resolution: 'full' }));
     const cam = limitsFor('cam', e);
     expect(cam.rho).toBeCloseTo(6 * MM, 12);
-    expect(cam.force).toBeCloseTo(0.8 * 3, 12);
+    expect(cam.force).toBe(1);
+    // A start inside the margin keeps at least its own bend, not less than the limit.
+    expect(limitsFor('cam', { ...e, stringMinRho: 5.4 * MM }).rho).toBeCloseTo(5.4 * MM, 12);
+    expect(limitsFor('cam', { ...e, stringMinRho: 4 * MM }).rho).toBeCloseTo(5 * MM, 12);
     expect(cam.cam).toBe(Infinity);
     const force = limitsFor('force', { ...e, stringRhoLimit: 15 * MM, forceDifference: 5 });
     expect(force.rho).toBeCloseTo(16.5 * MM, 12);
@@ -320,15 +323,15 @@ describe('optimise the default design with the real solver', () => {
     return e;
   }
 
-  it('makes the cam smaller within 30 solves, keeps the force limit, and repeats the same result', () => {
-    const run = () => optimise({ state: defaultState(), goal: 'cam', solve, budget: 30 });
+  it('makes the cam smaller within 200 solves, keeps the force limit, and repeats the same result', () => {
+    const run = () => optimise({ state: defaultState(), goal: 'cam', solve, budget: 200 });
     const out = run();
     expect(out.start.ok).toBe(true);
-    expect(out.solves).toBeLessThanOrEqual(30);
+    expect(out.solves).toBeLessThanOrEqual(200);
     expect(out.best).not.toBeNull();
     const e = holds(out);
     expect(e.camSize).toBeLessThan(out.start.camSize);
-    expect(e.forceDifference).toBeLessThanOrEqual(Math.max(out.start.forceDifference, 0.8 * out.start.tolerance));
+    expect(e.forceDifference).toBeLessThanOrEqual(out.start.forceDifference);
     expect(run().best?.values).toEqual(out.best?.values);
   }, 60_000);
 

@@ -205,9 +205,11 @@ client's latest-request-wins scheduler would drop the solves of a search).
   track, is left out: the constrained fit pins the smallest cable ρ at its
   limit on every sample design.
 - Constraints with margins: status ok, no diagnostic, no warning; pitch
-  string ρ ≥ ρ_lim + max(1 mm, 10 % of ρ_lim); string and cable wrap ≤ 350°;
-  for the cam goal a force difference ≤ max(start, 0.8 × tolerance); for
-  the force goal a cam size ≤ start; every value in 2 mm to 150 mm.
+  string ρ ≥ ρ_lim + max(1 mm, 10 % of ρ_lim), or the start's own smallest
+  ρ when that is lower (a start inside the margin keeps at least its own
+  bend); string and cable wrap ≤ 350°; for the cam goal a force difference
+  ≤ the start's; for the force goal a cam size ≤ the start's; every value
+  in 2 mm to 150 mm.
 - Search space: the constant and cos kψ, sin kψ of the N values for
   k = 1 … min(4, N/2); the modes up to N/2 join once the step is below
   0.2 mm. Moving single values stalls: on a round track p(ψ) + p(ψ + π) is
@@ -229,10 +231,13 @@ client's latest-request-wins scheduler would drop the solves of a search).
   0.6 N low).
 - Budget: 600 solves, plus the full (and for the cam goal the coarse)
   solve of the current design, which also warms up the worker; 120 s
-  wall-clock as a safety stop. The default design with the cam goal
-  converges after 493 solves in 16 s (Node.js), 98.2 mm → 90.8 mm at a
-  force difference of 6.4 N (limit 6.4 N); the force goal uses all 600
-  solves in 23 s, 3.71 N → 2.48 N at a cam of 98.1 mm.
+  wall-clock as a safety stop. Measured in Node.js: the default design
+  with the cam goal converges after 178 solves in 4.5 s, 98.2 mm →
+  93.9 mm at a force difference of 3.56 N (start 3.71 N); the force goal
+  uses all 600 solves in 22 s, 3.71 N → 2.48 N at a cam of 98.2 mm. The
+  hunting sample goes from 132.2 mm to 96.4 mm (cam goal, 600 solves), the
+  crossbow from 86.0 mm to 69.8 mm (cam goal, 157 solves) and from 11.87 N
+  to 3.35 N (force goal).
 - The worker posts the start figures, progress after each solve, every
   confirmed improvement and the outcome. Stop terminates the worker and
   keeps the last improvement. A change of the design (units aside) or
@@ -780,9 +785,10 @@ Independent set; everything else is derived and shown read-only.
     design named after the sample. Samples (request of the user): the
     default target compound bow, a hunting compound bow, a crossbow and a
     mini bow whose cams print on an FDM (fused deposition modelling)
-    printer with a 0.4 mm nozzle. Slice 8 adds four compound bows: light
-    hunting, short-brace hunting with a free-form string track, long draw
-    and youth. Each solves with zero diagnostics and zero plausibility
+    printer with a 0.4 mm nozzle. Slice 8 adds five compound bows: the
+    target with a free-form string track from Optimise, light hunting,
+    short-brace hunting with a free-form string track, long draw and
+    youth. Each solves with zero diagnostics and zero plausibility
     warnings; a unit test checks that.
   - Input ranges widen for crossbows and small bows: axle-to-axle length
     8 to 48 in, brace height from 1.5 in, draw length from 6 in, limb lever
@@ -950,7 +956,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export. Hand-written R2000 writer, five plate profiles with post holes in the flange plates, ZIP of all files, no mirror option (decisions of the user); exports use the last cam that met every check |
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
 | 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
-| 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`). Optimise part: the search in `src/core/optimise.js`, the optimise worker and the Optimise section of the String track group. Sample part: light hunting, short-brace hunting (free-form track with a rounded triangle), long draw and youth compound bows |
+| 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`). Optimise part: the search in `src/core/optimise.js`, the optimise worker and the Optimise section of the String track group. Sample part: light hunting, short-brace hunting (free-form track with a rounded triangle), long draw and youth compound bows, and the target with an optimised track |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter

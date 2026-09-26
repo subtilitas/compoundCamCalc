@@ -156,8 +156,9 @@ describe('free-form string track in the solver', () => {
     // A modifier can make a design fail; the solve says why. With a 0.5 mm
     // margin at angle 0: the square on the hunting bow fails to close the
     // cable track, the 0.5 mm square on the light hunting bow leaves its
-    // fitted cam 7.1 N from the target (tolerance 6.7 N), and the 1 mm oval
-    // and egg bend the 26 mm mini cam's cable track too sharply.
+    // fitted cam 7.1 N from the target (tolerance 6.7 N), and Size on the
+    // youth bow (0.88 mm, scaled to its 35 mm track) bends its cable track
+    // too sharply. The scaled amounts keep the mini bow solving.
     /** @type {string[]} */
     const failed = [];
     for (const sample of SAMPLES) {
@@ -174,8 +175,7 @@ describe('free-form string track in the solver', () => {
     expect(failed).toEqual([
       'hunting square: closing-blend',
       'light-hunting square: cable-radius, cable-clearance',
-      'mini oval: cable-radius',
-      'mini egg: cable-radius',
+      'youth size: cable-radius, cable-clearance',
     ]);
   }, 60_000);
 });

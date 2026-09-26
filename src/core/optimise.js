@@ -73,12 +73,6 @@ export const RHO_MARGIN = Object.freeze({ min: 1e-3, share: 0.1 });
 /** Largest string or cable wrap of a candidate: 350°, 10° under a full turn (rad). */
 export const WRAP_LIMIT = (350 * Math.PI) / 180;
 
-/**
- * The cam goal lets the force difference grow to this share of the fit
- * tolerance when the design starts below it.
- */
-export const FORCE_SHARE = 0.8;
-
 /** Samples of the bore clearance check over one turn. */
 const CLEARANCE_SAMPLES = 720;
 
@@ -154,8 +148,11 @@ export function objectiveOf(goal, e) {
 export function limitsFor(goal, start) {
   const lim = start.stringRhoLimit;
   return {
-    rho: lim + Math.max(RHO_MARGIN.min, RHO_MARGIN.share * lim),
-    force: goal === 'cam' ? Math.max(start.forceDifference, FORCE_SHARE * start.tolerance) : Infinity,
+    // A design that starts inside the margin keeps at least its own bend,
+    // so the search is not stuck on a margin the start does not meet.
+    rho: Math.min(lim + Math.max(RHO_MARGIN.min, RHO_MARGIN.share * lim), Math.max(lim, start.stringMinRho)),
+    // "Force curve no worse than now".
+    force: goal === 'cam' ? start.forceDifference : Infinity,
     cam: goal === 'force' ? start.camSize : Infinity,
   };
 }

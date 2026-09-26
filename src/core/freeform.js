@@ -274,7 +274,14 @@ export function largestAmount(values, id, angle, limit, sign = 1) {
 }
 
 /**
- * Default amount of a modifier: its nominal amount, clamped to
+ * Mean groove radius at which a modifier takes its full nominal amount; a
+ * smaller track takes a proportionally smaller amount (m).
+ */
+export const MODIFIER_REFERENCE = 40e-3;
+
+/**
+ * Default amount of a modifier: its nominal amount, scaled down for a track
+ * whose mean groove radius is below MODIFIER_REFERENCE, clamped to
  * largestAmount.
  * @param {readonly number[]} values
  * @param {ModifierId} id
@@ -283,7 +290,9 @@ export function largestAmount(values, id, angle, limit, sign = 1) {
  * @returns {number} (m)
  */
 export function defaultAmount(values, id, angle, limit) {
-  return Math.min(MODIFIERS[id].amount, largestAmount(values, id, angle, limit));
+  const mean = values.reduce((a, v) => a + v, 0) / values.length;
+  const nominal = MODIFIERS[id].amount * Math.min(1, mean / MODIFIER_REFERENCE);
+  return Math.min(nominal, largestAmount(values, id, angle, limit));
 }
 
 /** Weights of the drag bump at offsets 0, ±1, ±2: a raised cosine ½·(1 + cos(π·j/3)). */

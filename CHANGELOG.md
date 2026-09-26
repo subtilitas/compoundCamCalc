@@ -48,8 +48,8 @@ All notable changes are listed here. Versions follow semantic versioning.
   discards the run. A before/after table (cam size, force difference,
   let-off, sharpest string bend) offers Apply, one undo step, and
   Discard. The query parameter `optimise-budget` lowers the budget for
-  the browser tests. On the default design the cam goal reaches 90.8 mm
-  from 98.2 mm.
+  the browser tests. On the default design the cam goal reaches 93.9 mm
+  from 98.2 mm with a force difference of 3.56 N (start 3.71 N).
 
 - Four sample designs (`src/state/samples.js`), each solving without
   diagnostics or plausibility warnings: light hunting compound bow (222 N
@@ -57,7 +57,9 @@ All notable changes are listed here. Versions follow semantic versioning.
   (311 N or 70 lbf, 6 in brace height, free-form string track with a 2 mm
   rounded triangle, 110 mm cam), long draw compound bow (356 N or 80 lbf,
   31 in draw, 120 mm cam) and youth compound bow (89 N or 20 lbf, 24 in
-  draw, 76 mm cam). Open sample… lists the compound bows first.
+  draw, 76 mm cam), and the target bow with a free-form string track from
+  Optimise (93.9 mm cam instead of 98.2 mm at a force difference of
+  3.56 N instead of 3.71 N). Open sample… lists the compound bows first.
 - Plausibility warnings (`src/core/plausibility.js`) for a cam wider than
   35 % of the axle-to-axle length and for cams that overlap at a draw
   position. The results card, the status line and the print report list

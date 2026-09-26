@@ -30,11 +30,11 @@ test.beforeEach(async ({ page }) => {
 test('Open sample lists the compound bows first, then the crossbow and the mini bow', async ({ page }) => {
   await menu(page, 'sample');
   const list = page.getByTestId('sample-list');
-  await expect(list.locator('.file-row-name')).toHaveCount(8);
-  await expect(list.getByRole('button')).toHaveText(Array(8).fill('Open'));
+  await expect(list.locator('.file-row-name')).toHaveCount(9);
+  await expect(list.getByRole('button')).toHaveText(Array(9).fill('Open'));
   const ids = await list.getByRole('button').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
   expect(ids).toEqual([
-    'sample-target', 'sample-hunting', 'sample-light-hunting', 'sample-short-brace',
+    'sample-target', 'sample-target-optimised', 'sample-hunting', 'sample-light-hunting', 'sample-short-brace',
     'sample-long-draw', 'sample-youth', 'sample-crossbow', 'sample-mini',
   ]);
 });

@@ -3,6 +3,7 @@ import { withValues } from '../../src/core/optimise.js';
 import { knotAngles } from '../../src/core/freeform.js';
 import { solve } from '../../src/core/solve.js';
 import { defaultState } from '../../src/state/presets.js';
+import { sampleState } from '../../src/state/samples.js';
 import {
   BUDGET_PARAM, budgetFromSearch, comparisonRows, disabledReason, noResultText, progressText, resultText, sameDesign,
 } from '../../src/ui/optimise.js';
@@ -27,7 +28,8 @@ function messages(request, solveFn) {
 
 describe('optimise worker', () => {
   it('posts the start, progress after each solve, each improvement and the outcome, in that order', () => {
-    const out = messages({ state: defaultState(), goal: 'cam', budget: 8 }, solve);
+    // The crossbow finds its first smaller cam within 8 solves.
+    const out = messages({ state: sampleState('crossbow'), goal: 'cam', budget: 8 }, solve);
     expect(out[0].type).toBe('start');
     const last = out.at(-1);
     expect(last?.type).toBe('done');

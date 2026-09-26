@@ -169,7 +169,8 @@ Shape modifiers add a harmonic term to the values of the current track:
 - `largestAmount` finds the largest amount that keeps the limit by
   bisection (1 µm) on the spline of the modified values, not on the exact
   formula: ρ is linear in the amount, so the amounts within the limit form
-  one interval. The default amounts (1 mm, 0.5 mm for the square) are
+  one interval. The default amounts (1 mm, 0.5 mm for the square, scaled
+  by the mean groove radius over 40 mm when that ratio is below 1) are
   clamped to it. On the default track with a 0.5 mm margin the largest
   amounts are about 12 mm (oval), 4 mm (triangle), 2.2 mm (square) and
   5 mm (egg).
@@ -177,9 +178,9 @@ Shape modifiers add a harmonic term to the values of the current track:
   default amounts on the eight samples: the square on the hunting bow
   reports `closing-blend`, the square on the light hunting bow reports
   `cable-radius` and `cable-clearance` (its fitted cam lies 7.1 N from the
-  target, over the 6.7 N tolerance), the oval and the egg on the 26 mm
-  mini cam report `cable-radius`; the other 44 combinations solve without
-  diagnostics.
+  target, over the 6.7 N tolerance), Size on the youth bow reports
+  `cable-radius` and `cable-clearance`; the other 45 combinations solve
+  without diagnostics.
 
 A drag moves a raised-cosine bump: the value at index i by δ, its
 neighbours by 0.75·δ and 0.25·δ. A single value would bend the track at

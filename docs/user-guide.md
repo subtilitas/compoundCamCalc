@@ -261,11 +261,12 @@ points is resampled. Each application is one undo step.
 
 A preset within the bend limit can still make the design fail, for
 example because the cable track can no longer follow; the solve shows why
-in Results. On the sample designs at the default amounts and angle 0°,
-the rounded square fails on "Compound bow, hunting (70 lbf)", and the oval
-and the egg fail on "Mini bow for FDM printing" (FDM: fused deposition
-modelling); the other 21 combinations
-solve without problems.
+in Results. The default amount scales with the track: a track with a mean
+groove radius below 40 mm starts at a proportionally smaller amount. On
+the eight sample designs at the default amounts and angle 0°, the rounded
+square fails on "Compound bow, hunting (70 lbf)" and "Compound bow, light
+hunting (50 lbf)", and Size fails on "Compound bow, youth (20 lbf)"; the
+other 45 combinations solve without problems.
 
 ## Optimise
 
@@ -274,9 +275,8 @@ free-form track that improves one goal of the current design. The Goal
 select offers two goals:
 
 - **Smallest cam, force curve no worse than now**: makes the largest cam
-  dimension smaller. The largest force difference from the target may grow
-  to the larger of its current value and 80 % of the fit tolerance (the
-  tolerance is 3 % of the peak, at least 2 N).
+  dimension smaller. The largest force difference from the target stays at
+  its current value or below.
 - **Closest force curve, cam no larger than now**: makes the largest force
   difference smaller. The largest cam dimension stays at its current value
   or below.
@@ -657,6 +657,7 @@ Sample designs, each solving without problems:
 | Sample | Axle to axle | Draw | Peak, let-off | Cam |
 |---|---|---|---|---|
 | Compound bow, target (60 lbf) | 33 in | 29 in | 267 N, 75 % | 98 mm |
+| Compound bow, target, optimised track (60 lbf) | 33 in | 29 in | 267 N, 75 %, free-form string track from Optimise | 94 mm |
 | Compound bow, hunting (70 lbf) | 31 in | 29 in | 311 N, 80 %, elliptical string track | 132 mm |
 | Compound bow, light hunting (50 lbf) | 30 in | 27 in | 222 N, 80 % | 88 mm |
 | Compound bow, short-brace hunting (70 lbf) | 31 in, 6 in brace height | 30 in | 311 N, 80 %, free-form string track with a 2 mm rounded triangle | 110 mm |

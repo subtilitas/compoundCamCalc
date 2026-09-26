@@ -28,7 +28,7 @@ describe('design library', () => {
     const b = saveDesign(lib, { id: null, name: 'Crossbow', state: sampleState('crossbow'), now: t1 });
     expect(b.id).not.toBe(a.id);
     lib = b.library;
-    lib = saveDesign(lib, { id: a.id, name: 'Target', state: SAMPLES[1].state(), now: t2 }).library;
+    lib = saveDesign(lib, { id: a.id, name: 'Target', state: sampleState('hunting'), now: t2 }).library;
     expect(lib.designs).toHaveLength(2);
     const round = parseLibrary(serializeLibrary(lib)).library;
     const list = listDesigns(/** @type {any} */ (round));

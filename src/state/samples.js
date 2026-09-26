@@ -52,6 +52,21 @@ function hunting() {
 }
 
 /**
+ * The default target bow with a free-form string track from Optimise
+ * (goal "Smallest cam, force curve no worse than now", 178 solves): 12
+ * groove radii from 22.4 mm to 66.4 mm. Solves to a 93.9 mm cam (default:
+ * 98.2 mm), largest force difference 3.56 N against 8.0 N (default:
+ * 3.71 N), let-off 74.6 %, sharpest string bend 43.2 mm.
+ * @returns {ProjectState}
+ */
+function targetOptimised() {
+  const s = defaultState();
+  const values = [0.0327793, 0.0252277, 0.0224468, 0.0255695, 0.0341132, 0.0454121, 0.0560957, 0.0636555, 0.06642, 0.0633055, 0.05477, 0.0434547];
+  s.stringTrack = { ...s.stringTrack, shape: 'freeform', freeform: { values } };
+  return withCurve(s);
+}
+
+/**
  * Light hunting compound bow: 222 N (50 lbf) at 80 % let-off, 27 in draw,
  * 30 in axle to axle, 7 in brace height, soft limb (1.4 N/mm, 250 mm
  * preload travel, 350 N at the axle at brace) and a string track of radius
@@ -180,6 +195,12 @@ export const SAMPLES = Object.freeze(/** @type {Sample[]} */ ([
     name: 'Compound bow, target (60 lbf)',
     description: 'The default design: 33 in axle to axle, 29 in draw, 267 N (60 lbf) peak, 75 % let-off, 98 mm cam.',
     state: defaultState,
+  },
+  {
+    id: 'target-optimised',
+    name: 'Compound bow, target, optimised track (60 lbf)',
+    description: 'The target design with a free-form string track from Optimise (smallest cam, force curve no worse): 93.9 mm cam instead of 98.2 mm.',
+    state: targetOptimised,
   },
   {
     id: 'hunting',

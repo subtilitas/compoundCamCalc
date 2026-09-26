@@ -17,12 +17,12 @@ describe('sample designs', () => {
 
   it('lists the compound bows first, then the crossbow and the mini bow', () => {
     expect(SAMPLES.map((s) => s.id)).toEqual([
-      'target', 'hunting', 'light-hunting', 'short-brace', 'long-draw', 'youth', 'crossbow', 'mini',
+      'target', 'target-optimised', 'hunting', 'light-hunting', 'short-brace', 'long-draw', 'youth', 'crossbow', 'mini',
     ]);
   });
 
   it('sampleState returns a new state of a sample and throws for an unknown id', () => {
-    expect(sampleState('youth')).toEqual(SAMPLES[5].state());
+    expect(sampleState('youth')).toEqual(SAMPLES[6].state());
     expect(sampleState('youth')).not.toBe(sampleState('youth'));
     expect(() => sampleState('speed')).toThrow('unknown sample "speed"');
   });
