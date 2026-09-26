@@ -21,6 +21,13 @@ All notable changes are listed here. Versions follow semantic versioning.
   The print report lists the points; DXF and STEP export the track as
   splines.
 
+- Four sample designs (`src/state/samples.js`), each solving without
+  diagnostics or plausibility warnings: light hunting compound bow (222 N
+  or 50 lbf, 27 in draw, 88 mm cam), short-brace hunting compound bow
+  (311 N or 70 lbf, 6 in brace height, free-form string track with a 2 mm
+  rounded triangle, 110 mm cam), long draw compound bow (356 N or 80 lbf,
+  31 in draw, 120 mm cam) and youth compound bow (89 N or 20 lbf, 24 in
+  draw, 76 mm cam). Open sample… lists the compound bows first.
 - Plausibility warnings (`src/core/plausibility.js`) for a cam wider than
   35 % of the axle-to-axle length and for cams that overlap at a draw
   position. The results card, the status line and the print report list

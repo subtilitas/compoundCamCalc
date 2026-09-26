@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { SAMPLES } from '../../src/state/samples.js';
+import { sampleState } from '../../src/state/samples.js';
 import { toJSON } from '../../src/state/schema.js';
 
 test('an oversized cam shows plausibility warnings in the results', async ({ page }) => {
   // The mini bow with 30 mm of limb travel: a cam about 524 mm across on a
   // 254 mm axle-to-axle length.
-  const state = SAMPLES[3].state();
+  const state = sampleState('mini');
   state.limb = { ...state.limb, mode: 'travel', travel: 0.03 };
   await page.goto('./');
   await page.evaluate((text) => localStorage.setItem('compoundCamCalc.project', text), toJSON(state));

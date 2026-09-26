@@ -515,6 +515,10 @@ Sample designs, each solving without problems:
 |---|---|---|---|---|
 | Compound bow, target (60 lbf) | 33 in | 29 in | 267 N, 75 % | 98 mm |
 | Compound bow, hunting (70 lbf) | 31 in | 29 in | 311 N, 80 %, elliptical string track | 132 mm |
+| Compound bow, light hunting (50 lbf) | 30 in | 27 in | 222 N, 80 % | 88 mm |
+| Compound bow, short-brace hunting (70 lbf) | 31 in, 6 in brace height | 30 in | 311 N, 80 %, free-form string track with a 2 mm rounded triangle | 110 mm |
+| Compound bow, long draw (80 lbf) | 35 in | 31 in | 356 N, 80 % | 120 mm |
+| Compound bow, youth (20 lbf) | 27 in | 24 in | 89 N, 70 % | 76 mm |
 | Crossbow (169 lbf) | 16 in | 19 in (13.25 in power stroke) | 750 N, 50 % | 86 mm |
 | Mini bow for FDM printing | 10 in | 8.5 in | 30 N, 60 % | 26 mm, M3 bore, 1 mm line |
 

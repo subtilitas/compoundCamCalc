@@ -132,8 +132,11 @@ values.
   5 µm, 3 mm and 1 mm).
 - Solve effect of that sampling (full solves): default 98.19 → 98.19 mm
   cam, 3.71 → 3.71 N largest force difference; hunting 132.2 → 132.2 mm,
-  5.53 → 5.53 N; crossbow 86.0 → 86.0 mm, 11.87 → 11.89 N; mini 26.4 →
-  26.4 mm, 1.28 → 1.28 N (tested within 0.1 mm and 0.05 N).
+  5.53 → 5.53 N; light hunting 88.4 → 88.4 mm, 5.55 → 5.54 N; long draw
+  120.3 → 120.3 mm, 6.62 → 6.62 N; youth 75.6 → 75.6 mm, 1.96 → 1.97 N;
+  crossbow 86.0 → 86.0 mm, 11.87 → 11.89 N; mini 26.4 → 26.4 mm, 1.28 →
+  1.28 N (tested within 0.1 mm and 0.05 N). The short-brace hunting
+  sample is free-form already and resamples to the same values.
 - Resampling to another N evaluates the spline at the new knots. The shape
   changes slightly: the default track at 8 points keeps p within 25 µm and
   ρ within 1.4 mm. A track at its limit can fall below it: an oval, rounded
@@ -171,9 +174,11 @@ Shape modifiers add a harmonic term to the values of the current track:
   amounts are about 12 mm (oval), 4 mm (triangle), 2.2 mm (square) and
   5 mm (egg).
 - A modifier within the limit can still fail the solve. At angle 0 and the
-  default amounts on the four samples: the square on the hunting bow
-  reports `closing-blend`, the oval and the egg on the 26 mm mini cam
-  report `cable-radius`; the other 21 combinations solve without
+  default amounts on the eight samples: the square on the hunting bow
+  reports `closing-blend`, the square on the light hunting bow reports
+  `cable-radius` and `cable-clearance` (its fitted cam lies 7.1 N from the
+  target, over the 6.7 N tolerance), the oval and the egg on the 26 mm
+  mini cam report `cable-radius`; the other 44 combinations solve without
   diagnostics.
 
 A drag moves a raised-cosine bump: the value at index i by δ, its
