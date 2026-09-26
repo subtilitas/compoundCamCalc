@@ -35,8 +35,9 @@
  * Nock modes: free (F_y = 0 by a secant on y at each x; the result y(x) is
  * the static nock travel) and draw board (y = 0, F_y reported).
  *
- * Draw stops: the peg at C (cam frame) touches the cable line of its half
- * when gap = p_c(ψ_c) − C·n(ψ_c) − (r_peg + d_c/2) reaches 0. With rigid
+ * Draw stops: the peg at C (cam frame) touches the free cable span of its
+ * half when gap = p_c(ψ_c) − C·n(ψ_c) − (r_peg + d_c/2) reaches 0 while the
+ * foot of C lies on the span (+∞ otherwise). With rigid
  * cords the first stop x₁ is the wall: past it the closures and the stop
  * leave only a rigid rotation of the cords about the nock height, which
  * changes x at second order, so the draw folds within about 1 µm. The grid
@@ -271,15 +272,22 @@ export function evaluateHalf(ctx, x, yh, theta, alpha, alphaOther, h) {
 }
 
 /**
- * Stop gap of a half: distance of the peg centre from the cable line on the
- * cam side, minus r_peg + d_c/2 (m).
+ * Stop gap of a half: distance of the peg centre from the free cable span on
+ * the cam side, minus r_peg + d_c/2 (m). A peg whose foot on the cable line
+ * lies outside the free span, from the contact to the anchor, does not face
+ * the span and cannot touch it: +Infinity.
  * @param {{ x: number, y: number, k: number }} stop
  * @param {Half} h
  * @returns {number}
  */
 export function stopGap(stop, h) {
-  const { psi, p } = h.cable;
-  return p - (stop.x * Math.cos(psi) + stop.y * Math.sin(psi)) - stop.k;
+  const { psi, p, dp, ux, uy, span } = h.cable;
+  const c = Math.cos(psi);
+  const s = Math.sin(psi);
+  // Contact point X = p·n + p'·t, t = (−sin ψ, cos ψ).
+  const along = (stop.x - (p * c - dp * s)) * ux + (stop.y - (p * s + dp * c)) * uy;
+  if (!(along >= 0 && along <= span)) return Infinity;
+  return p - (stop.x * c + stop.y * s) - stop.k;
 }
 
 /**
@@ -574,7 +582,9 @@ function analyseChecked(input) {
     Fy: braceFy,
   };
   const grid = drawGrid(xBrace, bow.xFull, samples);
-  const march = marchDraw(ctx, pose, grid, bow.xFull + EXTENSION * (bow.xFull - bow.xBrace));
+  // The longest internal step: the largest spacing of the default grid.
+  const maxStep = (2 * (bow.xFull - xBrace)) / (ANALYSIS_SAMPLES - 1);
+  const march = marchDraw(ctx, pose, grid, bow.xFull + EXTENSION * (bow.xFull - bow.xBrace), maxStep);
   return finish(ctx, march, brace, nock, bow.xFull, input);
 }
 
@@ -623,35 +633,44 @@ function solveBrace(ctx, pose, x0, slope) {
  */
 
 /**
- * March from brace over the grid, then beyond full draw in equal steps no
- * longer than the last grid spacing (at least 10) up to xLimit, until the
- * first stop.
+ * March from brace over the grid, then beyond full draw up to xLimit, until
+ * the first stop. Internal steps split every grid interval longer than
+ * `maxStep`, so the stop search does not depend on the sample count; only
+ * grid points and the stop become samples. Beyond full draw the steps are
+ * equal, at least MIN_EXTENSION_STEPS, and no longer than the last grid
+ * spacing or `maxStep`.
  * @param {Context} ctx
  * @param {Pose} pose brace pose
  * @param {Float64Array} grid
  * @param {number} xLimit last nock position of the stop search (m)
+ * @param {number} maxStep longest internal step (m)
  * @returns {March}
  */
-function marchDraw(ctx, pose, grid, xLimit) {
+function marchDraw(ctx, pose, grid, xLimit, maxStep) {
   const n = grid.length;
-  // Steps beyond full draw: the last grid spacing, at least MIN_EXTENSION_STEPS
-  // of them, ending exactly at xLimit.
-  const extension = xLimit - grid[n - 1];
-  const steps = Math.max(MIN_EXTENSION_STEPS, Math.ceil(extension / (grid[n - 1] - grid[n - 2])));
+  const { stop } = ctx;
+  /** @type {{ x: number, sample: boolean }[]} */
+  const points = [];
+  for (let i = 1; i < n; i++) {
+    const m = Math.ceil((grid[i] - grid[i - 1]) / maxStep);
+    for (let j = 1; j < m; j++) points.push({ x: grid[i - 1] + ((grid[i] - grid[i - 1]) * j) / m, sample: false });
+    points.push({ x: grid[i], sample: true });
+  }
+  if (stop) {
+    const extension = xLimit - grid[n - 1];
+    const step = Math.min(grid[n - 1] - grid[n - 2], maxStep);
+    const steps = Math.max(MIN_EXTENSION_STEPS, Math.ceil(extension / step));
+    for (let k = 1; k <= steps; k++) points.push({ x: k === steps ? xLimit : grid[n - 1] + (k * extension) / steps, sample: true });
+  }
   /** @type {March} */
   const march = { samples: [{ x: grid[0], pose: copyPose(pose) }], failure: '', failedAt: NaN, noStop: false, fold: false, first: null };
-  const { stop } = ctx;
-  for (let i = 1; ; i++) {
-    const k = i - n + 1;
-    const x = i < n ? grid[i] : k === steps ? xLimit : grid[n - 1] + (k * extension) / steps;
-    if (i >= n && (!stop || k > steps)) {
-      march.noStop = Boolean(stop);
-      return march;
-    }
-    const last = march.samples[march.samples.length - 1];
-    const before = march.samples.length > 1 ? march.samples[march.samples.length - 2] : null;
+  // The last two solved poses, sampled or not.
+  let last = march.samples[0];
+  /** @type {{ x: number, pose: Pose } | null} */
+  let before = null;
+  for (const { x, sample } of points) {
     const trial = copyPose(last.pose);
-    // Linear prediction from the last two samples.
+    // Linear prediction from the last two poses.
     if (before) {
       const f = (x - last.x) / (last.x - before.x);
       for (let j = 0; j < 4; j++) trial.q[j] += f * (trial.q[j] - before.pose.q[j]);
@@ -664,10 +683,13 @@ function marchDraw(ctx, pose, grid, xLimit) {
       march.fold = before !== null && foldAhead(before, last, x);
       return march;
     }
-    const hitTop = stop !== null && stopGap(stop, trial.top) < 0;
-    const hitBottom = stop !== null && stopGap(stop, trial.bottom) < 0;
+    // A gap within GAP_TOLERANCE of zero is contact.
+    const hitTop = stop !== null && stopGap(stop, trial.top) <= GAP_TOLERANCE;
+    const hitBottom = stop !== null && stopGap(stop, trial.bottom) <= GAP_TOLERANCE;
     if (!hitTop && !hitBottom) {
-      march.samples.push({ x, pose: trial });
+      if (sample) march.samples.push({ x, pose: trial });
+      before = last;
+      last = { x, pose: trial };
       continue;
     }
     // A stop closes between last.x and x: locate each closing gap.
@@ -690,10 +712,13 @@ function marchDraw(ctx, pose, grid, xLimit) {
       stopGap(/** @type {NonNullable<Context['stop']>} */ (stop), other) <= SIMULTANEOUS;
     march.first = both ? 'both' : e.which;
     // A stop on the last sample replaces it.
-    if (e.x - last.x <= SIMULTANEOUS && march.samples.length > 1) march.samples.pop();
+    const lastSample = march.samples[march.samples.length - 1];
+    if (e.x - lastSample.x <= SIMULTANEOUS && march.samples.length > 1) march.samples.pop();
     march.samples.push({ x: e.x, pose: e.pose });
     return march;
   }
+  march.noStop = Boolean(stop);
+  return march;
 }
 
 /**

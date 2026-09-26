@@ -3,6 +3,7 @@ import { ANALYSIS_CODES, ANALYSIS_SAMPLES, analyseTiming } from '../../src/core/
 import { FULL_SAMPLES } from '../../src/core/forward.js';
 import { createLimb, limbFromState, tableLimb } from '../../src/core/limb.js';
 import { solve } from '../../src/core/solve.js';
+import { cableStopPost } from '../../src/core/outline.js';
 import { createSupport } from '../../src/core/support.js';
 import { defaultState } from '../../src/state/presets.js';
 import { SAMPLES, sampleState } from '../../src/state/samples.js';
@@ -311,6 +312,36 @@ describe('analysis draw stops', () => {
     }
   });
 
+  it('finds a stop between two coarse samples', () => {
+    const offsets = { topCable: 0.0137630067, bottomCable: -0.0149809458, string: -0.0066702191, nockHeight: -0.0026809258 };
+    const fine = analyseTiming({ ...base, offsets });
+    expect(fine.stops.first).toBe('top');
+    for (const samples of [2, 20, 1500]) {
+      const a = analyseTiming({ ...base, samples, offsets });
+      expect(a.stops.first).toBe('top');
+      expect(Math.abs(a.stops.x - fine.stops.x)).toBeLessThanOrEqual(1e-9);
+      expect(a.status).toBe(fine.status);
+    }
+  });
+
+  it('counts a gap of zero at the end of the search as a stop', () => {
+    // The design rule of the stop peg, applied at the cable contact of the
+    // last search point: the peg touches the cable line there and nowhere
+    // before.
+    const probe = analyseTiming({ ...base, stop: { x: 0, y: 0, radius: 0 } });
+    const i = probe.n - 1;
+    const peg = cableStopPost(createSupport(base.cableTrack), probe.psiCableTop[i], 0.004, /** @type {number} */ (base.cableDiameter));
+    // Moved 5e-13 m towards the axle: the gap at the end is +5e-13 m, inside
+    // the contact tolerance but not negative.
+    const psi = probe.psiCableTop[i];
+    const stop = { x: peg.x - 5e-13 * Math.cos(psi), y: peg.y - 5e-13 * Math.sin(psi), radius: peg.radius };
+    const a = analyseTiming({ ...base, stop });
+    expect(Math.abs(a.stops.gapTop)).toBeLessThanOrEqual(1e-12);
+    expect(a.stops.x).toBe(probe.x[i]);
+    expect(a.stops.first).toBe('both');
+    expect(codes(a)).not.toContain('analysis-no-stop');
+  });
+
   it('ends at full draw without a stop peg', () => {
     const a = analyseTiming({ ...base, stop: null, offsets: { topCable: 1 * MM } });
     expect(a.status).toBe('ok');
@@ -382,7 +413,11 @@ describe('analysis diagnostics', () => {
   });
 
   it('reports a brace that cannot be solved', () => {
-    const resting = analyseTiming({ ...base, stop: { ...(/** @type {any} */ (base.stop)), radius: 0.05 } });
+    // A peg on the brace cable line, 20 mm from the contact.
+    const psi = analyseTiming(base).psiCableTop[0];
+    const X = createSupport(base.cableTrack).point(psi);
+    const onLine = { x: X.x - 0.02 * Math.sin(psi), y: X.y + 0.02 * Math.cos(psi), radius: 0.001 };
+    const resting = analyseTiming({ ...base, stop: onLine });
     expect(codes(resting)).toEqual(['analysis-brace']);
     expect(resting.diagnostics[0].message).toMatch(/rests on its draw stop at brace/);
   });
