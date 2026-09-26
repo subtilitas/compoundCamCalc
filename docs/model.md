@@ -965,8 +965,10 @@ use the display units of the project; draw positions are AMO draw lengths.
 
 `analyseTiming` in `src/core/analysis.js` computes a designed cam with cords
 of changed length: cam timing, nock travel and the order of the draw
-stops. Cords stay rigid. The design path stays symmetric; the analysis
-never changes the cam, its status, its diagnostics or its exports.
+stops. Cords are rigid, or elastic with the input `stiffness` (see
+[Elastic cords](#elastic-cords)). The design path stays symmetric and
+rigid; the analysis never changes the cam, its status, its diagnostics or
+its exports.
 
 Inputs besides the forward-model inputs: the cable stop peg (centre in
 the cam frame, radius) and the cable diameter, the length changes and the
@@ -979,6 +981,7 @@ nock mode.
 | String length change, whole string | ΔL_s | −0.1 m to 0.1 m |
 | Nocking point above the string centre, along the string | h | −0.1 m to 0.1 m |
 | Nock mode | | free (default) or draw board |
+| Axial stiffness of the string, the top cable and the bottom cable | EA_s, EA_c,t, EA_c,b | 1e3 N to 1e18 N each, or none for rigid cords (default) |
 
 Each half keeps its own mirror frame, M = diag(1, −1): the top half is the
 frame of [Bow geometry](#bow-geometry), the bottom half its mirror image.
@@ -1058,7 +1061,8 @@ point at nock height, with the limbs turning in opposite senses. That
 rotation keeps every cord length and the gap, so it moves x only at second
 order. On the default design with the top cable 1 mm longer, the nock
 moves 0.46 µm in y for 1 nm in x, and the draw folds about 1 µm past x₁.
-The second stop x₂ needs cord stretch.
+With elastic cords the draw continues past x₁ to the second stop x₂
+([Elastic cords](#elastic-cords)).
 
 On the default design (rigid cords):
 
@@ -1072,26 +1076,98 @@ On the default design (rigid cords):
 The result holds per sample x, y, θ_t, θ_b, Δθ, α_t, α_b, F, F_y, the
 four tensions, both gaps, the four contact angles, k_y and dΔθ/dL_c,t at a
 fixed nock; the brace pose with its F_y; the first stop (`top`, `bottom`,
-`both` or none), its position and both gaps there; `end`, the last sample
-of the draw (the first stop, or without a stop the last sample at or
-before x_f; the samples of the stop search are not part of the draw); and
-`sensitivity`, dΔθ/dL_c,t at `end` in the nock mode of the analysis, a
-central difference over ±1 µm of top cable. With a free nock the nock
+`both` or none), its position and both gaps there; with elastic cords the
+cam that stops second, x₂ and the wall stiffness; `end`, the last sample
+of the draw (the first stop with rigid cords, x₂ with elastic cords, or
+without a stop the last sample at or before x_f; the samples of the stop
+search are not part of the draw); and `sensitivity`, dΔθ/dL_c,t at the
+first stop (at `end` without a stop) in the nock mode of the analysis, no
+cam held by its stop, a central difference over ±1 µm of top cable. With a free nock the nock
 follows the change: 6.91 °/mm at full draw on the default design, against
 6.65 °/mm at a fixed nock.
 
 `solve(state, { analysis })` runs the analysis on the final cam in a full
 solve only: `analysis: true` for unchanged cords and a free nock, or
-`{ offsets, nock, samples }`. Optimise never sets it. `result.analysis`
+`{ offsets, nock, samples, stiffness }`. Optimise never sets it. `result.analysis`
 holds the result, `timings.analysis` its time; without the option, in a
 coarse solve or without a cam it is null. `result.analysisReference` holds
-the analysis with unchanged cords and the same options, the reference of
-the changes of peak and let-off; with unchanged cords it is
+the analysis with unchanged cords and the same options, stiffness
+included, the reference of the changes of peak and let-off; with unchanged cords it is
 `result.analysis` itself. The two analyses re-solve their own brace, so
 their 300-sample grids differ slightly: over the default design, the nine
 samples and five sets of changes, the peak and let-off changes differ from
 those of 3000-sample grids by at most 0.02 N and 0.02 points. The Timing
 panel shows them to 0.1 N and 0.1 points.
+
+### Elastic cords
+
+With the input `stiffness` each cord part k stretches linearly. Its
+compliance is C_k = ℓ_k / EA_k, with ℓ_k the pitch-line length of the
+design at brace: half the string, ℓ = L_s/2, for each string part, and
+ℓ = L_c for each cable. The closures become
+
+```
+g_k(q) − C_k·T_k = L0_k,   L0_k = L_k − C_k·T_k,0
+```
+
+with L_k the targets of the rigid closures and T_k,0 the tensions of the
+design at brace. With unchanged cords the elastic bow therefore braces at
+the design brace. The tensions still follow from the equilibrium, now with
+the stop forces:
+
+```
+Jᵀ·T = −∇E − Σ_i λ_i·∇gap_i
+```
+
+A cam whose stop gap reaches zero rests on its stop: the closure
+gap_i(q) = 0 joins the system with its stop force λ_i. The stop force
+does no work, since the gap stays 0.
+
+- **Newton.** The unknowns are q and the λ of the cams on their stops.
+  The Jacobian is J_rigid(q) + D: the rigid closure Jacobian, exact at each
+  evaluation, plus a correction D for the stretch and the stops. D comes
+  from forward differences over 1e-7 rad in q and 1 N in λ, is carried from
+  pose to pose, and follows Broyden updates. It is formed again when an
+  iteration reduces the residual by less than a factor 4. Newton stops at a
+  residual of 1e-14 m, or by the stop rule of the forward model. ∇gap_i
+  comes from central differences over 1e-7 rad of the cable contact of
+  that cam.
+- **Second stop.** Past x₁ the march continues with the first cam on its
+  stop until the gap of the other cam closes at x₂, located as the first
+  stop. `end` is the sample at x₂. When both cams stop together, x₂ = x₁.
+  The search for x₂ ends at the end of the stop search, 10 % of the design
+  draw beyond x_f, or when the draw force exceeds 5 times its peak before
+  x₁; then the result reports `analysis-no-second-stop`.
+- **Wall stiffness.** dF/dx with both cams on their stops, a forward
+  difference over 10 µm at x₂.
+- **Energy.** The work of the draw force equals the limb energy plus the
+  cord energy, ½·Σ_k C_k·T_k².
+
+The wall stiffness has a closed form in the symmetric pose, with the half
+string in series with the cable, the cable transformed by (s_a/c_a)²:
+
+```
+k_wall = 2 sin²φ / (C_half + s_a²/(k_t + c_a²/C_c)) + 2 T_s cos²φ / l_s
+```
+
+with u_s = (sin φ, −cos φ), k_t = E1''(α) and l_s the free string span.
+
+On the default design with EA = 3e5 N on every cord, unless given:
+
+| Case | Result |
+|---|---|
+| Unchanged cords | brace at the design brace; peak 270.29 N (rigid 270.09 N); both cams stop together 0.66 mm before full draw; wall stiffness 480.9 N/mm (closed form within 1 %); dΔθ/dL_c,t 6.42 °/mm at the stop with a free nock |
+| EA 2.9664e5 N (24 strands of BCY 452X) | stop 0.66 mm before full draw; wall stiffness 475.5 N/mm |
+| Top cable 1 mm longer | top cam stops first 6.03 mm before full draw, Δθ 6.79°, bottom gap 3.75 mm; bottom cam stops 0.82 mm before full draw; the draw force rises from 68.4 N to 103.1 N between the stops; wall stiffness 480.4 N/mm |
+| Top cable 2 mm longer | top cam stops first 11.61 mm before full draw, Δθ 13.60°, bottom gap 8.02 mm; the top cable tension falls to −27.6 N at the second stop, 0.99 mm before full draw: `analysis-slack` |
+| EA 2e5 N top cable, 4e5 N bottom cable | top cam first 2.40 mm before full draw, Δθ 2.30° (linear estimate from dΔθ/dL_c,t: 2.29°); bottom gap 1.17 mm; second stop 0.64 mm before full draw |
+| EA 33 888 N (16 strands of Dacron B50) | stops 5.83 mm before full draw; wall stiffness 53.7 N/mm; the free nock is unstable (k_y ≤ 0) from 54.9 mm before full draw: `analysis-unstable` |
+
+The soft-cord case shows a limit of the level nock: in the let-off drop
+each half loses force as it draws further, so with cords soft enough an
+uneven share of the draw between the halves releases energy. On the
+default design no input within the ranges reaches `analysis-no-second-stop`:
+a slack cord or a contact off its track comes first.
 
 ### Diagnostics of the analysis
 
@@ -1109,6 +1185,7 @@ other code and `ok` without diagnostics.
 | `analysis-wrap` | a contact passes its termination, leaves the defined range of an open track (`contact.inRange`), or wraps a full turn |
 | `analysis-unstable` | free nock with k_y ≤ 0 |
 | `analysis-no-stop` | no stop within 10 % of the design draw beyond full draw |
+| `analysis-no-second-stop` | elastic cords: the first stop is reached, but the second is not within 10 % of the design draw beyond full draw, or before the draw force exceeds 5 times its peak before the first stop |
 
 ## Layout and loads
 
@@ -1391,6 +1468,13 @@ Measured values are the largest errors over the tested samples.
 | Asymmetric analysis: dΔθ/dL_c,t against s_a / (p_c·s_a + p_s·(c_o − c_x)) from positions, draw board | 1e-9 relative | 6.9e-16 |
 | Asymmetric analysis: one test per code, stop order and gap, a stop beyond full draw, no stop peg | | passes |
 | Asymmetric analysis of the default design, top cable 1 mm longer, timed in the worker thread | 25 ms, tested with a factor 5 margin | 11 ms median after warm-up |
+| Elastic cords, EA = 1e15 N, against rigid cords, unchanged and changed cords, samples up to x₁: x₁, y, θ_t and θ_b, F | 1e-9 m, 1e-9 m, 1e-9 rad, 1e-8 relative | 2.1e-13 m, 2.6e-13 m, 4.6e-12 rad, 4.8e-12 |
+| Elastic cords, equal EA and unchanged cords: y and Δθ on every sample; brace at the design brace | 1e-12 m and rad | 5.0e-13 |
+| Elastic cords, swapped cable stiffness: y mirrored and Δθ flipped, same x₁ | 1e-10 m, 1e-9 rad | 4.3e-12 m, 2.0e-11 rad, 0 m |
+| Elastic cords: trapezoid work of F on 3000 samples against E1(α_t) + E1(α_b) + ½·Σ C_k·T_k², to x₁ and to x₂ | 1e-7 and 1e-5 relative | 3.1e-9, 2.3e-7 |
+| Elastic cords: Δθ at x₁ from EA 2e5 N and 4e5 N on the cables against dΔθ/dL_c,t times the differential stretch | 2 % | 0.38 % |
+| Elastic cords: wall stiffness at x₂ against the closed form of [Elastic cords](#elastic-cords) | 1 % | 0.10 % |
+| Asymmetric analysis with elastic cords, EA 2.97e5 N, top cable 1 mm longer, with its reference, timed in the worker thread | 60 ms, tested with a factor 5 margin | 55 ms to 61 ms median after warm-up |
 | Coarse solve with point 2 at 10 in and 50 N, where no lead-in wrap closes the track: no trial solves, timed in the worker thread | 10 times the 30 ms coarse budget | 75 ms to 89 ms after warm-up; 75 ms to 99 ms in the coverage run (spread of 7 runs) |
 
 Realistic twin cam of the tests: default geometry (ATA 33 in, brace height
@@ -1431,16 +1515,24 @@ first 123 mm of the power stroke.
 | Outline samples | 360 (coarse), 720 (full) intervals |
 | Forward model of the final cam | 100 (coarse), 1500 (full) samples |
 | Asymmetric analysis | 300 samples to full draw; closures as the forward model; F_y and brace F below 1e-11 of the largest tension; secant steps at most 10 mm in y and 20 mm in x, at most 40; stop located to 1e-12 m in the gap or 1e-11 m in x; stops within 1e-9 m count as simultaneous; stop search to 10 % of the draw beyond x_f in at least 10 equal steps |
+| Elastic cords | EA from 1e3 N to 1e18 N; Newton stop at 1e-14 m; Jacobian correction from forward differences over 1e-7 rad and 1 N, formed again below a residual reduction of 4; stop-gap gradient by central differences over 1e-7 rad; wall stiffness over 10 µm; second-stop search ends at 5 times the peak force |
 
 ## Limitations
 
 - Static model: arrow speed, dynamic efficiency and hysteresis are not
   computed.
-- String and cables are inextensible.
+- The design path takes string and cables as inextensible. Stretch enters
+  only the [asymmetric analysis](#asymmetric-analysis), as a linear
+  compliance per cord; creep, hysteresis and the change of cord stiffness
+  with load are not modelled.
 - Rigid limb levers with a fixed pivot; top and bottom limbs identical. The
   design path keeps the nock on y = 0 midway between the axles; cam timing
-  comes from the [asymmetric analysis](#asymmetric-analysis), which keeps
-  the cords rigid, so its draw ends at the first stop.
+  comes from the asymmetric analysis. With rigid cords its draw ends at the
+  first stop; with elastic cords at the second.
+- A cam on its stop is held by the closure gap = 0 with a stop force of
+  either sign; the tension of the cable it presses on can fall below zero,
+  which the analysis reports as `analysis-slack` instead of letting the
+  cable go slack.
 - The cable anchor is the bottom axle centre: yoke legs and cable guard
   offset are ignored.
 - The forward model follows the solution branch that starts at brace; a

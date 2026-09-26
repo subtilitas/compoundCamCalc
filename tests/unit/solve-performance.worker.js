@@ -44,6 +44,10 @@ const openCoarse = median(() => solve(open, { resolution: 'coarse' }), 5);
 const analysisTimes = [];
 for (let k = 0; k < 9; k++) analysisTimes.push(solve(state, { analysis: { offsets: { topCable: 0.001 } } }).timings.analysis);
 analysisTimes.sort((a, b) => a - b);
+const elasticTimes = [];
+const stiffness = { string: 2.97e5, topCable: 2.97e5, bottomCable: 2.97e5 };
+for (let k = 0; k < 9; k++) elasticTimes.push(solve(state, { analysis: { offsets: { topCable: 0.001 }, stiffness } }).timings.analysis);
+elasticTimes.sort((a, b) => a - b);
 parentPort?.postMessage({
   status: first.status,
   cold,
@@ -51,5 +55,6 @@ parentPort?.postMessage({
   full,
   timings: solve(state).timings,
   analysis: analysisTimes[4],
+  elastic: elasticTimes[4],
   open: { codes: openResult.diagnostics.map((d) => d.code), trials: openResult.timings.trials, coarse: openCoarse },
 });

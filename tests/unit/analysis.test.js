@@ -357,7 +357,7 @@ describe('analysis draw stops', () => {
     expect(a.status).toBe('ok');
     expect(a.x[a.n - 1]).toBe(a.fullDraw);
     expect(a.n).toBe(ANALYSIS_SAMPLES);
-    expect(a.stops).toEqual({ first: null, x: NaN, gapTop: NaN, gapBottom: NaN });
+    expect(a.stops).toEqual({ first: null, x: NaN, gapTop: NaN, gapBottom: NaN, second: null, x2: NaN, wallStiffness: NaN });
     expect(Number.isNaN(a.gapTop[0])).toBe(true);
   });
 });

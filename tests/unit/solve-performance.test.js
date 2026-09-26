@@ -4,8 +4,9 @@ import { describe, expect, it } from 'vitest';
 /** Time budgets of the solve for the default preset, docs/PLAN.md (ms). */
 const COARSE_BUDGET = 30;
 const FULL_BUDGET = 200;
-/** Time budget of the asymmetric analysis, docs/research.md (ms). */
+/** Time budgets of the asymmetric analysis with rigid and with elastic cords, docs/research.md (ms). */
 const ANALYSIS_BUDGET = 25;
+const ELASTIC_BUDGET = 60;
 /** Allowance for slow and shared CI machines. */
 const MARGIN = 5;
 
@@ -17,6 +18,7 @@ const MARGIN = 5;
  * @property {number} full median full solve (ms)
  * @property {import('../../src/core/solve.js').SolveResult['timings']} timings of one full solve (ms)
  * @property {number} analysis median time of the asymmetric analysis, top cable 1 mm longer (ms)
+ * @property {number} elastic the same with elastic cords, EA 2.97e5 N (ms)
  * @property {{ codes: string[], trials: number, coarse: number }} open coarse solve of a state whose closing
  *   blend no lead-in wrap closes: diagnostic codes, time of its trial solves and median time (ms)
  */
@@ -60,6 +62,12 @@ describe('solve performance', () => {
     const { analysis } = await timed();
     console.info(`analysis: median ${analysis.toFixed(1)} ms`);
     expect(analysis).toBeLessThan(MARGIN * ANALYSIS_BUDGET);
+  }, 30_000);
+
+  it(`runs the asymmetric analysis with elastic cords within ${ELASTIC_BUDGET} ms`, async () => {
+    const { elastic } = await timed();
+    console.info(`elastic analysis: median ${elastic.toFixed(1)} ms`);
+    expect(elastic).toBeLessThan(MARGIN * ELASTIC_BUDGET);
   }, 30_000);
 
   it(`runs no closing-blend trials in a coarse solve and stays within 10 times the ${COARSE_BUDGET} ms coarse budget`, async () => {

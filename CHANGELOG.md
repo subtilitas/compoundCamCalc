@@ -22,6 +22,13 @@ All notable changes are listed here. Versions follow semantic versioning.
   the four cord tensions per sample; names carry the design id and a
   timing id.
 - Print report: a Timing section with the values of the Timing panel.
+- `src/core/analysis.js`: elastic cords with the input `stiffness` (EA of
+  the string and of each cable). The free lengths come from the tensions
+  of the design at brace, so unchanged cords brace at the design brace.
+  The draw continues past the first stop to the second stop, and the
+  result gives the wall stiffness with both cams on their stops.
+  `solve` passes `analysis.stiffness` to the analysis and to its
+  reference. New diagnostic `analysis-no-second-stop`.
 - Glossary: cam timing, nock travel, draw stop.
 - `src/core/analysis.js`: asymmetric analysis of the designed cam with
   changed cable and string lengths and nocking point height, rigid cords.

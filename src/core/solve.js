@@ -276,8 +276,11 @@ function unchanged(a) {
 const UNREADABLE_ANALYSIS = Object.freeze({});
 
 /**
- * Options of the asymmetric analysis: cord length changes and the nock mode.
- * @typedef {{ offsets?: import('./analysis.js').TimingOffsets, nock?: 'free' | 'board', samples?: number }} AnalysisOption
+ * Options of the asymmetric analysis: cord length changes, the axial
+ * stiffness EA of each cord (N; null or missing: rigid cords) and the nock
+ * mode.
+ * @typedef {{ offsets?: import('./analysis.js').TimingOffsets, nock?: 'free' | 'board', samples?: number,
+ *   stiffness?: { string: number, topCable: number, bottomCable: number } | null }} AnalysisOption
  */
 
 /**
@@ -965,7 +968,7 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
     let fields;
     try {
       if (analysis === UNREADABLE_ANALYSIS) throw new Error('unreadable analysis option');
-      fields = { offsets: analysis.offsets, nock: analysis.nock, samples: analysis.samples };
+      fields = { offsets: analysis.offsets, nock: analysis.nock, samples: analysis.samples, stiffness: analysis.stiffness };
     } catch {
       fields = null;
     }
@@ -980,13 +983,15 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
       stop: peg ? { x: peg.x, y: peg.y, radius: peg.radius } : null,
       cableDiameter: cords.cableDiameter,
       offsets: /** @type {any} */ (offsets),
+      stiffness: fields?.stiffness,
       nock: fields?.nock,
       samples: fields?.samples,
       maxIterations,
     });
     res.analysis = !fields ? analyseTiming(/** @type {any} */ (null)) : run(fields.offsets);
-    // The reference: unchanged cords on the same grid, so that the changes
-    // of peak and let-off compare samples of one kind.
+    // The reference: unchanged cords of the same stiffness on the same
+    // grid, so that the changes of peak and let-off compare samples of one
+    // kind.
     res.analysisReference = fields && res.analysis.brace && unchanged(res.analysis) ? res.analysis : fields ? run({}) : null;
     res.timings.analysis = now() - tAnalysis;
   }

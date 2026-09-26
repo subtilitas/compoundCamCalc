@@ -43,11 +43,26 @@
  * changes x at second order, so the draw folds within about 1 µm. The grid
  * ends at x₁ and reports both gaps there.
  *
+ * Elastic cords (input `stiffness`): each cord part k has the compliance
+ * C_k = ℓ_k / EA_k, ℓ the pitch-line length of the design at brace (half
+ * the string for each string part). The closures become
+ * g_k(q) − C_k·T_k = L0_k with the free lengths L0_k = L_k − C_k·T_k,0 from
+ * the tensions T_k,0 of the design at brace, so unchanged cords brace at
+ * the design brace. The tensions still follow from the equilibrium
+ * Jᵀ·T = −∇E − Σ λ_i·∇gap_i. A cam on its stop adds the closure gap_i = 0
+ * with the stop force λ_i; the draw then continues past x₁ to the second
+ * stop x₂, and the wall stiffness dF/dx with both cams on their stops is
+ * reported there. Newton runs on (q, λ) with the Jacobian J_rigid(q) + D:
+ * the rigid closure Jacobian, exact at every evaluation, plus a correction
+ * D for the stretch and the stops. D comes from forward differences, is
+ * carried from pose to pose and follows Broyden updates; it is formed again
+ * when an iteration reduces the residual by less than JAC_REFRESH.
+ *
  * Lengths in m, angles in rad, forces in N.
  * @module core/analysis
  */
 
-import { CABLE_SIDE, STRING_SIDE, createContact, solveContact } from './contact.js';
+import { CABLE_SIDE, STRING_SIDE, createContact, solveContact, terminationConstant } from './contact.js';
 import { runs } from './diagnostics.js';
 import { ANGLE_MAX, LENGTH_MAX, inRange } from './domain.js';
 import { describeError } from './errors.js';
@@ -92,10 +107,24 @@ const SENSITIVITY_STEP = 1e-6;
 const MIN_EXTENSION_STEPS = 10;
 /** Iteration limit of the stop search. */
 const EVENT_ITERATIONS = 100;
+/** Closure residual at which the elastic Newton stops early (m): its Broyden steps converge superlinearly, not quadratically. */
+const ELASTIC_TOLERANCE = 1e-14;
+/** Step of the forward differences of the elastic Jacobian (rad) and of the stop gap gradient (rad). */
+const FD_STEP = 1e-7;
+/** The elastic Jacobian is formed again when an iteration reduces the residual by less than this factor. */
+const JAC_REFRESH = 0.25;
+/** Draw step of the wall stiffness (m). */
+const WALL_STEP = 1e-5;
+/** The search for the second stop ends when the draw force exceeds this multiple of the peak before the first stop. */
+const FORCE_CAP = 5;
+/** Range of the axial stiffness EA of a cord (N). */
+export const STIFFNESS_MIN = 1e3;
+export const STIFFNESS_MAX = 1e18;
 
 /**
  * @typedef {'analysis-invalid-input' | 'analysis-brace' | 'analysis-no-convergence' | 'analysis-slack'
- *   | 'analysis-fold' | 'analysis-wrap' | 'analysis-unstable' | 'analysis-no-stop'} AnalysisCode
+ *   | 'analysis-fold' | 'analysis-wrap' | 'analysis-unstable' | 'analysis-no-stop'
+ *   | 'analysis-no-second-stop'} AnalysisCode
  */
 
 /** Every analysis code with its message (the table of docs/model.md). */
@@ -108,6 +137,7 @@ export const ANALYSIS_CODES = /** @type {Record<AnalysisCode, string>} */ ({
   'analysis-wrap': 'A cord runs off its track: a contact leaves the wrapped or defined part of the track',
   'analysis-unstable': 'The free nock is unstable: k_y = dF_y/dy is zero or negative',
   'analysis-no-stop': 'No cam reaches its draw stop within the search range beyond full draw',
+  'analysis-no-second-stop': 'The second cam does not reach its draw stop',
 });
 
 /**
@@ -133,6 +163,9 @@ export const ANALYSIS_CODES = /** @type {Record<AnalysisCode, string>} */ ({
  *   full draw
  * @property {number} [cableDiameter] d_c (m), required with a stop
  * @property {TimingOffsets} [offsets] default all 0
+ * @property {{ string: number, topCable: number, bottomCable: number } | null} [stiffness]
+ *   axial stiffness EA of each cord (N), from STIFFNESS_MIN to
+ *   STIFFNESS_MAX; null or missing: rigid cords
  * @property {'free' | 'board'} [nock] default 'free'
  * @property {number} [samples] from brace to full draw, default {@link ANALYSIS_SAMPLES}
  * @property {number} [maxIterations] Newton iteration limit per closure, default 30
@@ -175,17 +208,23 @@ export const ANALYSIS_CODES = /** @type {Record<AnalysisCode, string>} */ ({
  * @property {Float64Array} dThetaDL dΔθ/dL_c,t at a fixed nock (rad/m)
  * @property {{ x: number, y: number, thetaTop: number, thetaBottom: number, alphaTop: number,
  *   alphaBottom: number, Fy: number } | null} brace
- * @property {{ first: 'top' | 'bottom' | 'both' | null, x: number, gapTop: number, gapBottom: number }} stops
- *   first stop and its nock position x₁, the last sample; both gaps there
- *   (m); first null and x NaN when no stop is reached
+ * @property {{ first: 'top' | 'bottom' | 'both' | null, x: number, gapTop: number, gapBottom: number,
+ *   second: 'top' | 'bottom' | 'both' | null, x2: number, wallStiffness: number }} stops
+ *   first stop and its nock position x₁; both gaps there (m); first null
+ *   and x NaN when no stop is reached. Elastic cords only: the cam that
+ *   reaches its stop second ('both' when both stop at x₁), its nock
+ *   position x₂, the last sample, and the wall stiffness dF/dx there with
+ *   both cams on their stops (N/m); null and NaN otherwise
+ * @property {boolean} elastic the cords stretch
  * @property {number} fullDraw design full draw x_f (m)
  * @property {number} end index of the last sample of the draw: the first
  *   stop, or without a stop the last sample at or before full draw (the
  *   samples of the stop search beyond it are not part of the draw); -1
  *   without samples
- * @property {number} sensitivity dΔθ/dL_c,t at the end of the draw in the
- *   nock mode of the analysis (rad/m): with a free nock the nock height
- *   follows the length change; central difference over ±1 µm
+ * @property {number} sensitivity dΔθ/dL_c,t at the first stop, or at the end
+ *   of the draw without a stop, in the nock mode of the analysis (rad/m):
+ *   with a free nock the nock height follows the length change; central
+ *   difference over ±1 µm, no cam held by its stop
  * @property {number} iterations Newton iterations over all closures
  */
 
@@ -209,11 +248,14 @@ function createHalf() {
 
 /**
  * @typedef {object} Context
+ * @property {boolean} elastic the cords stretch
+ * @property {Float64Array} compliance C_k of (s,t | c,t | s,b | c,b) (m/N); zeros for rigid cords
  * @property {import('./geometry.js').BowGeometry} bow
  * @property {import('./support.js').Support} stringSupport
  * @property {import('./support.js').Support} cableSupport
  * @property {import('./limb.js').Limb} limb
- * @property {number[]} lengths targets of the reduced lengths (s,t | c,t | s,b | c,b) (m)
+ * @property {number[]} lengths targets of the reduced lengths (s,t | c,t | s,b | c,b) (m); with
+ *   elastic cords the free lengths L0
  * @property {{ x: number, y: number, k: number } | null} stop peg centre and r_peg + d_c/2 (m)
  * @property {boolean} free free nock
  * @property {number} maxIterations
@@ -227,7 +269,19 @@ function createHalf() {
  * @property {Half} top
  * @property {Half} bottom
  * @property {number} ky dF_y/dy of the last nock search (N/m), NaN when unknown
+ * @property {Float64Array | null} T tensions of the last elastic evaluation (N)
+ * @property {Float64Array} lambda stop forces of the top and bottom cam (N)
+ * @property {Uint8Array} active 1 for a cam on its stop (top, bottom)
+ * @property {{ size: number, m: Float64Array } | null} jac correction D of the elastic Jacobian to reuse
  */
+
+/** @returns {Pose} */
+function createAnalysisPose() {
+  return {
+    q: new Float64Array(4), y: 0, top: createHalf(), bottom: createHalf(), ky: NaN,
+    T: null, lambda: new Float64Array(2), active: new Uint8Array(2), jac: null,
+  };
+}
 
 /**
  * Evaluate one half at (x, y_h, θ, α, α_other) in its own frame. The
@@ -336,6 +390,7 @@ function jacobian(t, b) {
  * @returns {string} empty on success, else the reason
  */
 function close(ctx, pose, x) {
+  if (ctx.elastic) return closeElastic(ctx, pose, x);
   const { q, top, bottom } = pose;
   const L = ctx.lengths;
   const qEval = new Float64Array(4);
@@ -368,12 +423,235 @@ function close(ctx, pose, x) {
 }
 
 /**
+ * Gradient of the stop gap of one cam over q, by central differences (m/rad).
+ * @param {Context} ctx
+ * @param {Pose} pose evaluated pose
+ * @param {0 | 1} which 0 top, 1 bottom
+ * @returns {Float64Array | null}
+ */
+function gapGradient(ctx, pose, which) {
+  const stop = /** @type {NonNullable<Context['stop']>} */ (ctx.stop);
+  const h = which === 0 ? pose.top : pose.bottom;
+  const [it, ia, io] = which === 0 ? [0, 1, 3] : [2, 3, 1];
+  const q = pose.q;
+  const g = new Float64Array(4);
+  const bow = ctx.bow;
+  const r = bow.limbLength;
+  const cable = { ...h, cable: createContact() };
+  for (const j of [it, ia, io]) {
+    /** @param {number} d */
+    const at = (d) => {
+      const v = Float64Array.from(q);
+      v[j] += d;
+      // The cable contact alone, as in evaluateHalf.
+      const theta = v[it];
+      const beta = bow.betaBrace - v[ia];
+      const betaOther = bow.betaBrace - v[io];
+      const ox = bow.pivotX + r * Math.cos(beta);
+      const oy = bow.pivotY + r * Math.sin(beta);
+      const ax = bow.pivotX + r * Math.cos(betaOther) - ox;
+      const ay = -(bow.pivotY + r * Math.sin(betaOther)) - oy;
+      const c = Math.cos(theta);
+      const s = Math.sin(theta);
+      solveContact(ctx.cableSupport, c * ax - s * ay, s * ax + c * ay, CABLE_SIDE, h.cable.psi + theta - h.theta, cable.cable);
+      return cable.cable.status === 'ok' ? stopGap(stop, cable) : NaN;
+    };
+    g[j] = (at(FD_STEP) - at(-FD_STEP)) / (2 * FD_STEP);
+    if (!Number.isFinite(g[j])) return null;
+  }
+  return g;
+}
+
+/**
+ * Residual of the elastic closures and of the active stops at (x, y, q, λ);
+ * leaves the tensions in pose.T. False when a contact fails, the
+ * equilibrium is singular or a stop gap cannot be measured.
+ * @param {Context} ctx
+ * @param {Pose} pose
+ * @param {number} x
+ * @param {Float64Array} r length 4 plus the number of active stops
+ */
+function elasticResidual(ctx, pose, x, r) {
+  if (!evaluateBoth(ctx, x, pose)) return false;
+  const { top: t, bottom: b, q, lambda, active } = pose;
+  const J = jacobian(t, b);
+  const JT = new Float64Array(16);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) JT[j * 4 + i] = J[i * 4 + j];
+  const rhs = [0, -ctx.limb.moment(q[1]), 0, -ctx.limb.moment(q[3])];
+  let k = 4;
+  for (const which of /** @type {const} */ ([0, 1])) {
+    if (!active[which]) continue;
+    const g = gapGradient(ctx, pose, which);
+    const gap = stopGap(/** @type {NonNullable<Context['stop']>} */ (ctx.stop), which === 0 ? t : b);
+    if (!g || !Number.isFinite(gap)) return false;
+    for (let j = 0; j < 4; j++) rhs[j] -= lambda[which] * g[j];
+    r[k++] = gap;
+  }
+  const T = solveLinear(JT, rhs, 4);
+  if (!T) return false;
+  pose.T = T;
+  const C = ctx.compliance;
+  const L = ctx.lengths;
+  r[0] = t.string.reduced - C[0] * T[0] - L[0];
+  r[1] = t.cable.reduced - C[1] * T[1] - L[1];
+  r[2] = b.string.reduced - C[2] * T[2] - L[2];
+  r[3] = b.cable.reduced - C[3] * T[3] - L[3];
+  return true;
+}
+
+/**
+ * Newton on the elastic closures and the active stops at fixed (x, y), in
+ * the unknowns z = (q, λ of the active stops). q and λ are updated in
+ * place; on success the halves and pose.T hold the converged pose.
+ * @param {Context} ctx
+ * @param {Pose} pose
+ * @param {number} x
+ * @returns {string} empty on success, else the reason
+ */
+function closeElastic(ctx, pose, x) {
+  const { q, lambda, active } = pose;
+  /** @type {(0 | 1)[]} */
+  const stops = [];
+  if (active[0]) stops.push(0);
+  if (active[1]) stops.push(1);
+  const size = 4 + stops.length;
+  const z = new Float64Array(size);
+  z.set(q);
+  stops.forEach((w, j) => { z[4 + j] = lambda[w]; });
+  /** @param {Float64Array} v */
+  const setZ = (v) => {
+    for (let i = 0; i < 4; i++) q[i] = v[i];
+    stops.forEach((w, j) => { lambda[w] = v[4 + j]; });
+  };
+  let D = pose.jac && pose.jac.size === size ? pose.jac.m : null;
+  let fresh = false;
+  // The correction may be shared with other poses: copy it before an update.
+  let own = false;
+  const jac = new Float64Array(size * size);
+  /** Jacobian of the evaluated pose: J_rigid in the top left block plus D. */
+  const assemble = () => {
+    const J = jacobian(pose.top, pose.bottom);
+    for (let i = 0; i < size; i++) {
+      for (let j = 0; j < size; j++) jac[i * size + j] = (i < 4 && j < 4 ? J[i * 4 + j] : 0) + /** @type {Float64Array} */ (D)[i * size + j];
+    }
+  };
+  const r = new Float64Array(size);
+  const rPrev = new Float64Array(size);
+  const dz = new Float64Array(size);
+  let updatable = false;
+  const zEval = new Float64Array(size);
+  let residual = Infinity;
+  let previous = Infinity;
+  for (let it = 0; it < ctx.maxIterations; it++) {
+    ctx.iterations++;
+    setZ(z);
+    zEval.set(z);
+    if (!elasticResidual(ctx, pose, x, r)) return 'a cord has no tangent from its track';
+    residual = 0;
+    for (let i = 0; i < size; i++) residual = Math.max(residual, Math.abs(r[i]));
+    if (residual <= ELASTIC_TOLERANCE || (it > 0 && residual >= 0.5 * previous && residual <= CLOSURE_TOLERANCE)) {
+      pose.jac = D ? { size, m: D } : null;
+      return '';
+    }
+    if (!D || (it > 0 && residual > JAC_REFRESH * previous && !fresh)) {
+      const J = jacobian(pose.top, pose.bottom);
+      const full = elasticJacobian(ctx, pose, x, z, r, setZ);
+      if (!full) return 'the closures cannot be differentiated here';
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) full[i * size + j] -= J[i * 4 + j];
+      D = full;
+      fresh = true;
+      own = true;
+      // The differences leave the halves perturbed: evaluate z again.
+      if (!elasticResidual(ctx, pose, x, r)) return 'a cord has no tangent from its track';
+      assemble();
+    } else {
+      fresh = false;
+      assemble();
+      if (updatable) {
+        // Broyden on D: J_new·Δz = Δr with J_new = J_rigid + D_new.
+        if (!own) {
+          D = Float64Array.from(D);
+          own = true;
+        }
+        let dd = 0;
+        for (let i = 0; i < size; i++) dd += dz[i] * dz[i];
+        if (dd > 0) {
+          for (let i = 0; i < size; i++) {
+            let jdz = 0;
+            for (let j = 0; j < size; j++) jdz += jac[i * size + j] * dz[j];
+            const u = (r[i] - rPrev[i] - jdz) / dd;
+            for (let j = 0; j < size; j++) {
+              D[i * size + j] += u * dz[j];
+              jac[i * size + j] += u * dz[j];
+            }
+          }
+        }
+      }
+    }
+    previous = residual;
+    const step = solveLinear(jac, Array.from(r), size);
+    if (!step) return 'the closure Jacobian is singular';
+    const scale = Math.min(
+      1,
+      MAX_THETA_STEP / Math.abs(step[0]), MAX_ALPHA_STEP / Math.abs(step[1]),
+      MAX_THETA_STEP / Math.abs(step[2]), MAX_ALPHA_STEP / Math.abs(step[3]),
+    );
+    for (let i = 0; i < size; i++) {
+      dz[i] = -scale * step[i];
+      z[i] += dz[i];
+    }
+    rPrev.set(r);
+    updatable = true;
+  }
+  // Iteration limit with an accepted residual: restore the evaluated pose.
+  if (residual <= CLOSURE_TOLERANCE) {
+    setZ(zEval);
+    if (!elasticResidual(ctx, pose, x, r)) return 'a cord has no tangent from its track';
+    pose.jac = D ? { size, m: D } : null;
+    return '';
+  }
+  return `the residual stayed at ${residual.toExponential(2)} m after ${ctx.maxIterations} iterations`;
+}
+
+/**
+ * Jacobian of the elastic residual over z by forward differences,
+ * row-major. Leaves the pose at a perturbed point; the caller evaluates it
+ * again.
+ * @param {Context} ctx
+ * @param {Pose} pose
+ * @param {number} x
+ * @param {Float64Array} z
+ * @param {Float64Array} r residual at z
+ * @param {(v: Float64Array) => void} setZ
+ * @returns {Float64Array | null}
+ */
+function elasticJacobian(ctx, pose, x, z, r, setZ) {
+  const size = z.length;
+  const m = new Float64Array(size * size);
+  const rp = new Float64Array(size);
+  for (let c = 0; c < size; c++) {
+    const v = Float64Array.from(z);
+    // λ enters linearly; a step of 1 N keeps its column exact.
+    const h = c < 4 ? FD_STEP : 1;
+    v[c] += h;
+    setZ(v);
+    if (!elasticResidual(ctx, pose, x, rp)) return null;
+    for (let i = 0; i < size; i++) m[i * size + c] = (rp[i] - r[i]) / h;
+  }
+  setZ(z);
+  return m;
+}
+
+/**
  * @param {Pose} p
  * @returns {Pose}
  */
 function copyPose(p) {
   const half = (/** @type {Half} */ h) => ({ ...h, string: { ...h.string }, cable: { ...h.cable } });
-  return { q: Float64Array.from(p.q), y: p.y, top: half(p.top), bottom: half(p.bottom), ky: p.ky };
+  return {
+    q: Float64Array.from(p.q), y: p.y, top: half(p.top), bottom: half(p.bottom), ky: p.ky,
+    T: p.T ? Float64Array.from(p.T) : null, lambda: Float64Array.from(p.lambda), active: Uint8Array.from(p.active), jac: p.jac,
+  };
 }
 
 /**
@@ -385,10 +663,17 @@ function copyPose(p) {
  */
 function statics(ctx, pose) {
   const { top: t, bottom: b, q } = pose;
-  const J = jacobian(t, b);
-  const JT = new Float64Array(16);
-  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) JT[c * 4 + r] = J[r * 4 + c];
-  const T = solveLinear(JT, [0, -ctx.limb.moment(q[1]), 0, -ctx.limb.moment(q[3])], 4);
+  /** @type {Float64Array | null} */
+  let T;
+  if (ctx.elastic) {
+    // Tensions of the converged elastic pose, stop forces included.
+    T = pose.T;
+  } else {
+    const J = jacobian(t, b);
+    const JT = new Float64Array(16);
+    for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) JT[c * 4 + r] = J[r * 4 + c];
+    T = solveLinear(JT, [0, -ctx.limb.moment(q[1]), 0, -ctx.limb.moment(q[3])], 4);
+  }
   if (!T) return null;
   return {
     T,
@@ -489,7 +774,8 @@ function failed(code, detail, iterations = 0) {
     stringTop: e(), stringBottom: e(), cableTop: e(), cableBottom: e(), gapTop: e(), gapBottom: e(),
     psiStringTop: e(), psiStringBottom: e(), psiCableTop: e(), psiCableBottom: e(), ky: e(), dThetaDL: e(),
     brace: null,
-    stops: { first: null, x: NaN, gapTop: NaN, gapBottom: NaN },
+    stops: { first: null, x: NaN, gapTop: NaN, gapBottom: NaN, second: null, x2: NaN, wallStiffness: NaN },
+    elastic: false,
     fullDraw: NaN,
     end: -1,
     sensitivity: NaN,
@@ -556,6 +842,16 @@ function analyseChecked(input) {
     if (!lengthsOk) return failed('analysis-invalid-input', 'the stop peg needs a finite centre, radius and cable diameter');
     stop = { x, y, k: radius + /** @type {number} */ (d) / 2 };
   }
+  /** @type {[number, number, number] | null} */
+  let ea = null;
+  if (input.stiffness !== undefined && input.stiffness !== null) {
+    if (typeof input.stiffness !== 'object') return failed('analysis-invalid-input', 'the stiffness must be an object or null');
+    const { string, topCable, bottomCable } = input.stiffness;
+    if (![string, topCable, bottomCable].every((v) => inRange(v, STIFFNESS_MIN, STIFFNESS_MAX))) {
+      return failed('analysis-invalid-input', `the stiffness EA of each cord must be from ${STIFFNESS_MIN} N to ${STIFFNESS_MAX} N`);
+    }
+    ea = [string, topCable, bottomCable];
+  }
 
   // Reduced lengths of the design at brace (θ = 0, α = 0).
   const design = createPose();
@@ -566,6 +862,7 @@ function analyseChecked(input) {
   const gc0 = design.cable.reduced;
   /** @type {Context} */
   const ctx = {
+    elastic: false, compliance: new Float64Array(4),
     bow, stringSupport, cableSupport, limb, stop, free: nock === 'free', maxIterations, iterations: 0,
     lengths: [
       gs0 + offsets.string / 2 - offsets.nockHeight,
@@ -578,8 +875,24 @@ function analyseChecked(input) {
   const det0 = design.string.p * design.ca + design.sa * design.cable.p;
   const slope = (2 * limb.moment(0) * design.cable.p) / det0 / design.string.span;
 
-  /** @type {Pose} */
-  const pose = { q: new Float64Array(4), y: 0, top: createHalf(), bottom: createHalf(), ky: NaN };
+  if (ea) {
+    // Compliances from the pitch-line lengths of the design; free lengths
+    // from the tensions of the design at brace.
+    const designBrace = createAnalysisPose();
+    const t0 = evaluateBoth(ctx, bow.xBrace, designBrace) ? statics(ctx, designBrace) : null;
+    if (!t0) return failed('analysis-brace', 'the tensions of the design at brace cannot be solved');
+    const half = gs0 + terminationConstant(stringSupport, STRING_SIDE, input.stringTermination);
+    const cable = gc0 + terminationConstant(cableSupport, CABLE_SIDE, input.cableTermination);
+    const C = ctx.compliance;
+    C[0] = half / ea[0];
+    C[1] = cable / ea[1];
+    C[2] = half / ea[0];
+    C[3] = cable / ea[2];
+    for (let k = 0; k < 4; k++) ctx.lengths[k] -= C[k] * t0.T[k];
+    ctx.elastic = true;
+  }
+
+  const pose = createAnalysisPose();
   const braced = solveBrace(ctx, pose, bow.xBrace, slope);
   if (typeof braced === 'string') return failed('analysis-brace', braced, ctx.iterations);
   const xBrace = braced;
@@ -641,11 +954,19 @@ function solveBrace(ctx, pose, x0, slope) {
  * @property {boolean} fold the failure follows a closure determinant that
  *   falls towards zero: the draw reaches a turning point
  * @property {'top' | 'bottom' | 'both' | null} first
+ * @property {number} firstIndex sample of the first stop, -1 without one
+ * @property {'top' | 'bottom' | 'both' | null} second elastic cords: the cam
+ *   that reaches its stop second, 'both' when both stop at x₁
+ * @property {boolean} noSecond elastic cords: the first stop is reached,
+ *   the second is not
+ * @property {boolean} capped the second-stop search ended at FORCE_CAP
+ * @property {number} wallStiffness dF/dx with both cams on their stops (N/m)
  */
 
 /**
  * March from brace over the grid, then beyond full draw up to xLimit, until
- * the first stop. Internal steps split every grid interval longer than
+ * the first stop; with elastic cords on with that cam on its stop until
+ * the second stop. Internal steps split every grid interval longer than
  * `maxStep`, so the stop search does not depend on the sample count; only
  * grid points and the stop become samples. Beyond full draw the steps are
  * equal, at least MIN_EXTENSION_STEPS, and no longer than the last grid
@@ -674,12 +995,19 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     for (let k = 1; k <= steps; k++) points.push({ x: k === steps ? xLimit : grid[n - 1] + (k * extension) / steps, sample: true });
   }
   /** @type {March} */
-  const march = { samples: [{ x: grid[0], pose: copyPose(pose) }], failure: '', failedAt: NaN, noStop: false, fold: false, first: null };
+  const march = {
+    samples: [{ x: grid[0], pose: copyPose(pose) }], failure: '', failedAt: NaN, noStop: false, fold: false, first: null,
+    firstIndex: -1, second: null, noSecond: false, capped: false, wallStiffness: NaN,
+  };
+  // Draw force limit of the second-stop search (N).
+  let cap = Infinity;
   // The last two solved poses, sampled or not.
   let last = march.samples[0];
   /** @type {{ x: number, pose: Pose } | null} */
   let before = null;
-  for (const { x, sample } of points) {
+  for (let k = 0; k < points.length; k++) {
+    const { x, sample } = points[k];
+    if (x <= last.x) continue;
     const trial = copyPose(last.pose);
     // Linear prediction from the last two poses.
     if (before) {
@@ -694,13 +1022,19 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
       march.fold = before !== null && foldAhead(before, last, x);
       return march;
     }
-    // A gap within GAP_TOLERANCE of zero is contact.
-    const hitTop = stop !== null && stopGap(stop, trial.top) <= GAP_TOLERANCE;
-    const hitBottom = stop !== null && stopGap(stop, trial.bottom) <= GAP_TOLERANCE;
+    // A gap within GAP_TOLERANCE of zero is contact; a cam on its stop keeps it.
+    const hitTop = stop !== null && !trial.active[0] && stopGap(stop, trial.top) <= GAP_TOLERANCE;
+    const hitBottom = stop !== null && !trial.active[1] && stopGap(stop, trial.bottom) <= GAP_TOLERANCE;
     if (!hitTop && !hitBottom) {
       if (sample) march.samples.push({ x, pose: trial });
       before = last;
       last = { x, pose: trial };
+      if (march.first !== null && /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, trial)).F > cap) {
+        if (!sample) march.samples.push({ x, pose: trial });
+        march.noSecond = true;
+        march.capped = true;
+        return march;
+      }
       continue;
     }
     // A stop closes between last.x and x: locate each closing gap.
@@ -719,17 +1053,61 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     events.sort((a, b) => a.x - b.x);
     const e = events[0];
     const other = e.which === 'top' ? e.pose.bottom : e.pose.top;
-    const both = (events.length === 2 && events[1].x - e.x <= SIMULTANEOUS) ||
-      stopGap(/** @type {NonNullable<Context['stop']>} */ (stop), other) <= SIMULTANEOUS;
-    march.first = both ? 'both' : e.which;
+    const second = march.first !== null;
+    const both = !second && ((events.length === 2 && events[1].x - e.x <= SIMULTANEOUS) ||
+      stopGap(/** @type {NonNullable<Context['stop']>} */ (stop), other) <= SIMULTANEOUS);
     // A stop on the last sample replaces it.
     const lastSample = march.samples[march.samples.length - 1];
-    if (e.x - lastSample.x <= SIMULTANEOUS && march.samples.length > 1) march.samples.pop();
+    if (e.x - lastSample.x <= SIMULTANEOUS && march.samples.length > 1 && march.samples.length - 1 !== march.firstIndex) {
+      march.samples.pop();
+    }
     march.samples.push({ x: e.x, pose: e.pose });
-    return march;
+    if (second) {
+      march.second = e.which;
+      march.wallStiffness = wallStiffness(ctx, march.samples[march.samples.length - 1]);
+      return march;
+    }
+    march.first = both ? 'both' : e.which;
+    march.firstIndex = march.samples.length - 1;
+    if (!ctx.elastic) return march;
+    if (both) {
+      march.second = 'both';
+      march.wallStiffness = wallStiffness(ctx, march.samples[march.samples.length - 1]);
+      return march;
+    }
+    // Elastic cords: on with the stopped cam held by its stop.
+    let peak = 0;
+    for (const s of march.samples) peak = Math.max(peak, /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, s.pose)).F);
+    cap = FORCE_CAP * peak;
+    const held = copyPose(e.pose);
+    held.active[e.which === 'top' ? 0 : 1] = 1;
+    held.jac = null;
+    last = { x: e.x, pose: held };
+    before = null;
+    // The point past the stop again, now with the cam held.
+    k--;
   }
-  march.noStop = Boolean(stop);
+  if (march.first === null) march.noStop = Boolean(stop);
+  else if (ctx.elastic) march.noSecond = true;
   return march;
+}
+
+/**
+ * Wall stiffness at the second stop: dF/dx with both cams on their stops,
+ * by a forward difference over WALL_STEP (N/m); NaN when a solve fails.
+ * @param {Context} ctx
+ * @param {{ x: number, pose: Pose }} sample
+ */
+function wallStiffness(ctx, sample) {
+  const p = copyPose(sample.pose);
+  p.active[0] = 1;
+  p.active[1] = 1;
+  p.jac = null;
+  if (solveAt(ctx, p, sample.x)) return NaN;
+  const f0 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
+  if (solveAt(ctx, p, sample.x + WALL_STEP)) return NaN;
+  const f1 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
+  return (f1 - f0) / WALL_STEP;
 }
 
 /**
@@ -869,6 +1247,15 @@ function finish(ctx, march, brace, nock, xFull, input) {
   for (const [code, flagged] of checks) {
     for (const [a, b] of runs(n, flagged)) diagnostics.push({ code, xRange: [r.x[a], r.x[b]], message: ANALYSIS_CODES[code] });
   }
+  if (march.noSecond) {
+    diagnostics.push({
+      code: 'analysis-no-second-stop',
+      xRange: [r.x[march.firstIndex], r.x[n - 1]],
+      message: `${ANALYSIS_CODES['analysis-no-second-stop']}: ${march.capped
+        ? `the draw force reached ${FORCE_CAP} times its peak ${((r.x[n - 1] - r.x[march.firstIndex]) * 1000).toFixed(1)} mm past the first stop`
+        : `searched to ${((r.x[n - 1] - xFull) * 1000).toFixed(1)} mm beyond full draw`}`,
+    });
+  }
   if (march.noStop) {
     diagnostics.push({
       code: 'analysis-no-stop',
@@ -890,6 +1277,7 @@ function finish(ctx, march, brace, nock, xFull, input) {
     });
   }
   const stopped = march.first !== null;
+  const f = march.firstIndex;
   let end = n - 1;
   if (!stopped) while (end >= 0 && r.x[end] > xFull + 1e-12) end--;
   return {
@@ -901,13 +1289,18 @@ function finish(ctx, march, brace, nock, xFull, input) {
     brace,
     stops: {
       first: march.first,
-      x: stopped ? r.x[n - 1] : NaN,
-      gapTop: stopped ? r.gapTop[n - 1] : NaN,
-      gapBottom: stopped ? r.gapBottom[n - 1] : NaN,
+      x: stopped ? r.x[f] : NaN,
+      gapTop: stopped ? r.gapTop[f] : NaN,
+      gapBottom: stopped ? r.gapBottom[f] : NaN,
+      second: march.second,
+      x2: march.second ? r.x[n - 1] : NaN,
+      wallStiffness: march.wallStiffness,
     },
+    elastic: ctx.elastic,
     fullDraw: xFull,
     end,
-    sensitivity: end >= 0 ? sensitivityAt(ctx, list[end]) : NaN,
+    // At the first stop, before any cam rests on its stop; the end of the draw without one.
+    sensitivity: f >= 0 ? sensitivityAt(ctx, list[f]) : end >= 0 ? sensitivityAt(ctx, list[end]) : NaN,
     iterations: ctx.iterations,
   };
 }
@@ -925,6 +1318,9 @@ function sensitivityAt(ctx, sample) {
   const timing = (dL) => {
     ctx.lengths[1] = base + dL;
     const p = copyPose(sample.pose);
+    p.active.fill(0);
+    p.lambda.fill(0);
+    p.jac = null;
     const reason = solveAt(ctx, p, sample.x);
     return reason ? NaN : p.q[0] - p.q[2];
   };
