@@ -91,13 +91,16 @@ describe('design library', () => {
 
   it('reads project files and refuses the ones it cannot use', () => {
     const text = toJSON(sampleState('mini'));
-    expect(readProjectFile(text, text.length)).toEqual({ state: sampleState('mini'), error: null, filled: false });
+    expect(readProjectFile(text, text.length)).toEqual({ state: sampleState('mini'), error: null, filled: false, dropped: [] });
     expect(readProjectFile('', 0).error).toBe('The file is empty');
     expect(readProjectFile('', FILE_MAX + 1).error).toBe('The file is larger than 1 MB');
     expect(readProjectFile('0\r\nSECTION', 9).error).toMatch(/not valid JSON/);
     expect(readProjectFile('{"schemaVersion":9}', 19).error).toMatch(/newer version/);
     const partial = readProjectFile('{"schemaVersion":1}', 19);
-    expect(partial).toEqual({ state: defaultState(), error: null, filled: true });
+    expect(partial).toEqual({ state: defaultState(), error: null, filled: true, dropped: [] });
+    const unknown = readProjectFile('{"schemaVersion":1,"tuning":{"cableTop":0.001}}', 47);
+    expect(unknown.error).toBeNull();
+    expect(unknown.dropped).toEqual(['tuning']);
     // Omitted points follow the file's geometry and parameters, not the default bow.
     const brace = readProjectFile('{"schemaVersion":1,"geometry":{"braceHeight":0.2}}', 50);
     expect(brace.error).toBeNull();

@@ -14,6 +14,7 @@ import { transform } from '../core/bspline.js';
 import { describeError } from '../core/errors.js';
 import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
 import { AMO_OFFSET, INCH } from '../core/units.js';
+import { ANALYSIS_ONLY } from '../state/schema.js';
 import { writeCsv } from './csv.js';
 import { writeDxf } from './dxf.js';
 import { writeStep } from './step.js';
@@ -140,12 +141,15 @@ export function stepDocuments(model, state, info) {
 
 /**
  * Design id of the inputs a result was solved for: the first 6 hex digits
- * of the 32-bit FNV-1a hash of the state without its display units.
+ * of the 32-bit FNV-1a hash of the state without its display units and
+ * without the sections in ANALYSIS_ONLY, which do not change the cam.
  * @param {ProjectState} state
  */
 export function designId(state) {
+  /** @type {Record<string, unknown>} */
   const inputs = { ...state };
-  delete (/** @type {Partial<ProjectState>} */ (inputs)).units;
+  delete inputs.units;
+  for (const key of ANALYSIS_ONLY) delete inputs[key];
   const text = JSON.stringify(inputs);
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {

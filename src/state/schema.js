@@ -12,6 +12,19 @@ import { defaultState } from './presets.js';
 /** Current schema version of saved projects. */
 export const SCHEMA_VERSION = 1;
 
+/**
+ * Where to open data from a newer version of the app: the hosted site
+ * serves the newest version as "main, newest" in the Version select.
+ */
+export const NEWER_HINT = 'Open it with the newest version: choose "main, newest" in the Version select, or reload the page.';
+
+/**
+ * Top-level sections that change the analysis of a designed cam but not
+ * the cam. Export file names ignore them, so the files of one cam keep
+ * their names when only these change.
+ */
+export const ANALYSIS_ONLY = Object.freeze(['tuning']);
+
 /** @typedef {import('../core/interp.js').CurvePoint} CurvePoint */
 
 /**
@@ -443,15 +456,37 @@ function fillDefaults(defaults, data) {
 }
 
 /**
+ * Key paths of the data that the schema does not know, in document order,
+ * for example 'tuning' or 'limb.boltTurns'. Keys inside arrays are not
+ * visited: array items take their shape from the defaults.
+ * @param {any} defaults
+ * @param {any} data
+ * @param {string} [prefix]
+ * @returns {string[]}
+ */
+function unknownKeys(defaults, data, prefix = '') {
+  if (!isObject(defaults) || !isObject(data)) return [];
+  /** @type {string[]} */
+  const out = [];
+  for (const key of Object.keys(data)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (!Object.hasOwn(defaults, key)) out.push(path);
+    else out.push(...unknownKeys(defaults[key], data[key], path));
+  }
+  return out;
+}
+
+/**
  * Bring parsed project data to the current schema. Version 1 is the only
- * version so far: missing fields take default values. Newer and unknown
- * versions are rejected.
+ * version so far: missing fields take default values, keys the schema does
+ * not know are dropped and listed in `dropped`. Newer and unknown versions
+ * are rejected.
  * @param {unknown} data
- * @returns {{ state: ProjectState | null, errors: ValidationError[] }}
+ * @returns {{ state: ProjectState | null, errors: ValidationError[], dropped: string[] }}
  */
 export function migrate(data) {
-  const fail = (/** @type {string} */ message) => ({ state: null, errors: [{ path: 'schemaVersion', message }] });
-  if (!isObject(data)) return { state: null, errors: [{ path: '', message: 'The project data is not an object' }] };
+  const fail = (/** @type {string} */ message) => ({ state: null, errors: [{ path: 'schemaVersion', message }], dropped: [] });
+  if (!isObject(data)) return { state: null, errors: [{ path: '', message: 'The project data is not an object' }], dropped: [] };
   const version = data.schemaVersion;
   if (version === undefined) return fail('The project data has no schema version');
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
@@ -459,10 +494,12 @@ export function migrate(data) {
   }
   if (version > SCHEMA_VERSION) {
     return fail(
-      `The project was saved by a newer version of the app (schema version ${version}); this version reads schema version ${SCHEMA_VERSION}`,
+      `The project was saved by a newer version of the app (schema version ${version}); this version reads schema version ${SCHEMA_VERSION}. ${NEWER_HINT}`,
     );
   }
-  const state = fillDefaults(defaultState(), data);
+  const defaults = defaultState();
+  const dropped = unknownKeys(defaults, data);
+  const state = fillDefaults(defaults, data);
   // Default points belong to the default geometry and parameters: without
   // points of its own, the curve follows the data's geometry and parameters.
   if (!(isObject(data.curve) && 'points' in data.curve) && isObject(state.geometry) && isObject(state.curve)) {
@@ -482,7 +519,19 @@ export function migrate(data) {
   if (Array.isArray(state.limb?.table)) {
     state.limb.table = state.limb.table.map((/** @type {any} */ r) => (isObject(r) ? { travel: r.travel, force: r.force } : r));
   }
-  return { state, errors: [] };
+  return { state, errors: [], dropped };
+}
+
+/**
+ * Sentence that names the settings a file or link held that this version
+ * does not know, or '' when there are none. At most five paths are named.
+ * @param {readonly string[]} dropped key paths from migrate
+ */
+export function droppedText(dropped) {
+  if (dropped.length === 0) return '';
+  const shown = dropped.slice(0, 5).join(', ');
+  const more = dropped.length > 5 ? ` and ${dropped.length - 5} more` : '';
+  return `Settings this version does not know were left out: ${shown}${more}.`;
 }
 
 /**
@@ -496,9 +545,10 @@ export function toJSON(state) {
 
 /**
  * Parse, migrate and validate saved project text. Never throws: invalid
- * input returns the default preset and the reasons.
+ * input returns the default preset and the reasons. `dropped` lists the
+ * key paths the schema does not know (see migrate).
  * @param {string} text
- * @returns {{ state: ProjectState, errors: ValidationError[] }}
+ * @returns {{ state: ProjectState, errors: ValidationError[], dropped: string[] }}
  */
 export function fromJSON(text) {
   /** @type {unknown} */
@@ -506,11 +556,11 @@ export function fromJSON(text) {
   try {
     data = JSON.parse(text);
   } catch {
-    return { state: defaultState(), errors: [{ path: '', message: 'The project data is not valid JSON' }] };
+    return { state: defaultState(), errors: [{ path: '', message: 'The project data is not valid JSON' }], dropped: [] };
   }
   const migrated = migrate(data);
-  if (!migrated.state) return { state: defaultState(), errors: migrated.errors };
+  if (!migrated.state) return { state: defaultState(), errors: migrated.errors, dropped: [] };
   const errors = validate(migrated.state);
-  if (errors.length > 0) return { state: defaultState(), errors };
-  return { state: migrated.state, errors: [] };
+  if (errors.length > 0) return { state: defaultState(), errors, dropped: [] };
+  return { state: migrated.state, errors: [], dropped: migrated.dropped };
 }

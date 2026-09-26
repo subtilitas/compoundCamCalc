@@ -616,10 +616,21 @@ Independent set; everything else is derived and shown read-only.
   The release job (permission `actions: write`) runs `gh workflow run
   ci.yml --ref main` after it creates the release, so the Pages
   environment deploys from main only.
-- Limitation: a share link from a newer schema version opened in an older
-  release reads "The link was made with a newer version of the app;
-  reload the page", which is wrong advice on the versioned site (a reload
-  stays on the release). Planned fix in slice 9.
+- Data from a newer version: files, links and saved data with a newer
+  schema version end their message with `NEWER_HINT` ("Open it with the
+  newest version: choose "main, newest" in the Version select, or reload
+  the page."). A release older than this rule (v0.1.0) still reads
+  "reload the page" alone.
+- Settings a version does not know: `migrate` drops keys the schema does
+  not know and lists their paths (`dropped`, document order, nested keys
+  as `section.key`, keys inside arrays not visited). Open from file and a
+  share link add "Settings this version does not know were left out:
+  <at most five paths>[ and N more]." to their status message. The saved
+  file or link itself is not changed. A value of a known key with the
+  wrong type is not dropped; validation reports it.
+- `ANALYSIS_ONLY` (`src/state/schema.js`) names the top-level sections that
+  change the analysis of a cam but not the cam (`tuning`); `designId`
+  leaves them out, so export file names stay when only they change.
 
 ## User interface rules
 
@@ -833,7 +844,9 @@ Independent set; everything else is derived and shown read-only.
     rejects empty files, files over 1 MB and non-JSON text before parsing;
     with any `fromJSON` error nothing changes and the message reads "Could
     not open <file>: <first error>"; a file that lacked fields opens with
-    "Missing values in <file> were set to their defaults". The file input
+    "Missing values in <file> were set to their defaults." and a file with
+    keys the schema does not know adds "Settings this version does not
+    know were left out: …". The file input
     is cleared after each pick.
   - Storage blocked or full: a failed write keeps the marker and says "The
     design was not saved: browser storage is full or blocked. Use Save to
@@ -870,7 +883,8 @@ Independent set; everything else is derived and shown read-only.
     state) reads "The link is incomplete or damaged, often because a chat
     app shortened it. Ask for the whole link, or for a project file." A
     newer schema or link format reads "The link was made with a newer
-    version of the app; reload the page."
+    version of the app. Open it with the newest version: choose "main,
+    newest" in the Version select, or reload the page."
   - Name: cut to 80 characters, then normalised; "Shared design" when
     missing or invalid. It is set as text, never as markup.
   - Copy: `navigator.clipboard.writeText`; status "Share link copied (N
@@ -1026,7 +1040,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
 | 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
 | 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`). Optimise part: the search in `src/core/optimise.js`, the optimise worker and the Optimise section of the String track group. Sample part: light hunting, short-brace hunting (free-form track with a rounded triangle), long draw and youth compound bows, and the target with an optimised track |
-| 9 | Forward compatibility before new inputs: dropped unknown keys reported, newer-version messages pointing to the Version select, design id ignoring analysis-only inputs, `solve` option `analysis` (off by default). Details in [research.md](research.md#delivery-plan) |
+| 9 | Forward compatibility before new inputs: dropped unknown keys reported, newer-version messages pointing to the Version select, design id ignoring analysis-only sections. Released as 0.2.0. Details in [research.md](research.md#delivery-plan) |
 | 10a | Asymmetric rigid analysis `src/core/analysis.js` (cam timing, nock travel, stop order), no user interface |
 | 10b | Timing user interface: cable and string length changes, nocking point height, timing results block and chart |
 | 10c | String plan with both halves, CSV columns and print report section for the analysis |

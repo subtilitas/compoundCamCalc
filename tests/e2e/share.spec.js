@@ -148,7 +148,7 @@ test.describe('Share link', () => {
     await expectNoFragment(page);
     const newer = `./#design=v1.${Buffer.from(JSON.stringify({ name: 'x', state: { schemaVersion: 9 } })).toString('base64url')}`;
     await page.goto(newer);
-    await expect(page.getByTestId('notice').last()).toContainText('The link was made with a newer version of the app; reload the page.');
+    await expect(page.getByTestId('notice').last()).toContainText('The link was made with a newer version of the app. Open it with the newest version: choose "main, newest" in the Version select, or reload the page.');
     // The link stays, so a reload that loads the newer app opens it.
     expect(new URL(page.url()).hash).toMatch(/^#design=v1\./);
     // Page anchors are not links to designs.

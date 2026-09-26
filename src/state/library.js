@@ -236,7 +236,7 @@ export function nameOfFile(fileName) {
  * not a valid project; reports fields that took default values.
  * @param {string} text
  * @param {number} bytes file size
- * @returns {{ state: ProjectState | null, error: string | null, filled: boolean }}
+ * @returns {{ state: ProjectState | null, error: string | null, filled: boolean, dropped: string[] }}
  */
 export function readProjectFile(text, bytes) {
   return readProjectText(text, bytes, 'file');
@@ -248,17 +248,18 @@ export function readProjectFile(text, bytes) {
  * @param {string} text
  * @param {number} bytes size of the source
  * @param {string} noun 'file' or 'link'
- * @returns {{ state: ProjectState | null, error: string | null, filled: boolean }}
+ * @returns {{ state: ProjectState | null, error: string | null, filled: boolean, dropped: string[] }}
  */
 export function readProjectText(text, bytes, noun) {
-  if (bytes > FILE_MAX) return { state: null, error: `The ${noun} is larger than ${FILE_MAX / 1024 / 1024} MB`, filled: false };
-  if (bytes === 0 || text.trim() === '') return { state: null, error: `The ${noun} is empty`, filled: false };
-  const { state, errors } = fromJSON(text);
-  if (errors.length > 0) return { state: null, error: errors[0].message, filled: false };
-  // A field of the state the file lacks took its default value; extra
-  // fields of the file are dropped and do not count.
+  const fail = (/** @type {string} */ error) => ({ state: null, error, filled: false, dropped: [] });
+  if (bytes > FILE_MAX) return fail(`The ${noun} is larger than ${FILE_MAX / 1024 / 1024} MB`);
+  if (bytes === 0 || text.trim() === '') return fail(`The ${noun} is empty`);
+  const { state, errors, dropped } = fromJSON(text);
+  if (errors.length > 0) return fail(errors[0].message);
+  // A field of the state the file lacks took its default value; fields
+  // the schema does not know are dropped and listed in `dropped`.
   const data = JSON.parse(text);
-  return { state, error: null, filled: missingPath(state, data) };
+  return { state, error: null, filled: missingPath(state, data), dropped };
 }
 
 /**
