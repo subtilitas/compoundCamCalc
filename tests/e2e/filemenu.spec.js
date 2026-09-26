@@ -184,11 +184,11 @@ test.describe('File menu', () => {
   test('a file with settings this version does not know opens and names them', async ({ page }) => {
     const data = /** @type {any} */ (structuredClone(defaultState()));
     data.geometry.ata = 34 * 0.0254;
-    data.tuning = { cableTop: 0.001 };
+    data.wind = { speed: 3 };
     data.limb.boltTurns = 2;
     await page.getByTestId('file-input').setInputFiles({ name: 'later.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(data)) });
     await expect(page.getByTestId('file-status')).toHaveText(
-      'Opened later.json. Settings this version does not know were left out: limb.boltTurns, tuning.',
+      'Opened later.json. Settings this version does not know were left out: limb.boltTurns, wind.',
     );
     await expect(page.getByTestId('field-ata')).toHaveValue('34.00');
     await expect(page.getByTestId('design-name')).toContainText('later');

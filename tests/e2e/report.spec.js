@@ -78,7 +78,7 @@ test.describe('print report', () => {
     await expect(page.locator('#app')).toBeHidden();
     await expect(page.locator('.app-header')).toBeHidden();
     for (const key of SECTIONS) await expect(page.getByTestId(`report-${key}`)).toBeVisible();
-    await expect(page.getByTestId('report-note')).toHaveText('Static model: string stretch, cam timing and dynamics are not modelled.');
+    await expect(page.getByTestId('report-note')).toHaveText('Static model with rigid cords: string stretch and dynamics are not modelled. Cam timing comes from the Timing panel, which never changes the cam.');
 
     await expect(report.locator('h1')).toHaveText('Cam report: Untitled');
     await expect(report.locator('[data-key="version"]')).toHaveText(/^\d+\.\d+\.\d+$/);

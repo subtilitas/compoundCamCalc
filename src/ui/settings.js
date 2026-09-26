@@ -833,9 +833,57 @@ const BODY_FIELDS = [
   },
 ];
 
+/**
+ * Cord length changes of the timing analysis. They change the Timing panel
+ * only; the cam, its checks and the exports stay the same.
+ * @type {FieldDef[]}
+ */
+export const TUNING_FIELDS = [
+  {
+    id: 'top-cable',
+    label: 'Top cable length change',
+    glossary: 'timing',
+    path: 'tuning.topCable',
+    kind: 'dims',
+    get: (s) => s.tuning.topCable,
+    action: (v) => ({ type: 'setTuning', tuning: { topCable: v } }),
+    ...FINE,
+  },
+  {
+    id: 'bottom-cable',
+    label: 'Bottom cable length change',
+    path: 'tuning.bottomCable',
+    kind: 'dims',
+    get: (s) => s.tuning.bottomCable,
+    action: (v) => ({ type: 'setTuning', tuning: { bottomCable: v } }),
+    ...FINE,
+  },
+  {
+    id: 'string-change',
+    label: 'String length change',
+    path: 'tuning.string',
+    kind: 'dims',
+    get: (s) => s.tuning.string,
+    action: (v) => ({ type: 'setTuning', tuning: { string: v } }),
+    ...FINE,
+  },
+  {
+    id: 'nock-height',
+    label: 'Nocking point above centre',
+    path: 'tuning.nockHeight',
+    kind: 'dims',
+    get: (s) => s.tuning.nockHeight,
+    action: (v) => ({ type: 'setTuning', tuning: { nockHeight: v } }),
+    ...FINE,
+  },
+];
+
+/** Hint of the timing group. */
+export const TUNING_HINT = 'Analysis only: these changes show in the Timing panel. The cam, its checks and the exports stay the same.';
+
 /** Glossary entries of the fields that have an info button, in panel order. */
 export const FIELD_GLOSSARY = Object.freeze(
-  [GEOMETRY_FIELDS, FORCE_FIELDS, LIMB_FIELDS, TRACK_FIELDS, CORD_FIELDS, BODY_FIELDS]
+  [GEOMETRY_FIELDS, FORCE_FIELDS, LIMB_FIELDS, TRACK_FIELDS, CORD_FIELDS, BODY_FIELDS, TUNING_FIELDS]
     .flat()
     .flatMap((def) => (def.glossary ? [def.glossary] : [])),
 );
@@ -948,6 +996,7 @@ export function inputGroups(s) {
     },
     { title: 'Cords', rows: rows(CORD_FIELDS) },
     { title: 'Cam body', rows: rows(BODY_FIELDS) },
+    { title: 'Timing (analysis only)', rows: rows(TUNING_FIELDS) },
   ];
 }
 
@@ -963,8 +1012,8 @@ const UNIT_SELECTS = /** @type {const} */ ([
  * Settings panel. Groups: fieldsets "Bow geometry" (data-testid
  * settings-geometry), "Draw force" (settings-force) and "Units"
  * (settings-units); open details elements "Limbs" (settings-limbs),
- * "String track" (settings-string-track), "Cords" (settings-cords) and "Cam body"
- * (settings-cam-body).
+ * "String track" (settings-string-track), "Cords" (settings-cords), "Cam body"
+ * (settings-cam-body) and "Timing (analysis only)" (settings-timing).
  * @param {HTMLElement} panel element to fill
  * @param {Store} store
  * @returns {{ render: (state: ProjectState) => void,
@@ -1490,6 +1539,7 @@ export function createSettings(panel, store) {
     group('string-track', 'String track', trackShape, freeformLine, ...TRACK_FIELDS.map(field), trackEditor.editor, trackEditor.presets),
     group('cords', 'Cords', ...CORD_FIELDS.map(field)),
     group('cam-body', 'Cam body', ...BODY_FIELDS.map(field)),
+    group('timing', 'Timing (analysis only)', h('p', { class: 'hint', 'data-testid': 'timing-hint' }, TUNING_HINT), ...TUNING_FIELDS.map(field)),
     units,
   );
 

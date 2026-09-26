@@ -155,7 +155,7 @@ describe('report data', () => {
 describe('inputs of the report', () => {
   it('group the fields as the settings panel and leave out hidden fields', () => {
     const groups = inputGroups(state);
-    expect(groups.map((g) => g.title)).toEqual(['Bow geometry', 'Draw force', 'Limbs', 'String track', 'Cords', 'Cam body']);
+    expect(groups.map((g) => g.title)).toEqual(['Bow geometry', 'Draw force', 'Limbs', 'String track', 'Cords', 'Cam body', 'Timing (analysis only)']);
     const labels = groups.flatMap((g) => g.rows.map((r) => r.label));
     expect(labels).toContain('Axle-to-axle length (ATA)');
     expect(labels).toContain('Limb stiffness at the axle');

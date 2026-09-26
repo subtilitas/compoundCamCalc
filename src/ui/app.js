@@ -23,6 +23,7 @@ import { createResults } from './results.js';
 import { createSolver } from './solver.js';
 import { createPointTable } from './table.js';
 import { createExportPanel } from './exportpanel.js';
+import { createTiming } from './timing.js';
 import { createLoadChart } from './loadchart.js';
 import { createScrubber } from './scrubber.js';
 import { createStringPlan } from './stringplan.js';
@@ -297,6 +298,7 @@ export function startApp() {
   const camView = createCamView(byId('cam-body', HTMLDivElement));
   const plan = createStringPlan(byId('plan-body', HTMLDivElement));
   const loads = createLoadChart(byId('loads-body', HTMLDivElement));
+  const timing = createTiming(byId('timing-body', HTMLDivElement));
   const exportPanel = createExportPanel(byId('export-body', HTMLDivElement), { version: __APP_VERSION__ });
   const scrubber = createScrubber(byId('scrub-body', HTMLDivElement), {
     panel: byId('scrub-panel', HTMLElement),
@@ -350,6 +352,7 @@ export function startApp() {
     scrubber.setDomain(ctx, now.units);
     plan.render(shownResult, ctx, now.units, stale, outdated);
     loads.render(ctx, now.units, stale, outdated);
+    timing.render(current?.result ?? null, now.units, stale, outdated);
     // Cached values show in the units selected now.
     results.render({
       status, result: current?.result ?? null, state: current ? { ...current.state, units: now.units } : now, stale, outdated,

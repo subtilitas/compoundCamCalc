@@ -121,6 +121,17 @@ export const ANALYSIS_ONLY = Object.freeze(['tuning']);
  */
 
 /**
+ * Cord length changes of the timing analysis: they change the analysis of
+ * the cam, never the cam. Positive values lengthen the cord or raise the
+ * nocking point.
+ * @typedef {object} Tuning
+ * @property {number} topCable top cable length change (m)
+ * @property {number} bottomCable bottom cable length change (m)
+ * @property {number} string string length change, whole string (m)
+ * @property {number} nockHeight nocking point above the string centre, along the string (m)
+ */
+
+/**
  * @typedef {object} ProjectState
  * @property {number} schemaVersion
  * @property {Units} units
@@ -130,6 +141,7 @@ export const ANALYSIS_ONLY = Object.freeze(['tuning']);
  * @property {StringTrack} stringTrack
  * @property {Cords} cords
  * @property {Body} body
+ * @property {Tuning} tuning analysis only, see ANALYSIS_ONLY
  */
 
 /**
@@ -185,6 +197,10 @@ export const FIELDS = Object.freeze({
   'body.minBendRadius': { label: 'Minimum bend radius', quantity: 'length', unit: 'mm', min: 0.5 * MM, max: 50 * MM },
   'body.flangeThickness': { label: 'Flange plate thickness', quantity: 'length', unit: 'mm', min: 0.5 * MM, max: 20 * MM },
   'body.grooveClearance': { label: 'Groove clearance', quantity: 'length', unit: 'mm', min: 0, max: 5 * MM },
+  'tuning.topCable': { label: 'Top cable length change', quantity: 'length', unit: 'mm', min: -20 * MM, max: 20 * MM },
+  'tuning.bottomCable': { label: 'Bottom cable length change', quantity: 'length', unit: 'mm', min: -20 * MM, max: 20 * MM },
+  'tuning.string': { label: 'String length change', quantity: 'length', unit: 'mm', min: -50 * MM, max: 50 * MM },
+  'tuning.nockHeight': { label: 'Nocking point above centre', quantity: 'length', unit: 'mm', min: -50 * MM, max: 50 * MM },
 });
 
 /**
@@ -389,7 +405,7 @@ export function validate(state) {
   if (state.schemaVersion !== SCHEMA_VERSION) {
     errors.push({ path: 'schemaVersion', message: `The schema version must be ${SCHEMA_VERSION}` });
   }
-  for (const section of ['units', 'geometry', 'curve', 'limb', 'stringTrack', 'cords', 'body']) {
+  for (const section of ['units', 'geometry', 'curve', 'limb', 'stringTrack', 'cords', 'body', 'tuning']) {
     if (!isObject(state[section])) errors.push({ path: section, message: `The project has no ${section} section` });
   }
   if (errors.length > 0) return errors;

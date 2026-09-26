@@ -85,7 +85,9 @@ export function answer(request, solveFn = solve) {
   /** @type {SolveResult} */
   let result;
   try {
-    result = solveFn(request.state, { resolution });
+    // A full solve also runs the timing analysis with the cord length
+    // changes of the state; the solve ignores it at coarse resolution.
+    result = solveFn(request.state, { resolution, analysis: resolution === 'full' ? { offsets: request.state?.tuning } : false });
   } catch (error) {
     result = failedResult(resolution, error);
   }

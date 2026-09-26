@@ -16,6 +16,7 @@ import { FIELDS, drawLengthMessage, validate, validateField, validatePoints } fr
 /** @typedef {import('./schema.js').StringTrack} StringTrack */
 /** @typedef {import('./schema.js').Cords} Cords */
 /** @typedef {import('./schema.js').Body} Body */
+/** @typedef {import('./schema.js').Tuning} Tuning */
 /** @typedef {import('./schema.js').ValidationError} ValidationError */
 /** @typedef {import('../core/interp.js').CurvePoint} CurvePoint */
 
@@ -36,6 +37,7 @@ export const HISTORY_LIMIT = 100;
  *   | { type: 'setStringTrack', stringTrack: Partial<StringTrack> }
  *   | { type: 'setCords', cords: Partial<Cords> }
  *   | { type: 'setBody', body: Partial<Body> }
+ *   | { type: 'setTuning', tuning: Partial<Tuning> }
  *   | { type: 'load', state: ProjectState }} Action
  */
 
@@ -213,6 +215,8 @@ export function reduce(state, action) {
       return { ...state, cords: { ...state.cords, ...action.cords } };
     case 'setBody':
       return { ...state, body: { ...state.body, ...action.body } };
+    case 'setTuning':
+      return { ...state, tuning: { ...state.tuning, ...action.tuning } };
     case 'load':
       return action.state;
     default:

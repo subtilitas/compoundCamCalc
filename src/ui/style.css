@@ -1580,6 +1580,23 @@ html {
   stroke: var(--load-axle);
 }
 
+.timing-line {
+  fill: none;
+  stroke-width: 2px;
+}
+
+.timing-nock {
+  stroke: var(--cam-string);
+}
+
+.timing-dtheta {
+  stroke: var(--cam-cable);
+}
+
+.timing-full {
+  stroke-dasharray: 4 4;
+}
+
 .load-dot.load-axle {
   fill: var(--load-axle);
 }

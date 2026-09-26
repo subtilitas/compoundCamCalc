@@ -31,7 +31,7 @@ import { createStringPlan, planDims } from './stringplan.js';
 /** @typedef {import('./results.js').DiagnosticItem} DiagnosticItem */
 
 /** Note on the limits of the model, as under the results card. */
-export const MODEL_NOTE = 'Static model: string stretch, cam timing and dynamics are not modelled.';
+export const MODEL_NOTE = 'Static model with rigid cords: string stretch and dynamics are not modelled. Cam timing comes from the Timing panel, which never changes the cam.';
 
 /** Width of the loads chart in the report (px). */
 const LOADS_WIDTH = 640;

@@ -6,6 +6,15 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Timing: a settings group "Timing (analysis only)" with top and bottom
+  cable length change, string length change and nocking point height, and
+  a Timing panel with cam timing at the end of the draw, the first draw
+  stop and the gap of the other cam, nock travel, the changes of brace
+  height, draw length, peak and let-off, the timing change per mm of top
+  cable, and a chart of nock height and cam timing over the draw. These
+  settings never change the cam, its checks or the exports; files, share
+  links and saved designs keep them.
+- Glossary: cam timing, nock travel, draw stop.
 - `src/core/analysis.js`: asymmetric analysis of the designed cam with
   changed cable and string lengths and nocking point height, rigid cords.
   Per draw position it gives cam timing Δθ, nock height, draw force,
@@ -14,6 +23,11 @@ All notable changes are listed here. Versions follow semantic versioning.
   and the gap of the other cam there. `solve` runs it on the final cam
   with the option `analysis` in a full solve; the result never changes the
   status, the diagnostics or the exports.
+
+### Changed
+
+- The results footnote and the report note name the Timing panel for cam
+  timing.
 
 ## 0.2.0 — 2026-09-26
 

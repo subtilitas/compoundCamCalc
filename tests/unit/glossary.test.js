@@ -7,6 +7,7 @@ import { GLOSSARY_OF, METRIC_KEYS } from '../../src/ui/results.js';
 import { FIELD_GLOSSARY } from '../../src/ui/settings.js';
 import { STAT_GLOSSARY } from '../../src/ui/stats.js';
 import { EDITOR_GLOSSARY } from '../../src/ui/trackeditor.js';
+import { TIMING_GLOSSARY } from '../../src/ui/timing.js';
 
 /** @typedef {keyof typeof GLOSSARY} GlossaryKey */
 
@@ -28,6 +29,7 @@ const WITH_BUTTON = new Set([
   ...EDITOR_GLOSSARY,
   ...Object.values(GLOSSARY_OF),
   ...LEGEND.flatMap((row) => (row.glossary ? [row.glossary] : [])),
+  ...TIMING_GLOSSARY,
 ]);
 
 /**

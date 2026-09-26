@@ -17,10 +17,12 @@ results, the draw position, the cam view, the string plan and the loads.
 - **String plan** panel: the whole bow from the side, with the cord lengths.
 - **Loads** panel: string tension, cable tension and limb tip load against
   the draw.
+- **Timing** panel: cam timing, nock travel and the first draw stop of the
+  built cam with changed cord lengths (analysis only).
 - **Export** panel: cut files of the cam plates, drawings and the force
   table, and the print report.
 - **Settings** panel: bow geometry, draw force, limbs, string track, cords,
-  cam body and display units.
+  cam body, timing (analysis only) and display units.
 
 On screens 960 px wide or wider the settings sit to the right of the other
 panels; on narrower screens the panels follow each other in the order above. The point table is open on wide
@@ -151,6 +153,13 @@ focus moves to the next useful button.
   and 4 are the cord diameter plus the clearance thick, default 0.5 mm),
   lead-in wrap of the cable at brace and residual wrap of the string at
   full draw. The two plate fields only change the STEP export.
+- **Timing (analysis only)**: top cable length change, bottom cable length
+  change, string length change (whole string) and nocking point above the
+  string centre, measured along the string. Positive values lengthen the
+  cord or raise the nocking point. Ranges: cables −20 mm to 20 mm, string
+  and nocking point −50 mm to 50 mm; default 0. These values change only
+  the [Timing](#timing) panel; the cam, its checks, the results above and
+  the exports stay the same.
 - **Units**: draw length in in, mm or cm; force in N or lbf; dimensions in
   mm or in; energy in J or ft·lbf; stiffness in N/mm or lbf/in. The model works in SI units (metre, newton, joule); the units only
   change the display and the default unit of typed values.
@@ -511,6 +520,41 @@ than 250 ms, they dim and say that they belong to the previous inputs. When
 the solve stopped before full draw, the string plan has no full-draw
 outline.
 
+## Timing
+
+The Timing panel analyses the built cam with the length changes of the
+Timing settings. Each half of the bow is solved on its own: the top and
+the bottom cam can turn by different angles, and the nock moves up or down
+until the archer's pull is horizontal. The cords stay rigid.
+
+The list gives:
+
+- **Cam timing at the end of the draw**: θ top − θ bottom, in degrees, and
+  which cam is ahead.
+- **First draw stop**: the cam whose draw stop touches its cable first, and
+  the gap of the other cam's stop at that moment; or both cams together.
+  With rigid cords the first stop ends the draw.
+- **Nock travel**: highest minus lowest nock height over the draw.
+- **Change of brace height**, **change of draw length** (end of the draw
+  against full draw of the design), **change of peak draw force** and
+  **change of let-off**, against the design.
+- **Timing change per mm of top cable** at the end of the draw, in
+  degrees per millimetre in every unit system: how far 1 mm of length
+  change in the top cable, for example from twists, moves the timing
+  there.
+
+With unchanged cords the cams stay in time, the nock stays level, the
+draw ends at full draw and every change is 0. The chart shows the nock
+height (top) and the cam timing (bottom) against the draw length; a
+dashed line marks full draw of the design. Problems of the analysis, for
+example a cord that runs off its track, are listed under the values; they
+do not change the status of the cam.
+
+While an input is dragged, the panel keeps the values of the last full
+solve and says so. Limitations: the cords do not stretch, so the second
+stop and the wall stiffness are not computed, and the draw ends at the
+first stop.
+
 ## Export
 
 The export files always describe the last cam that met every check: a full
@@ -834,6 +878,9 @@ dialog, word for word. A unit test keeps them the same.
 - Minimum bend radius: smallest radius of curvature allowed on a track pitch line. The solver uses the larger of this value and half the cord diameter plus 0.2 mm, so the groove bottom stays convex.
 - Minimum wall: smallest material thickness between the bottom of a track groove and the axle bore. Every groove bottom stays at least the bore radius plus this wall from the axle centre.
 - Working arc: part of the string track the string leaves from between brace and full draw. The rest of the track only closes the cam outline.
+- Cam timing: difference of the rotations of the top and the bottom cam at the same draw position, Δθ = θ top − θ bottom. Cams in time turn together and reach their draw stops at the same draw position.
+- Nock travel: vertical movement of the nock point over the draw when the archer pulls only horizontally, from its highest to its lowest position.
+- Draw stop: peg on the cam that touches the power cable at full draw and ends the draw. The gap is its clearance to the cable.
 
 Info buttons stand next to the settings, stats and results values with a
 term, and next to the lever arm in the cam view legend. They open

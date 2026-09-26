@@ -79,6 +79,17 @@ export const GLOSSARY = Object.freeze({
   workingArc: {
     term: 'working arc',
     text: 'Working arc: part of the string track the string leaves from between brace and full draw. The rest of the track only closes the cam outline.',
+  },  timing: {
+    term: 'cam timing',
+    text: 'Cam timing: difference of the rotations of the top and the bottom cam at the same draw position, Δθ = θ top − θ bottom. Cams in time turn together and reach their draw stops at the same draw position.',
+  },
+  nockTravel: {
+    term: 'nock travel',
+    text: 'Nock travel: vertical movement of the nock point over the draw when the archer pulls only horizontally, from its highest to its lowest position.',
+  },
+  drawStop: {
+    term: 'draw stop',
+    text: 'Draw stop: peg on the cam that touches the power cable at full draw and ends the draw. The gap is its clearance to the cable.',
   },
 });
 
