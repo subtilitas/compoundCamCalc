@@ -679,8 +679,8 @@ Independent set; everything else is derived and shown read-only.
   panel (`src/ui/timing.js`, below Loads) lists cam timing at the end of the
   draw with the cam ahead, the first draw stop and the gap of the other cam,
   nock travel, the changes of brace height, draw length (end of the draw
-  against x_f), peak and let-off against the design, and dΔθ/dL of the top
-  cable in °/mm; problems of the analysis under them; a chart of nock
+  against x_f), peak and let-off against the analysis of unchanged cords
+  on the same grid, and dΔθ/dL of the top cable in °/mm with the nock free; problems of the analysis under them; a chart of nock
   height and cam timing, stacked, over the draw length with full draw of
   the design dashed. A coarse solve keeps the values of the last full solve,
   marked as belonging to the previous inputs.

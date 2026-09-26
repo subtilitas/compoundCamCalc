@@ -1070,15 +1070,24 @@ On the default design (rigid cords):
 | Both cables 3 mm longer | nock level; stops together 1.4 mm before full draw |
 
 The result holds per sample x, y, θ_t, θ_b, Δθ, α_t, α_b, F, F_y, the
-four tensions, both gaps, the four contact angles, k_y and dΔθ/dL_c,t; the
-brace pose with its F_y; the first stop (`top`, `bottom`, `both` or none),
-its position and both gaps there.
+four tensions, both gaps, the four contact angles, k_y and dΔθ/dL_c,t at a
+fixed nock; the brace pose with its F_y; the first stop (`top`, `bottom`,
+`both` or none), its position and both gaps there; `end`, the last sample
+of the draw (the first stop, or without a stop the last sample at or
+before x_f; the samples of the stop search are not part of the draw); and
+`sensitivity`, dΔθ/dL_c,t at `end` in the nock mode of the analysis, a
+central difference over ±1 µm of top cable. With a free nock the nock
+follows the change: 6.91 °/mm at full draw on the default design, against
+6.65 °/mm at a fixed nock.
 
 `solve(state, { analysis })` runs the analysis on the final cam in a full
 solve only: `analysis: true` for unchanged cords and a free nock, or
 `{ offsets, nock, samples }`. Optimise never sets it. `result.analysis`
 holds the result, `timings.analysis` its time; without the option, in a
-coarse solve or without a cam it is null.
+coarse solve or without a cam it is null. `result.analysisReference` holds
+the analysis with unchanged cords and the same options, the reference of
+the changes of peak and let-off on one grid; with unchanged cords it is
+`result.analysis` itself.
 
 ### Diagnostics of the analysis
 

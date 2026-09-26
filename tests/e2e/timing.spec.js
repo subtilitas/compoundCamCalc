@@ -32,7 +32,7 @@ test.describe('Timing', () => {
   test('shows unchanged cords in time, with the chart', async ({ page }) => {
     await expect(page.getByTestId('timing-timing-end')).toHaveText('0.00°, cams in time');
     await expect(page.getByTestId('timing-first-stop')).toHaveText('Both cams together');
-    await expect(page.getByTestId('timing-sensitivity')).toHaveText('6.65°/mm');
+    await expect(page.getByTestId('timing-sensitivity')).toHaveText('6.91°/mm');
     // Flat lines at 0: present, with no height to be visible.
     await expect(page.getByTestId('timing-chart')).toBeVisible();
     await expect(page.getByTestId('timing-nock')).toHaveCount(1);

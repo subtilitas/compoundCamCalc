@@ -63,23 +63,19 @@ export function peakAndLetOff(F) {
 }
 
 /**
- * Index of the last sample of the draw: the first stop, or without a stop
- * the last sample at or before full draw of the design; the samples of the
- * stop search beyond full draw are not part of the draw.
+ * Peak and let-off of an analysis over its draw, up to its end sample.
  * @param {AnalysisResult} a
- * @returns {number} -1 without samples
  */
-export function drawEnd(a) {
-  if (a.stops.first !== null) return a.n - 1;
-  let last = -1;
-  for (let i = 0; i < a.n && a.x[i] <= a.fullDraw + 1e-12; i++) last = i;
-  return last;
+function drawMetrics(a) {
+  return peakAndLetOff(a.F.subarray(0, a.end + 1));
 }
 
 /**
  * Timing results of a solve as display items. Without an analysis every
- * value is '—'. Changes compare the changed bow with the design (the
- * forward model of the built cam); the end of the draw is the first stop,
+ * value is '—'. Changes compare the changed bow with the design: brace and
+ * draw length with the forward model of the built cam, peak and let-off
+ * with the analysis of unchanged cords on the same grid
+ * (`analysisReference`). The end of the draw is the first stop,
  * or full draw without a stop.
  * @param {SolveResult | null} result
  * @param {Units} units
@@ -88,9 +84,9 @@ export function drawEnd(a) {
 export function timingItems(result, units) {
   const a = result?.analysis ?? null;
   const design = result?.achieved ?? null;
-  const metrics = result?.metrics ?? null;
-  const last = a ? drawEnd(a) : -1;
-  const ok = a !== null && last >= 0 && design !== null && metrics !== null;
+  const reference = result?.analysisReference ?? null;
+  const last = a ? a.end : -1;
+  const ok = a !== null && last >= 0 && design !== null && reference !== null && reference.end >= 0;
   const dims = (/** @type {number} */ v) => fromSI(v, 'length', units.dims);
   const dimsDecimals = units.dims === 'mm' ? 2 : 3;
   const signedDims = (/** @type {number} */ v) => (Number.isFinite(v) ? `${signed(dims(v), dimsDecimals)} ${units.dims}` : MISSING);
@@ -132,11 +128,15 @@ export function timingItems(result, units) {
   const xf = design.x[design.x.length - 1];
   set('brace-change', signedDims(/** @type {number} */ (a.brace?.x) - xb));
   set('draw-change', signedDims(a.x[last] - xf));
-  const changed = peakAndLetOff(a.F.subarray(0, last + 1));
-  set('peak-change', Number.isFinite(changed.peak) ? `${signed(fromSI(changed.peak - metrics.peak, 'force', units.force), units.force === 'N' ? 1 : 2)} ${units.force}` : MISSING);
-  set('letoff-change', Number.isFinite(changed.letOff) ? `${signed((changed.letOff - metrics.letOff) * 100, 2)} points` : MISSING);
+  const changed = drawMetrics(a);
+  const base = drawMetrics(reference);
+  const dPeak = changed.peak - base.peak;
+  const dLetOff = changed.letOff - base.letOff;
+  set('peak-change', Number.isFinite(dPeak) ? `${signed(fromSI(dPeak, 'force', units.force), units.force === 'N' ? 1 : 2)} ${units.force}` : MISSING);
+  set('letoff-change', Number.isFinite(dLetOff) ? `${signed(dLetOff * 100, 2)} points` : MISSING);
   // Per millimetre in every unit system: a twist changes a cord by about 1 mm.
-  const perMm = deg(a.dThetaDL[last]) * 1e-3;
+  // In the nock mode of the analysis: with a free nock the nock follows.
+  const perMm = deg(a.sensitivity) * 1e-3;
   set('sensitivity', Number.isFinite(perMm) ? `${fixed(perMm, 2)}${DEGREE}/mm` : MISSING);
   return items;
 }
@@ -198,7 +198,7 @@ export function createTiming(container) {
     const design = shown?.achieved ?? null;
     for (const g of [bg, grid, lines, axes]) g.replaceChildren();
     // The chart ends where the draw ends.
-    const n = a ? drawEnd(a) + 1 : 0;
+    const n = a ? a.end + 1 : 0;
     if (!a || n < 2 || !design || !units) {
       setAttrs(root, { width: 0, height: 0, 'aria-label': 'Timing chart: no cam yet' });
       return;

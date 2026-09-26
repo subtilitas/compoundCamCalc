@@ -114,6 +114,8 @@ describe('optimise panel text', () => {
     expect(sameDesign(a, { ...a, units: inch })).toBe(true);
     expect(sameDesign(a, defaultState())).toBe(true);
     expect(sameDesign(a, { ...a, body: { ...a.body, minWall: 4 * MM } })).toBe(false);
+    // Timing settings do not change the cam.
+    expect(sameDesign(a, { ...a, tuning: { ...a.tuning, topCable: 1 * MM } })).toBe(true);
   });
 
   it('says why Optimise is disabled', () => {

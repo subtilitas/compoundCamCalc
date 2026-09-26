@@ -539,9 +539,9 @@ The list gives:
   against full draw of the design), **change of peak draw force** and
   **change of let-off**, against the design.
 - **Timing change per mm of top cable** at the end of the draw, in
-  degrees per millimetre in every unit system: how far 1 mm of length
-  change in the top cable, for example from twists, moves the timing
-  there.
+  degrees per millimetre in every unit system, with the nock free to
+  follow: how far 1 mm of length change in the top cable, for example from
+  twists, moves the timing there.
 
 With unchanged cords the cams stay in time, the nock stays level, the
 draw ends at full draw and every change is 0. The chart shows the nock

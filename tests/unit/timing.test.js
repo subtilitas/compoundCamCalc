@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { solve } from '../../src/core/solve.js';
 import { defaultState } from '../../src/state/presets.js';
-import { sampleState } from '../../src/state/samples.js';
+import { SAMPLES, sampleState } from '../../src/state/samples.js';
 import { FIELDS, fromJSON, toJSON, validate } from '../../src/state/schema.js';
 import { reduce } from '../../src/state/store.js';
 import { TUNING_FIELDS, TUNING_HINT } from '../../src/ui/settings.js';
 import { MISSING } from '../../src/ui/results.js';
-import { TIMING_GLOSSARY, drawEnd, peakAndLetOff, signed, timingItems } from '../../src/ui/timing.js';
+import { TIMING_GLOSSARY, peakAndLetOff, signed, timingItems } from '../../src/ui/timing.js';
 
 const MM = 1e-3;
 
@@ -78,7 +78,8 @@ describe('timing results', () => {
       'draw-change': '0.00 mm',
       'peak-change': '0.0 N',
       'letoff-change': '0.00 points',
-      sensitivity: '6.65°/mm',
+      // Free nock: 6.91 °/mm at full draw (docs/research.md).
+      sensitivity: '6.91°/mm',
     });
   });
 
@@ -93,16 +94,28 @@ describe('timing results', () => {
       'brace-change': '−0.16 mm',
       'draw-change': '−5.45 mm',
       'peak-change': '−0.7 N',
-      'letoff-change': '−0.31 points',
-      sensitivity: '6.58°/mm',
+      'letoff-change': '−0.30 points',
+      sensitivity: '6.84°/mm',
     });
     const inch = texts(timingItems(result, { ...state.units, dims: 'in', force: 'lbf' }));
     expect(inch['first-stop']).toBe('Top cam; bottom cam gap 0.150 in');
     expect(inch['draw-change']).toBe('−0.214 in');
-    expect(inch.sensitivity).toBe('6.58°/mm');
+    expect(inch.sensitivity).toBe('6.84°/mm');
     const bottom = texts(timingItems(solved({ bottomCable: 1 * MM }).result, state.units));
     expect(bottom['timing-end']).toBe('−6.89°, bottom cam ahead');
     expect(bottom['first-stop']).toBe('Bottom cam; top cam gap 3.81 mm');
+  });
+
+  it('show no change of peak and let-off with unchanged cords on every sample', () => {
+    for (const { id } of SAMPLES) {
+      const state = sampleState(id);
+      const result = solve(state, { analysis: { offsets: state.tuning } });
+      expect(result.analysisReference, id).toBe(result.analysis);
+      const t = texts(timingItems(result, state.units));
+      expect(t['peak-change'], id).toMatch(/^0\.0+ (N|lbf)$/);
+      expect(t['letoff-change'], id).toBe('0.00 points');
+      expect(t['draw-change'], id).toMatch(/^0\.0+ (mm|in)$/);
+    }
   });
 
   it('end the draw at full draw when no stop is reached', () => {
@@ -111,7 +124,7 @@ describe('timing results', () => {
     const result = solve(state, { analysis: { offsets: state.tuning } });
     const a = /** @type {import('../../src/core/analysis.js').AnalysisResult} */ (result.analysis);
     expect(a.diagnostics.map((d) => d.code)).toContain('analysis-no-stop');
-    const end = drawEnd(a);
+    const end = a.end;
     expect(a.x[end]).toBe(a.fullDraw);
     expect(end).toBeLessThan(a.n - 1);
     const t = texts(timingItems(result, state.units));
