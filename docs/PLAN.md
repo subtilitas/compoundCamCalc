@@ -1079,7 +1079,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 10b | Timing user interface: cable and string length changes, nocking point height, timing results block and chart (`src/ui/timing.js`) |
 | 10c | Changed bow in the string plan (`src/core/timinglayout.js`), timing string plan (DXF) and timing table (CSV) as separate export files, Timing section of the print report |
 | 11a | Elastic cords in `src/core/analysis.js`: compliant closures with the free lengths of the design brace, stops as closures with a stop force, the second stop x₂ and the wall stiffness; the `solve` option `analysis.stiffness`; no user interface |
-| 11b | Cord stiffness settings (material and strand count per cord, or a custom EA; rigid by default), second stop and wall stiffness in the Timing panel, free lengths and lengths at 445 N (100 lbf) in the build lengths |
+| 11b | Cord stiffness settings (material and strand count per cord, or a custom EA; rigid by default), second stop and wall stiffness in the Timing panel, free lengths and lengths at 445 N (100 lbf) in the build lengths. Released as 0.3.0 |
 | 12 | Reference-bow fixture format and harness; first fixture Tiermas's round-wheel bow B1 |
 | 13 | Open spiral tracks: a track may end at a post with a step in the outline; step clearance, non-convex overlap check and exports (request of the user) |
 | 14 | Default design and samples retuned towards real limbs from verified reference data (decision of the user) |
