@@ -2,6 +2,19 @@
 
 All notable changes are listed here. Versions follow semantic versioning.
 
+## Unreleased
+
+### Added
+
+- `src/core/analysis.js`: asymmetric analysis of the designed cam with
+  changed cable and string lengths and nocking point height, rigid cords.
+  Per draw position it gives cam timing Δθ, nock height, draw force,
+  vertical nock force, the four cord tensions, both stop gaps, the nock
+  stiffness k_y and dΔθ/dL of the top cable; it finds the first draw stop
+  and the gap of the other cam there. `solve` runs it on the final cam
+  with the option `analysis` in a full solve; the result never changes the
+  status, the diagnostics or the exports.
+
 ## 0.2.0 — 2026-09-26
 
 ### Added

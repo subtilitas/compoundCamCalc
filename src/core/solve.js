@@ -32,6 +32,7 @@ import { MIN_FORCE, curveMetrics, drawRange } from './curve.js';
 import { CODES, diagnostic, formatter, runs } from './diagnostics.js';
 import { describeError } from './errors.js';
 import { fitCableTrack } from './fit.js';
+import { analyseTiming } from './analysis.js';
 import { COARSE_SAMPLES, FULL_SAMPLES, MAX_ITERATION_LIMIT, drawGrid, solveForward } from './forward.js';
 import { createCurve } from './interp.js';
 import {
@@ -208,7 +209,13 @@ export const RESOLUTIONS = Object.freeze({
  * @property {{ minRho: number, minP: number, maxP: number, rhoShortfall: number, start: number, end: number } | null} idealTrack
  *   ideal cable track on its angle range: smallest ρ and p, largest p (m),
  *   ∫ max(0, ρ_lim − ρ) dψ (m·rad), start and end angle (rad)
- * @property {{ total: number, inverse: number, fit: number, outline: number, forward: number, trials: number }} timings
+ * @property {import('./analysis.js').AnalysisResult | null} analysis asymmetric
+ *   analysis of the final cam with the cord length changes of the solve
+ *   option `analysis`; null without the option, in a coarse solve, or
+ *   when no cam was built. It never changes the status, the diagnostics or
+ *   the warnings
+ * @property {{ total: number, inverse: number, fit: number, outline: number, forward: number, trials: number,
+ *   analysis: number }} timings
  *   (ms); trials: the trial solves of a closing-blend suggestion, which
  *   run in a full solve only (0 in a coarse solve)
  */
@@ -246,18 +253,26 @@ function emptyResult(resolution) {
     },
     metrics: null,
     idealTrack: null,
-    timings: { total: 0, inverse: 0, fit: 0, outline: 0, forward: 0, trials: 0 },
+    analysis: null,
+    timings: { total: 0, inverse: 0, fit: 0, outline: 0, forward: 0, trials: 0, analysis: 0 },
   };
 }
+
+/**
+ * Options of the asymmetric analysis: cord length changes and the nock mode.
+ * @typedef {{ offsets?: import('./analysis.js').TimingOffsets, nock?: 'free' | 'board', samples?: number }} AnalysisOption
+ */
 
 /**
  * Solve a project state. Never throws: invalid input, infeasible targets and
  * numerical failures come back as diagnostics.
  * @param {ProjectState} state
- * @param {{ resolution?: 'coarse' | 'full', maxIterations?: number }} [options] resolution
- *   (default 'full') and the Newton iteration limit of the string closure
- *   and of the forward model (default 30; an integer from 1 to 200, anything
- *   else but undefined gives invalid-input)
+ * @param {{ resolution?: 'coarse' | 'full', maxIterations?: number, analysis?: boolean | AnalysisOption }} [options]
+ *   resolution (default 'full'); the Newton iteration limit of the string
+ *   closure and of the forward model (default 30; an integer from 1 to
+ *   200, anything else but undefined gives invalid-input); analysis: run
+ *   the asymmetric analysis of the final cam in a full solve (default off;
+ *   true means no length changes and a free nock). Optimise never sets it
  * @returns {SolveResult}
  */
 export function solve(state, options = {}) {
@@ -268,15 +283,19 @@ export function solve(state, options = {}) {
   let resolution = 'full';
   /** @type {unknown} */
   let maxIterations;
+  /** @type {AnalysisOption | null} */
+  let analysis = null;
   try {
     resolution = o.resolution === 'coarse' ? 'coarse' : 'full';
     maxIterations = o.maxIterations;
+    const a = o.analysis;
+    analysis = a === true ? {} : a !== null && typeof a === 'object' ? a : null;
   } catch {
     // An options object whose fields cannot be read: an invalid iteration
     // limit, so the solve reports invalid-input.
     maxIterations = NaN;
   }
-  return guardedSolve(state, resolution, /** @type {number | undefined} */ (maxIterations), true);
+  return guardedSolve(state, resolution, /** @type {number | undefined} */ (maxIterations), true, analysis);
 }
 
 /**
@@ -299,13 +318,14 @@ export function trialPasses(state, maxIterations) {
  * @param {number | undefined} maxIterations
  * @param {boolean} trials run the trial solves of the closing-blend
  *   suggestion (false inside a trial solve)
+ * @param {AnalysisOption | null} [analysis] run the asymmetric analysis
  * @returns {SolveResult}
  */
-function guardedSolve(state, resolution, maxIterations, trials) {
+function guardedSolve(state, resolution, maxIterations, trials, analysis = null) {
   const t0 = now();
   let result;
   try {
-    result = solveState(state, resolution, maxIterations, trials);
+    result = solveState(state, resolution, maxIterations, trials, analysis);
   } catch (err) {
     result = emptyResult(resolution);
     result.diagnostics.push(
@@ -328,9 +348,10 @@ function guardedSolve(state, resolution, maxIterations, trials) {
  * @param {number | undefined} maxIterations
  * @param {boolean} trials run the trial solves of the closing-blend
  *   suggestion (false inside a trial solve)
+ * @param {AnalysisOption | null} analysis
  * @returns {SolveResult}
  */
-function solveState(state, resolution, maxIterations, trials) {
+function solveState(state, resolution, maxIterations, trials, analysis) {
   const res = emptyResult(resolution);
   const settings = RESOLUTIONS[resolution];
   const diags = res.diagnostics;
@@ -912,6 +933,25 @@ function solveState(state, resolution, maxIterations, trials) {
   }
   diags.push(...violations);
   suggestChange(closing);
+  if (analysis && resolution === 'full') {
+    const tAnalysis = now();
+    const peg = res.posts.find((p) => p.id === 'cable-stop');
+    res.analysis = analyseTiming({
+      geometry,
+      stringTrack: stringPitch,
+      cableTrack: cablePitch,
+      limb: limbData,
+      stringTermination: stringEnd,
+      cableTermination: closed.psiStart,
+      stop: peg ? { x: peg.x, y: peg.y, radius: peg.radius } : null,
+      cableDiameter: cords.cableDiameter,
+      offsets: analysis.offsets,
+      nock: analysis.nock,
+      samples: analysis.samples,
+      maxIterations,
+    });
+    res.timings.analysis = now() - tAnalysis;
+  }
   res.warnings = plausibility({
     ata: geometry.ata,
     camMaxDimension: res.metrics.camMaxDimension,

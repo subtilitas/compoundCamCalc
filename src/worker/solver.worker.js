@@ -69,7 +69,8 @@ export function failedResult(resolution, error) {
     },
     metrics: null,
     idealTrack: null,
-    timings: { total: 0, inverse: 0, fit: 0, outline: 0, forward: 0, trials: 0 },
+    analysis: null,
+    timings: { total: 0, inverse: 0, fit: 0, outline: 0, forward: 0, trials: 0, analysis: 0 },
   };
 }
 

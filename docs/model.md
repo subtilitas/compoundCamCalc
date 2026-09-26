@@ -961,6 +961,135 @@ use the display units of the project; draw positions are AMO draw lengths.
 | `slack-string` | the string of the final cam goes slack (forward model) | the force in the range or the let-off |
 | `wrap-exhausted` | a contact of the final cam passes its termination (forward model) | the residual and lead-in wrap |
 
+## Asymmetric analysis
+
+`analyseTiming` in `src/core/analysis.js` computes a designed cam with cords
+of changed length: cam timing, nock travel and the order of the draw
+stops. Cords stay rigid. The design path stays symmetric; the analysis
+never changes the cam, its status, its diagnostics or its exports.
+
+Inputs besides the forward-model inputs: the cable stop peg (centre in
+the cam frame, radius) and the cable diameter, the length changes and the
+nock mode.
+
+| Input | Symbol | Range |
+|---|---|---|
+| Top cable length change | ΔL_c,t | −0.1 m to 0.1 m |
+| Bottom cable length change | ΔL_c,b | −0.1 m to 0.1 m |
+| String length change, whole string | ΔL_s | −0.1 m to 0.1 m |
+| Nocking point above the string centre, along the string | h | −0.1 m to 0.1 m |
+| Nock mode | | free (default) or draw board |
+
+Each half keeps its own mirror frame, M = diag(1, −1): the top half is the
+frame of [Bow geometry](#bow-geometry), the bottom half its mirror image.
+Both cams share the tracks, the limb and the geometry. The nock is
+N = (x, y) in the top frame and (x, −y) in the bottom frame. The top cable
+ends at A_t = M·O_b(α_b), the bottom cable at A_b = M·O_t(α_t).
+
+Coordinates q = (θ_t, α_t, θ_b, α_b); four closures on the reduced
+lengths of [Cord contact and length](#cord-contact-and-length):
+
+```
+g_s,t(x, y, θ_t, α_t)   = L_s/2 + ΔL_s/2 − h
+g_c,t(θ_t, α_t, α_b)    = L_c + ΔL_c,t
+g_s,b(x, −y, θ_b, α_b)  = L_s/2 + ΔL_s/2 + h
+g_c,b(θ_b, α_b, α_t)    = L_c + ΔL_c,b
+```
+
+Jacobian at a fixed nock, rows (s,t | c,t | s,b | c,b), columns
+(θ_t, α_t, θ_b, α_b):
+
+```
+[ −p_s,t  −s_a,t    0       0    ]
+[  p_c,t  −c_o,t    0      a_t   ]
+[   0       0     −p_s,b  −s_a,b ]
+[   0      a_b     p_c,b  −c_o,b ]
+```
+
+with s_a = u_s·O_α and c_o = u_c·O_α of the own limb and a = u_c·A_α of
+the anchor on the other limb. In a symmetric pose c_o − a = c_a of the
+forward model. ∂g_s,t/∂y = u_s,t,y and ∂g_s,b/∂y = −u_s,b,y.
+
+- **Statics.** Tensions T from Jᵀ·T = −∇E with E = E1(α_t) + E1(α_b).
+  Draw force F = T_s,t·u_s,t,x + T_s,b·u_s,b,x; vertical nock force
+  F_y = T_s,t·u_s,t,y − T_s,b·u_s,b,y.
+- **Closures.** Newton on the 4×4 system at fixed (x, y), step limits
+  0.5 rad in θ and 0.1 rad in α, the stop rule of the forward model.
+- **Free nock.** A secant on y at each x drives F_y to at most 1e-11 of
+  the largest tension (y steps at most 10 mm). Its last slope, or a
+  difference quotient over 1 µm when the start already balances, is
+  k_y = dF_y/dy.
+- **Draw board.** y = 0; F_y is reported.
+- **Brace.** A secant on x from the design brace x_b (start slope
+  F'(x_b) = 2·T_s0/l_0 of the design) finds F = 0, with the nock free or
+  on the board.
+- **Grid.** 300 samples from the new brace to full draw, x − x_b = s²,
+  each predicted linearly from the last two.
+- **Timing sensitivity.** dΔθ/dL_c,t = (J⁻¹·e_2)_1 − (J⁻¹·e_2)_3 at a fixed
+  nock. In a symmetric pose it equals
+  s_a / (p_c·s_a + p_s·(c_o − c_x)), with c_x = −a.
+
+**Draw stops.** The peg at C (cam frame) touches the cable line of its
+half when
+
+```
+gap = p_c(ψ_c) − C·n(ψ_c) − (r_peg + d_c/2)
+```
+
+reaches 0. Both gaps are 0 at x_f on the design, where the peg is placed.
+When a gap turns negative between two samples, the Illinois method
+locates the stop to a gap below 1e-12 m or a bracket below 1e-11 m. The
+other cam counts as stopped at the same time when its gap there is at
+most 1e-9 m. Without a stop by full draw the march continues at the last
+grid spacing up to 10 % of the design draw beyond x_f; beyond that the
+result reports `analysis-no-stop`.
+
+With rigid cords the first stop x₁ is the wall, and the grid ends there.
+Past x₁ the stopped cam keeps its gap at 0. The five constraints then leave
+one soft direction: the axles, cams and nock rotate together about a
+point at nock height, with the limbs turning in opposite senses. That
+rotation keeps every cord length and the gap, so it moves x only at second
+order. On the default design with the top cable 1 mm longer, the nock
+moves 0.46 µm in y for 1 nm in x, and the draw folds about 1 µm past x₁.
+The second stop x₂ needs cord stretch.
+
+On the default design (rigid cords):
+
+| Case | Result |
+|---|---|
+| Unchanged cords | brace and stops as the design; dΔθ/dL_c,t 1.377 °/mm at brace, 1.10 °/mm at the peak, 6.646 °/mm at full draw; k_y 4.52 N/mm at brace, 3.12 N/mm at full draw |
+| Top cable 1 mm longer | Δθ 1.43° at brace, 6.89° at the stop; brace 0.16 mm shorter; nock 0.43 mm low at brace, 6.14 mm low at the stop; top cam stops first 5.4 mm before full draw, bottom gap 3.81 mm |
+| Nocking point 10 mm high | nock 10.0 mm high at brace, 16.0 mm at the stops; Δθ below 0.05° |
+| Both cables 3 mm longer | nock level; stops together 1.4 mm before full draw |
+
+The result holds per sample x, y, θ_t, θ_b, Δθ, α_t, α_b, F, F_y, the
+four tensions, both gaps, the four contact angles, k_y and dΔθ/dL_c,t; the
+brace pose with its F_y; the first stop (`top`, `bottom`, `both` or none),
+its position and both gaps there.
+
+`solve(state, { analysis })` runs the analysis on the final cam in a full
+solve only: `analysis: true` for unchanged cords and a free nock, or
+`{ offsets, nock, samples }`. Optimise never sets it. `result.analysis`
+holds the result, `timings.analysis` its time; without the option, in a
+coarse solve or without a cam it is null.
+
+### Diagnostics of the analysis
+
+Each diagnostic is `{ code, xRange, message }`. The status is
+`no-convergence` for `analysis-no-convergence`, `infeasible` for any
+other code and `ok` without diagnostics.
+
+| Code | Condition |
+|---|---|
+| `analysis-invalid-input` | an input outside its range, a missing stop diameter, or any exception while reading the input |
+| `analysis-brace` | the design has no cord tangents at brace, the brace search fails, the changed bow braces at or behind full draw, or a cam rests on its stop at brace |
+| `analysis-no-convergence` | a closure, the nock search or a stop search fails, without a fold ahead |
+| `analysis-slack` | a tension ≤ 0 |
+| `analysis-fold` | the determinant of J changes sign between two samples, or a failure follows a determinant that falls towards zero and extrapolates to zero within 3 steps; the message gives the last solved position |
+| `analysis-wrap` | a contact passes its termination, leaves the defined range of an open track (`contact.inRange`), or wraps a full turn |
+| `analysis-unstable` | free nock with k_y ≤ 0 |
+| `analysis-no-stop` | no stop within 10 % of the design draw beyond full draw |
+
 ## Layout and loads
 
 `createLayout(result, geometry)` in `src/core/layout.js` builds, once per
@@ -1204,6 +1333,13 @@ Measured values are the largest errors over the tested samples.
 | Fitted cam without the brace value (10 mm wall, point 2 at 60 N): cable-brace mark at the brace contact of the forward model, 0.47° after ψ_c0, on the cable line to the anchor; lead-in from that contact | 1e-9 m, 1e-9 rad | passes |
 | Suggestions applied: the brace-tension force of point 2 at 30 mm and 50 mm preload travel (slope 0.77 and 0.80 of the limit), the cable-clearance hub and let-off limits at let-off 80 %, a lower or 2 in later point 2 for a cable contact behind brace at point 2, point 5 moved 0.5 in earlier for a `cable-radius` miss between points 5 and 6; for a miss between points 2 and 3 at rise 30 % (43.5 N), rise 40 % (10.6 N) and 44 % (no diagnostics), and point 3 of the custom curve 1.5 in later (6.6 N, within the tolerance), while point 2 10 N lower raises the difference to 60 N; for a miss between brace and point 2 with point 2 at 16.75 in and 240 N (10.7 N), point 2 at 245 N (5.7 N, no diagnostics) | | passes |
 | Solve of the default preset: coarse and full, timed in a worker thread (no coverage counters) | 30 ms and 200 ms, tested with a factor 5 margin | 24 ms to 27 ms and 30 ms to 35 ms after warm-up (Node 22, 4-core 2.1 GHz Xeon); 26 ms to 35 ms and 33 ms to 51 ms in the coverage run (spread of 7 runs) |
+| Asymmetric analysis with unchanged cords on 1500 samples against the forward model of the final cam: default design and the nine samples; F, θ and α of both halves, the four tensions, y; both stops at x_f | 1e-9 relative, 1e-12 m, 1e-9 m | 6.7e-15, 8.8e-14 rad, 1.4e-13, 0 m, 1.1e-16 m |
+| Asymmetric analysis: equal changes on both halves keep y and Δθ at 0; swapped cable changes mirror y, F_y and the tensions and flip Δθ and the stop order | 1e-12 m and rad; 12, 11, 9 and 7 decimals | passes |
+| Asymmetric analysis: four tensions, F and F_y from the free-body balance of both cams and both limbs (tangent points by bisection, cord directions from positions, the other cable pulling on the axle), free nock and draw board, three sets of changes | 1e-9 of the largest tension | 2.6e-15 |
+| Asymmetric analysis: trapezoid work of F on 3000 samples against E1(α_t) + E1(α_b), free nock and draw board | 1e-7 relative | 3.2e-9 |
+| Asymmetric analysis: dΔθ/dL_c,t against s_a / (p_c·s_a + p_s·(c_o − c_x)) from positions, draw board | 1e-9 relative | 6.9e-16 |
+| Asymmetric analysis: one test per code, stop order and gap, a stop beyond full draw, no stop peg | | passes |
+| Asymmetric analysis of the default design, top cable 1 mm longer, timed in the worker thread | 25 ms, tested with a factor 5 margin | 11 ms median after warm-up |
 | Coarse solve with point 2 at 10 in and 50 N, where no lead-in wrap closes the track: no trial solves, timed in the worker thread | 10 times the 30 ms coarse budget | 75 ms to 89 ms after warm-up; 75 ms to 99 ms in the coverage run (spread of 7 runs) |
 
 Realistic twin cam of the tests: default geometry (ATA 33 in, brace height
@@ -1243,15 +1379,17 @@ first 123 mm of the power stroke.
 | Groove margin in ρ_lim | 0.2 mm |
 | Outline samples | 360 (coarse), 720 (full) intervals |
 | Forward model of the final cam | 100 (coarse), 1500 (full) samples |
+| Asymmetric analysis | 300 samples to full draw; closures as the forward model; F_y and brace F below 1e-11 of the largest tension; secant steps at most 10 mm in y and 20 mm in x, at most 40; stop located to 1e-12 m in the gap or 1e-11 m in x; stops within 1e-9 m count as simultaneous; stop search up to 10 % of the draw beyond x_f |
 
 ## Limitations
 
 - Static model: arrow speed, dynamic efficiency and hysteresis are not
   computed.
 - String and cables are inextensible.
-- Rigid limb levers with a fixed pivot; top and bottom limbs identical; the
-  nock stays on y = 0 midway between the axles, so cam timing is not
-  modelled.
+- Rigid limb levers with a fixed pivot; top and bottom limbs identical. The
+  design path keeps the nock on y = 0 midway between the axles; cam timing
+  comes from the [asymmetric analysis](#asymmetric-analysis), which keeps
+  the cords rigid, so its draw ends at the first stop.
 - The cable anchor is the bottom axle centre: yoke legs and cable guard
   offset are ignored.
 - The forward model follows the solution branch that starts at brace; a
