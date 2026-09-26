@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCurve, pointMetrics } from '../../src/core/curve.js';
 import { INCH, toSI } from '../../src/core/units.js';
-import { chipText, meetsEveryCheck, solveView } from '../../src/ui/app.js';
+import { chipText, meetsEveryCheck, sameInputs, solveView } from '../../src/ui/app.js';
 import { moveLimitMessage, niceStep, ticks } from '../../src/ui/chart.js';
 import { amo, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain, pointLabel } from '../../src/ui/display.js';
 
@@ -103,25 +103,55 @@ describe('solve view selection', () => {
 
   it('shows the current result when it meets every check', () => {
     const good = solved('ok');
-    expect(solveView(good, good, 'idle')).toEqual({ current: good, stale: false, outdated: false, status: 'ok', shown: good, withCurve: good });
-    expect(solveView(null, null, 'idle')).toEqual({ current: null, stale: false, outdated: false, status: 'idle', shown: null, withCurve: null });
+    expect(solveView(good, good, 'idle')).toEqual({ current: good, stale: false, outdated: false, status: 'ok', shown: good, withCurve: good, forEditor: good });
+    expect(solveView(null, null, 'idle')).toEqual({ current: null, stale: false, outdated: false, status: 'idle', shown: null, withCurve: null, forEditor: null });
   });
 
   it('keeps the last valid cam in view for a failing result', () => {
     const good = solved('ok');
     const bad = solved('infeasible');
-    expect(solveView(bad, good, 'idle')).toEqual({ current: bad, stale: true, outdated: false, status: 'infeasible', shown: good, withCurve: bad });
+    expect(solveView(bad, good, 'idle')).toEqual({ current: bad, stale: true, outdated: false, status: 'infeasible', shown: good, withCurve: bad, forEditor: bad });
     const noCurve = solved('no-convergence', false);
     expect(solveView(noCurve, good, 'busy')).toMatchObject({ current: noCurve, stale: true, status: 'busy', shown: good, withCurve: good });
     expect(solveView(bad, null, 'idle')).toMatchObject({ stale: false, shown: bad });
   });
 
+  it('gives the track editor no working arc of an older result', () => {
+    // The last valid cam can belong to another track: the editor shows the
+    // working arc of the current result only.
+    const good = solved('ok');
+    const noCurve = solved('no-convergence', false);
+    for (const status of /** @type {const} */ (['idle', 'busy'])) {
+      const view = solveView(noCurve, good, status);
+      expect(view.withCurve).toBe(good);
+      expect(view.forEditor).toBeNull();
+    }
+    const bad = solved('infeasible');
+    expect(solveView(bad, good, 'idle').forEditor).toBe(bad);
+  });
+
+  it('gives the track editor no working arc while a newer solve of changed inputs runs', () => {
+    const track = { shape: 'freeform' };
+    const before = { units: { dims: 'mm' }, stringTrack: track, geometry: {} };
+    const r = { result: solved('ok').result, state: before };
+    // The same inputs, also with other display units: the arc stays.
+    expect(solveView(r, r, 'busy', true, before).forEditor).toBe(r);
+    expect(solveView(r, r, 'idle', false, { ...before, units: { dims: 'in' } }).forEditor).toBe(r);
+    // An edited track: the arc belongs to the old track until the new solve arrives.
+    const edited = { ...before, stringTrack: { shape: 'freeform' } };
+    expect(solveView(r, r, 'busy', false, edited).forEditor).toBeNull();
+    expect(solveView(r, r, 'busy', true, edited).forEditor).toBeNull();
+    expect(sameInputs(before, edited)).toBe(false);
+    expect(sameInputs('a', 'a')).toBe(true);
+    expect(sameInputs(null, before)).toBe(false);
+  });
+
   it('drops the older result after a solver error', () => {
     const good = solved('ok');
     const bad = solved('infeasible');
-    expect(solveView(good, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good });
-    expect(solveView(bad, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good });
-    expect(solveView(bad, null, 'error')).toEqual({ current: null, stale: false, outdated: false, status: 'error', shown: null, withCurve: null });
+    expect(solveView(good, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good, forEditor: null });
+    expect(solveView(bad, good, 'error')).toEqual({ current: null, stale: true, outdated: false, status: 'error', shown: good, withCurve: good, forEditor: null });
+    expect(solveView(bad, null, 'error')).toEqual({ current: null, stale: false, outdated: false, status: 'error', shown: null, withCurve: null, forEditor: null });
   });
 });
 

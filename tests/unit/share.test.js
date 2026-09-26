@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NAME_MAX, readProjectText } from '../../src/state/library.js';
 import { defaultState } from '../../src/state/presets.js';
-import { SAMPLES } from '../../src/state/samples.js';
+import { SAMPLES, sampleState } from '../../src/state/samples.js';
 import {
   LINK_DAMAGED, LINK_NEWER, SHARED_NAME, SHARE_MAX, SHARE_VERSION, decodeShare, encodeShare, fromBase64url, shareName, toBase64url,
 } from '../../src/state/share.js';
@@ -58,7 +58,7 @@ describe('share link', () => {
   });
 
   it('rejects links cut at 50 %, 90 % and one character short', () => {
-    const text = encodeShare(SAMPLES[1].state(), 'Hunting');
+    const text = encodeShare(sampleState('hunting'), 'Hunting');
     for (const len of [Math.floor(text.length * 0.5), Math.floor(text.length * 0.9), text.length - 1]) {
       const r = decodeShare(text.slice(0, len));
       expect(r.state, `length ${len}`).toBeNull();

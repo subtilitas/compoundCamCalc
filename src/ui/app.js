@@ -1,7 +1,8 @@
 /**
  * Application wiring: store, editor, chart, table, settings, stats,
  * solver, results, cam view, toolbar, keyboard shortcuts, notices,
- * autosave, the File menu, share links, the Help button and the print report.
+ * autosave, the File menu, share links, the Help button, the print report
+ * and Optimise.
  * @module ui/app
  */
 
@@ -26,6 +27,7 @@ import { createLoadChart } from './loadchart.js';
 import { createScrubber } from './scrubber.js';
 import { createStringPlan } from './stringplan.js';
 import { attachReport } from './report.js';
+import { budgetFromSearch, createOptimise } from './optimise.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
@@ -75,6 +77,23 @@ export function chipText(status, problems) {
  * @typedef {{ result: SolveResult, state: T }} Solved
  */
 
+/**
+ * Whether two states hold the same inputs: the same object, or the same
+ * section objects apart from the display units (the store keeps unchanged
+ * sections).
+ * @param {unknown} a
+ * @param {unknown} b
+ */
+export function sameInputs(a, b) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const x = /** @type {Record<string, unknown>} */ (a);
+  const y = /** @type {Record<string, unknown>} */ (b);
+  const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
+  keys.delete('units');
+  return [...keys].every((k) => x[k] === y[k]);
+}
+
 /** A solve running longer than this marks the shown result as outdated (ms). */
 export const PENDING_DELAY = 250;
 
@@ -83,15 +102,20 @@ export const PENDING_DELAY = 250;
  * solver error, whose latest result belongs to an older input), whether the
  * cam shown is the last valid one in place of the current result, whether
  * the current result belongs to older inputs while a newer solve runs
- * (outdated), the status, the result drawn in the cam view and the result
- * whose achieved curve the chart shows.
+ * (outdated), the status, the result drawn in the cam view, the result
+ * whose achieved curve the chart shows and the result whose working arc the
+ * track editor shows. The last valid cam can belong to another track, so the
+ * editor gets the current result only, none when it has no achieved curve,
+ * and none while its inputs differ from the current inputs (a newer solve
+ * runs).
  * @template T
  * @param {Solved<T> | null} latest last delivered result
  * @param {Solved<T> | null} lastGood last delivered result with status ok
  * @param {'idle' | 'busy' | 'error'} solverStatus
  * @param {boolean} [pending] a solve has been running for PENDING_DELAY or longer
+ * @param {T} [now] current inputs; without them the inputs count as the same
  */
-export function solveView(latest, lastGood, solverStatus, pending = false) {
+export function solveView(latest, lastGood, solverStatus, pending = false, now = undefined) {
   // After a solver error only the last valid cam stays in view, dimmed.
   const failed = solverStatus === 'error';
   const current = failed ? null : latest;
@@ -107,7 +131,8 @@ export function solveView(latest, lastGood, solverStatus, pending = false) {
   const outdated = pending && solverStatus === 'busy' && current !== null;
   const shown = stale ? lastGood : current;
   const withCurve = current?.result.achieved ? current : stale ? lastGood : null;
-  return { current, stale, outdated, status, shown, withCurve };
+  const forEditor = current?.result.achieved && (now === undefined || sameInputs(current.state, now)) ? current : null;
+  return { current, stale, outdated, status, shown, withCurve, forEditor };
 }
 
 /**
@@ -144,6 +169,19 @@ export function startApp() {
     editor,
   );
   const settings = createSettings(byId('settings-body', HTMLDivElement), store);
+  // Optimise sits at the end of the String track group and locks the rest
+  // of the group while it runs.
+  const trackGroup = /** @type {HTMLElement} */ (document.querySelector('[data-testid="settings-string-track"]'));
+  const optimise = createOptimise(store, {
+    budget: budgetFromSearch(location.search),
+    lock: (locked) => {
+      for (const child of trackGroup.children) {
+        if (child.tagName !== 'SUMMARY' && child !== optimise.element) child.toggleAttribute('inert', locked);
+      }
+      trackGroup.dataset.locked = String(locked);
+    },
+  });
+  trackGroup.append(optimise.element);
   const stats = createStats(byId('stats', HTMLDListElement));
   const status = byId('edit-status', HTMLParagraphElement);
   const modeBadge = byId('curve-mode', HTMLSpanElement);
@@ -288,8 +326,8 @@ export function startApp() {
 
   function showSolve() {
     const pending = solverStatus === 'busy' && performance.now() - busySince >= PENDING_DELAY;
-    const { current, stale, outdated, status, shown, withCurve } = solveView(latest, lastGood, solverStatus, pending);
     const now = store.getState();
+    const { current, stale, outdated, status, shown, withCurve, forEditor } = solveView(latest, lastGood, solverStatus, pending, now);
     const shownResult = shown?.result ?? null;
     markerOnCurve = withCurve !== null && withCurve === shown;
     if (layoutOf.result !== shownResult) {
@@ -331,6 +369,7 @@ export function startApp() {
     root.dataset.solveStatus = current?.result.status ?? '';
     root.dataset.solveResolution = current?.result.resolution ?? '';
     exportPanel.render({ lastGood, now, busy: solverStatus === 'busy', pending });
+    settings.setResult(forEditor?.result ?? null);
     showPose();
   }
 
@@ -343,6 +382,7 @@ export function startApp() {
       }
       latest = { result, state };
       if (meetsEveryCheck(result)) lastGood = latest;
+      optimise.setLatest(latest);
       showSolve();
     },
     onStatus(status) {
@@ -377,6 +417,7 @@ export function startApp() {
     generation++;
     latest = null;
     lastGood = null;
+    optimise.setLatest(null);
     showSolve();
   });
   store.subscribe((s) => requestSolve(s));

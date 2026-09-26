@@ -12,7 +12,7 @@ This file is the running record of the project. Each slice updates it.
 | Topic | Decision |
 |---|---|
 | Cam system | Twin cam: two identical cams; the power cable of each cam is anchored at the opposite axle (yoke at the axle centre) |
-| Free degree of freedom | User shapes the string track parametrically; the solver computes the cable track |
+| Free degree of freedom | User shapes the string track, parametrically (eccentric circle, ellipse) or as a free-form track; the solver computes the cable track |
 | Geometry model | 2D, top/bottom symmetric: rigid limb levers rotate about a pivot (pseudo-rigid-body model), axles move on an arc, string and cable contacts solved at every draw step |
 | Draw length convention | AMO (Archery Manufacturers Organization) / ATA (Archery Trade Association): draw length = nock to grip pivot point + 1.75 in; brace height = grip pivot point to string |
 | Exported curves | Pitch line (cord centre), groove bottom (pitch − d/2) and flange edge (groove bottom + groove depth), each labelled |
@@ -128,6 +128,143 @@ results are in `docs/model.md`.
   unstrung and fitted by the C2 monotone quintic of `src/core/interp.js`.
 - Outputs: draw energy W and total limb energy including preload, reported
   separately; axle travel in mm.
+
+### String track representation
+
+- Shapes: eccentric circle and ellipse (exact analytic support functions;
+  exports keep true circles), and free-form. Old files load unchanged,
+  schemaVersion stays 1, missing fields take their defaults.
+- Free-form: `stringTrack.freeform = { values }`, N groove-bottom support
+  values p_i (m) at ψ_i = 2π·i/N, N from 8 to 16, default 12. The groove
+  bottom is the periodic C2 cubic spline through (ψ_i, p_i), period 2π; the
+  pitch line is that spline offset by d/2 (`stringTrackSupport`). No new
+  support kind. The track closes by construction and ρ = p + p'' is linear
+  in the values.
+- N ≤ 16: one value moves ρ at its knot by −15 mm per mm at N = 12 and by
+  −63 mm per mm at N = 24.
+- The default free-form values are the default eccentric track sampled at
+  N = 12, so the Shape select switches to free-form without changing the
+  cam (one undo step). Sampling any analytic track at N = 12 keeps the cam
+  size within 0.1 mm and the largest force difference within 0.05 N on the
+  sample designs. A strongly elliptical track takes the smallest N from 12
+  to 16 whose spline keeps the smallest groove ρ within max(1 mm, 10 %)
+  and p within 50 µm of the exact track (`sampleAnalytic`), or 16 with a
+  message when none does; the Shape switch, the presets and Optimise use
+  the same sampling.
+- Validation checks structure only: an array of 8 to 16 finite values from
+  2 mm to 150 mm. Convexity and bore clearance stay solver diagnostics
+  (`string-radius`, `string-clearance`) with the rule of the other shapes,
+  ρ ≥ `rhoLimitFor(body, d)` on the pitch line. As validation errors they
+  would make `fromJSON` replace a saved design by the default after a
+  later edit of the bend radius or the string diameter.
+- `checkStringTrack` takes the exact `minRho(0, 2π)` for every shape; the
+  clearance check keeps its 720 samples.
+- A larger free-form track is a uniform outward offset of every value: ρ
+  grows by exactly the offset and the shape stays. Every suggestion that
+  names a larger string track says "Offset the free-form track outward"
+  for a free-form track, with the amount where it is computed.
+- `src/core/freeform.js` holds the pure functions the editor and the
+  optimiser build on: sampling and resampling, the pitch-line minimum of ρ,
+  shape modifiers (size, shift, oval, rounded triangle, rounded square,
+  egg) with their largest amount by bisection on the spline, the drag bump
+  (raised cosine over ±2 points) with its limit by bisection to 1 µm, and
+  the contact points X(ψ_i) = p·n + p'·t of the knots.
+- Free-form editor (`src/ui/trackeditor.js`) in the String track group: an
+  SVG polar view (width 100 %, at most 280 px, `viewBox` in mm) with the
+  groove bottom, the bore and N handles at the contact points; the working
+  arc of the latest result (brace to full-draw contact, `achieved.psiS`)
+  drawn thick with marks B and F, handles outside it grey ("outline
+  only"). A drag projects the pointer onto n_i and moves the bump, stopped
+  by `dragLimit`; values are rounded to 0.1 µm and step back by 1 µm when
+  the rounded track misses the limit. A track that misses the limit
+  already is limited by the value range only. The stop reason, bend limit
+  or value range, sets the status text, `aria-valuetext` and the style of
+  the handle. Keyboard: one tab stop
+  (roving focus), Left and Right pick the point, Up and Down change one
+  value by 0.1 mm (Shift 0.5 mm) or 0.005 in (Shift 0.02 in), refused when
+  it crosses the limit. An `aria-live` line reads out the point, its value
+  and "Sharpest bend X mm, limit Y mm". The values table takes typed values
+  in 2 mm to 150 mm (a value past the bend limit is a solver diagnostic),
+  with the draw length at which the string leaves each point. "Offset all
+  points" and the Points select (8, 12, 16, `resampleChecked` with a
+  message when the track falls below the limit) complete it. Every change
+  is one store action; a drag is one transaction and one undo step.
+- Shape presets (the modifiers in the user interface): Oval, Rounded
+  triangle, Rounded square, Egg, Size and Shift, each with Amount and
+  Angle, applied to the current track. The amount starts at the nominal
+  amount clamped by `presetRoom` with a 0.5 mm margin; the line under it
+  says what limits it, and tells a track below the limit from one inside
+  the margin. Size on such a track starts at the smallest amount that
+  restores the margin; Shift also keeps the bore clearance. An eccentric
+  or elliptical track is sampled (`sampleAnalytic`, 12 to 16 points) in
+  the same action, so one undo step reverts it. The panel says that a
+  preset can make the design fail and that the solve shows why.
+
+### Optimise
+
+A search for a free-form string track that improves one goal of a design
+that meets every check, plausibility warnings allowed (`src/core/optimise.js`, run by
+`src/worker/optimise.worker.js`, a second module worker; the solver
+client's latest-request-wins scheduler would drop the solves of a search).
+
+- Goals: "Smallest cam, force curve no worse than now" (largest cam
+  dimension) and "Closest force curve, cam no larger than now" (largest
+  force difference; without a fit, the largest difference between the
+  achieved and the target samples). A third goal, the gentlest cable
+  track, is left out: the constrained fit pins the smallest cable ρ at its
+  limit on every sample design.
+- Constraints with margins: status ok, no diagnostic, no warning the
+  current design does not have (a cam-size warning is what the cam goal
+  is for, and a candidate may clear it); pitch
+  string ρ ≥ ρ_lim + max(1 mm, 10 % of ρ_lim), or the start's own smallest
+  ρ when that is lower (a start inside the margin keeps at least its own
+  bend); string and cable wrap ≤ 350°; for the cam goal a force difference
+  ≤ the start's; for the force goal a cam size ≤ the start's; every value
+  in 2 mm to 150 mm.
+- Search space: the constant and cos kψ, sin kψ of the N values for
+  k = 1 … min(4, N/2); the modes up to N/2 join once the step is below
+  0.2 mm. Moving single values stalls: on a round track p(ψ) + p(ψ + π) is
+  the same in every direction, so a single value makes the cam larger on
+  one side (before the force-curve rule of the cam goal, 146 solves over
+  single values left the crossbow at 86.0 mm and the mini bow at 26.4 mm,
+  where modes reached 70.4 mm and 18.5 mm; with the rule, modes take the
+  crossbow from 86.0 mm to 69.8 mm in 157 solves and leave the mini bow at
+  26.4 mm after 84 solves, since every smaller cam found there raises its
+  force difference above the start's 1.28 N).
+- Compass search: poll order low mode first, + before −, the last
+  successful direction first; opportunistic (the first improvement by
+  more than 1e-9 is accepted). The step starts at 5 % of the mean value,
+  scaled per mode by 1/max(1, k² − 1) (mode k of amplitude δ changes ρ by
+  (1 − k²)·δ), halves after a poll without improvement and ends below
+  0.05 mm.
+- Each candidate is rounded to 0.1 µm and prescreened on the spline (value
+  range, pitch-line ρ with its margin, bore clearance); a rejected
+  candidate is not solved. Solves are cached on the rounded values. The
+  cam goal solves coarse (on the default design and the nine samples the
+  cam size agrees with a full solve to within 0.003 mm, 0.0025 mm at most
+  on the hunting bow) and confirms each improvement with a full solve; the
+  force goal solves full throughout (a coarse force difference reads
+  0.01 N to 0.62 N low: 0.012 N on the youth bow, 0.620 N on the
+  crossbow). A current design whose coarse solve fails a check while the
+  full one passes ends the cam goal at once (`start-coarse`).
+- Budget: 600 solves, plus the full (and for the cam goal the coarse)
+  solve of the current design, which also warms up the worker; 120 s
+  wall-clock as a safety stop. Measured in Node.js: the default design
+  with the cam goal converges after 178 solves in 4.8 s, 98.2 mm →
+  93.9 mm at a force difference of 3.56 N (start 3.71 N); the force goal
+  uses all 600 solves in 22 s, 3.71 N → 2.48 N at a cam of 98.2 mm. The
+  hunting sample goes from 132.2 mm to 96.4 mm (cam goal, 600 solves), the
+  crossbow from 86.0 mm to 69.8 mm (cam goal, 157 solves) and from 11.87 N
+  to 3.35 N (force goal). Over the nine samples and both goals a run takes
+  2.1 s (mini bow, cam goal, 84 solves) to 42.6 s (youth bow, force goal,
+  600 solves).
+- The worker posts the start figures, progress after each solve, every
+  confirmed improvement and the outcome. Stop terminates the worker and
+  keeps the last improvement. A change of the design (units aside) or
+  another design stops the run and discards its result. Apply dispatches
+  one `setStringTrack` with the free-form values: one undo step.
+- Test hook: the query parameter `optimise-budget` (1 to 600) lowers the
+  budget of a run for the browser tests.
 
 ### Inverse model (target force curve → cable track)
 
@@ -407,8 +544,8 @@ Independent set; everything else is derived and shown read-only.
   generator (rise length, valley width).
 - Limbs: stiffness mode (see Limb), preload, maximum limb rotation.
 - String track: shape (eccentric circle: radius, offset, phase; ellipse:
-  semi-axes, offset, phase), defined on the groove bottom as the user measures
-  it.
+  semi-axes, offset, phase; free-form: 8 to 16 groove radii at equal
+  angles), defined on the groove bottom as the user measures it.
 - Cords: string diameter, cable diameter, groove depth per track.
 - Cam body: axle bore diameter, minimum wall, layer table (flange, string
   groove, flange, cable groove, flange: thickness of each), post diameter,
@@ -464,15 +601,16 @@ Independent set; everything else is derived and shown read-only.
 - Glossary tooltips for ATA, brace height, draw length (AMO), peak draw
   force, let-off, holding weight, valley, power stroke, draw energy, limb
   energy, axle travel, cam rotation, lever arm, radius of curvature,
-  minimum bend radius, minimum wall. One source, `GLOSSARY` in
+  minimum bend radius, minimum wall, working arc. One source, `GLOSSARY` in
   `src/ui/glossary.js`, feeds the info buttons, the help dialog and the
   Terms section of the user guide; unit tests check that every term here
   has an info button and that the user guide repeats each text word for
   word.
 - Help dialog from a Help button next to the File menu, with no keyboard
   shortcut (Web Content Accessibility Guidelines, WCAG, success criterion
-  2.1.4): quick start in 5 steps, the keyboard shortcuts of the chart, undo
-  and redo, the drawings and the draw position slider, the whole glossary,
+  2.1.4): quick start in 5 steps, the keyboard shortcuts of the chart, the
+  free-form track editor, undo and redo, the drawings and the draw position
+  slider, the whole glossary,
   and a link to the user guide in the wiki (new tab). Focus starts on the
   heading and returns to the Help button; close buttons at the top and the
   bottom; the dialog scrolls within 90 % of the dynamic viewport height
@@ -667,8 +805,11 @@ Independent set; everything else is derived and shown read-only.
     design named after the sample. Samples (request of the user): the
     default target compound bow, a hunting compound bow, a crossbow and a
     mini bow whose cams print on an FDM (fused deposition modelling)
-    printer with a 0.4 mm nozzle. Each solves with zero diagnostics; a unit
-    test checks that.
+    printer with a 0.4 mm nozzle. Slice 8 adds five compound bows: the
+    target with a free-form string track from Optimise, light hunting,
+    short-brace hunting with a free-form string track, long draw and
+    youth. Each solves with zero diagnostics and zero plausibility
+    warnings; a unit test checks that.
   - Input ranges widen for crossbows and small bows: axle-to-axle length
     8 to 48 in, brace height from 1.5 in, draw length from 6 in, limb lever
     from 2 in, peak force from 5 N, limb stiffness from 0.1 N/mm, power
@@ -760,9 +901,15 @@ Committed as tests with stated tolerances:
 - DXF: round trip with an own reader (`tests/unit/dxf-reader.js`); `ezdxf audit` in CI; header units; end-to-end
   test that parses the exported DXF, rebuilds the tracks, runs the forward
   model and matches the target.
+- Optimise: a synthetic objective with a known minimum, determinism,
+  constraint handling (prescreen, warnings, wraps, force and cam limits,
+  full-solve confirmation), budget and time stops; the default design with
+  a budget of 30 solves makes the cam smaller, keeps every check and the
+  margins, and repeats the same values.
 - Playwright: load, drag, keyboard edit, touch add/delete in a mobile
   viewport, unit switch, undo/redo, infeasible input message, export
-  downloads; axe accessibility check.
+  downloads, Optimise with a small budget (Stop, Apply, Discard, undo,
+  discard on a change); axe accessibility check.
 
 ## Repository layout
 
@@ -771,7 +918,7 @@ src/core/     units, interpolation, support functions, geometry, limb,
               forward and inverse solvers, B-spline fitting (no DOM)
 src/state/    ProjectState schema, defaults, presets, validation, JSON/URL codec
 src/export/   DXF and STEP writers: (result, options) => string
-src/worker/   solver worker wrapper
+src/worker/   solver and optimise worker wrappers
 src/ui/       editor, views, forms, downloads
 scripts/      coverage-readme.js and other tooling
 tests/unit/   Vitest
@@ -829,6 +976,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export. Hand-written R2000 writer, five plate profiles with post holes in the flange plates, ZIP of all files, no mirror option (decisions of the user); exports use the last cam that met every check |
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
 | 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
+| 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`). Optimise part: the search in `src/core/optimise.js`, the optimise worker and the Optimise section of the String track group. Sample part: light hunting, short-brace hunting (free-form track with a rounded triangle), long draw and youth compound bows, and the target with an optimised track |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter

@@ -5,7 +5,7 @@ import {
 } from '../../src/state/library.js';
 import { drawRange } from '../../src/core/curve.js';
 import { defaultState } from '../../src/state/presets.js';
-import { SAMPLES } from '../../src/state/samples.js';
+import { SAMPLES, sampleState } from '../../src/state/samples.js';
 import { toJSON } from '../../src/state/schema.js';
 
 const t1 = new Date('2026-09-25T10:00:00Z');
@@ -25,10 +25,10 @@ describe('design library', () => {
     let lib = emptyLibrary();
     const a = saveDesign(lib, { id: null, name: 'Target', state: defaultState(), now: t1 });
     lib = a.library;
-    const b = saveDesign(lib, { id: null, name: 'Crossbow', state: SAMPLES[2].state(), now: t1 });
+    const b = saveDesign(lib, { id: null, name: 'Crossbow', state: sampleState('crossbow'), now: t1 });
     expect(b.id).not.toBe(a.id);
     lib = b.library;
-    lib = saveDesign(lib, { id: a.id, name: 'Target', state: SAMPLES[1].state(), now: t2 }).library;
+    lib = saveDesign(lib, { id: a.id, name: 'Target', state: sampleState('hunting'), now: t2 }).library;
     expect(lib.designs).toHaveLength(2);
     const round = parseLibrary(serializeLibrary(lib)).library;
     const list = listDesigns(/** @type {any} */ (round));
@@ -86,12 +86,12 @@ describe('design library', () => {
     expect(isDirty({ ...saved, units: { ...saved.units, force: 'lbf' } }, saved)).toBe(false);
     // Without a saved copy the default design counts as unchanged.
     expect(isDirty(defaultState(), null)).toBe(false);
-    expect(isDirty(SAMPLES[3].state(), null)).toBe(true);
+    expect(isDirty(sampleState('mini'), null)).toBe(true);
   });
 
   it('reads project files and refuses the ones it cannot use', () => {
-    const text = toJSON(SAMPLES[3].state());
-    expect(readProjectFile(text, text.length)).toEqual({ state: SAMPLES[3].state(), error: null, filled: false });
+    const text = toJSON(sampleState('mini'));
+    expect(readProjectFile(text, text.length)).toEqual({ state: sampleState('mini'), error: null, filled: false });
     expect(readProjectFile('', 0).error).toBe('The file is empty');
     expect(readProjectFile('', FILE_MAX + 1).error).toBe('The file is larger than 1 MB');
     expect(readProjectFile('0\r\nSECTION', 9).error).toMatch(/not valid JSON/);
@@ -118,8 +118,8 @@ describe('design library', () => {
   });
 
   it('stores the current design and falls back to Untitled', () => {
-    const p = toJSON(SAMPLES[3].state());
-    const c = /** @type {const} */ ({ id: null, name: 'Mini', source: 'unsaved', baseline: SAMPLES[3].state() });
+    const p = toJSON(sampleState('mini'));
+    const c = /** @type {const} */ ({ id: null, name: 'Mini', source: 'unsaved', baseline: sampleState('mini') });
     expect(parseCurrent(serializeCurrent(c, p), p)).toEqual(c);
     const saved = /** @type {const} */ ({ id: 'd1', name: 'Bow', source: 'saved', baseline: null });
     expect(parseCurrent(serializeCurrent(saved, p), p)).toEqual(saved);

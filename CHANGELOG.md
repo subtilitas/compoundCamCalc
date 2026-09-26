@@ -6,13 +6,77 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Free-form string track (`src/core/freeform.js`): Shape → Free-form
+  samples the current eccentric or elliptical track at 12 points (one
+  undo step, the cam stays within 0.1 mm), or at up to 16 points for a
+  strongly elliptical track; when 16 points do not follow it within 50 µm
+  and 1 mm (or 10 %) of its sharpest bend, a message says so. The track is the periodic cubic
+  spline through 8 to 16 groove radii at equal angles. Validation checks
+  their number and the 2 mm to 150 mm range only; a track that bends too
+  sharply or comes too close to the bore loads and gets the
+  `string-radius` or `string-clearance` diagnostic, with the suggestion
+  "Offset the free-form track outward by at least X". The string radius
+  check uses the exact smallest radius of curvature for every shape. Core
+  functions for the editor: shape modifiers (size, shift, oval, rounded
+  triangle, rounded square, egg) with their largest amount, a smooth drag
+  bump with its limit, resampling with a check, and the contact points.
+  The print report lists the points; DXF and STEP export the track as
+  splines.
+- Free-form track editor (`src/ui/trackeditor.js`) in the String track
+  group: a round view at most 280 px wide with one point per value, the
+  working arc of the latest result (brace to full draw) and grey points
+  outside it. A drag moves a smooth bump and stops at the bend limit or
+  at the 2 mm to 150 mm value range, and says which (one undo step); the keyboard picks a point with Left and Right and changes
+  it by 0.1 mm (Shift 0.5 mm) with Up and Down. A status line reads out the
+  point and the sharpest bend. The Point values table takes typed groove
+  radii and shows the draw length at which the string leaves each point.
+  "Offset all points", which names the offsets that keep every value in
+  range, and a Points select (8, 12, 16) with a warning when resampling
+  bends the track past the limit. Value errors name the point and its
+  groove radius in the display unit.
+- Shape presets: Oval, Rounded triangle, Rounded square, Egg, Size and
+  Shift with Amount and Angle, added to the current track in one undo
+  step. The default amount is clamped to the bend limit plus a 0.5 mm
+  margin; the line under it names what limits it, tells a track below the
+  limit from one inside the margin, and names a negative amount when the
+  positive side has no room. Size on a track inside the margin starts at
+  the smallest amount that restores it; Shift also keeps the bore
+  clearance. Glossary term "working arc"; the help dialog lists the
+  editor keys.
+- Optimise (`src/core/optimise.js`, `src/worker/optimise.worker.js`,
+  `src/ui/optimise.js`): **Optimise shape** in the String track group
+  searches for a free-form track with one of two goals, "Smallest cam,
+  force curve no worse than now" or "Closest force curve, cam no larger
+  than now". A compass search over Fourier modes of the track values in a
+  second module worker, up to 600 solves (120 s at most), with margins:
+  pitch-line radius of curvature at least 1 mm (or 10 %) over its limit,
+  string and cable wrap at most 350°, no diagnostic and no warning the
+  current design does not have (a design with a cam-size warning can
+  start). The run shows solves, step halvings, elapsed time and the best
+  value; Stop
+  keeps the best track so far; a change of the design or another design
+  discards the run. A before/after table (cam size, force difference,
+  let-off, sharpest string bend) offers Apply, one undo step, and
+  Discard; the goal select stays locked until one of them. The query parameter `optimise-budget` lowers the budget for
+  the browser tests. On the default design the cam goal reaches 93.9 mm
+  from 98.2 mm with a force difference of 3.56 N (start 3.71 N).
+
+- Four sample designs (`src/state/samples.js`), each solving without
+  diagnostics or plausibility warnings: light hunting compound bow (222 N
+  or 50 lbf, 27 in draw, 88 mm cam), short-brace hunting compound bow
+  (311 N or 70 lbf, 6 in brace height, free-form string track with a 2 mm
+  rounded triangle, 110 mm cam), long draw compound bow (356 N or 80 lbf,
+  31 in draw, 120 mm cam) and youth compound bow (89 N or 20 lbf, 24 in
+  draw, 76 mm cam), and the target bow with a free-form string track from
+  Optimise (93.9 mm cam instead of 98.2 mm at a force difference of
+  3.56 N instead of 3.71 N). Open sample… lists the compound bows first.
 - Plausibility warnings (`src/core/plausibility.js`) for a cam wider than
   35 % of the axle-to-axle length and for cams that overlap at a draw
   position. The results card, the status line and the print report list
   them; they do not stop the exports.
 - Share link (`src/state/share.js`): File → Copy share link copies a link
   whose `#design=` fragment holds the inputs and name as base64url JSON
-  (about 1.6 KB for the default design). Opening the link asks first when
+  (about 1.8 KB for the default design). Opening the link asks first when
   the working copy has unsaved changes (Save mine first…, Open without
   saving, Keep my design) and keeps the display units of the person who
   opens it. A cut-off or damaged link shows a notice and changes nothing.

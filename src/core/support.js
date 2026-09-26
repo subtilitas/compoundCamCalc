@@ -711,19 +711,71 @@ export function toSupportData(support) {
   }
 }
 
+/** Margin of the groove bottom radius of curvature over d/2 (m). */
+export const GROOVE_MARGIN = 0.2e-3;
+
+/**
+ * Smallest allowed radius of curvature of a pitch line, ρ_lim: the minimum
+ * bend radius, and at least the cord radius plus GROOVE_MARGIN, so the
+ * groove bottom stays convex.
+ * @param {{ minBendRadius: number }} body
+ * @param {number} d cord diameter (m)
+ * @returns {number} (m)
+ */
+export function rhoLimitFor(body, d) {
+  return Math.max(body.minBendRadius, d / 2 + GROOVE_MARGIN);
+}
+
+/**
+ * Knot angles ψ_i = 2π·i/N of a free-form track, i = 0 … N (the last one
+ * closes the period).
+ * @param {number} n number of values N
+ * @returns {Float64Array} (rad)
+ */
+export function freeformKnots(n) {
+  return Float64Array.from({ length: n + 1 }, (_, i) => (2 * Math.PI * i) / n);
+}
+
+/**
+ * Groove bottom of a free-form track: the periodic C2 cubic spline through
+ * (ψ_i, p_i) with ψ_i = 2π·i/N, period 2π. ρ = p + p'' is linear in the
+ * values. Reference angle 0.
+ * @param {ArrayLike<number>} values groove-bottom support values p_i (m)
+ * @returns {SplineData}
+ */
+export function freeformSupport(values) {
+  const n = values.length;
+  const closed = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) closed[i] = values[i];
+  closed[n] = values[0];
+  return splineSupport(freeformKnots(n), closed, { periodic: true });
+}
+
+/**
+ * Groove-bottom support of the string track from the project state. The
+ * ellipse centre is offset along its major axis (direction `phase`).
+ * @param {import('../state/schema.js').StringTrack} track
+ * @returns {SupportData}
+ */
+export function stringTrackGroove(track) {
+  switch (track.shape) {
+    case 'ellipse':
+      return ellipse({ a: track.semiMajor, b: track.semiMinor, axisAngle: track.phase, offset: track.offset, offsetAngle: track.phase });
+    case 'freeform':
+      return freeformSupport(track.freeform.values);
+    default:
+      return eccentricCircle({ radius: track.radius, offset: track.offset, phase: track.phase });
+  }
+}
+
 /**
  * Pitch-line support of the string track from the project state. The state
  * describes the groove bottom as the user measures it, so the pitch line is
- * the groove bottom offset by half the string diameter. The ellipse centre
- * is offset along its major axis (direction `phase`).
+ * the groove bottom offset by half the string diameter.
  * @param {import('../state/schema.js').StringTrack} track
  * @param {number} stringDiameter (m)
  * @returns {SupportData}
  */
 export function stringTrackSupport(track, stringDiameter) {
-  const groove =
-    track.shape === 'ellipse'
-      ? ellipse({ a: track.semiMajor, b: track.semiMinor, axisAngle: track.phase, offset: track.offset, offsetAngle: track.phase })
-      : eccentricCircle({ radius: track.radius, offset: track.offset, phase: track.phase });
-  return offset(groove, stringDiameter / 2);
+  return offset(stringTrackGroove(track), stringDiameter / 2);
 }

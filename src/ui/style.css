@@ -803,6 +803,148 @@ input[aria-invalid='true'] {
   accent-color: var(--accent);
 }
 
+/* Free-form track editor: a square polar view, at most 280 px wide. */
+.track-editor {
+  margin-top: 12px;
+}
+
+.track-view-wrap {
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.track-view {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  background: var(--chart-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.track-view * {
+  vector-effect: non-scaling-stroke;
+}
+
+.track-bore {
+  fill: var(--surface-2);
+  stroke: var(--chart-axis);
+  stroke-width: 1px;
+}
+
+.track-axle {
+  stroke: var(--chart-axis);
+  stroke-width: 1px;
+}
+
+.track-groove {
+  fill: var(--cam-string-fill);
+  stroke: var(--cam-string);
+  stroke-width: 1.5px;
+}
+
+.track-arc {
+  fill: none;
+  stroke: var(--cam-string);
+  stroke-width: 5px;
+  stroke-linecap: round;
+}
+
+.track-guide {
+  stroke: var(--chart-axis);
+  stroke-width: 1px;
+  stroke-dasharray: 3 3;
+}
+
+.track-mark {
+  stroke: var(--text);
+  stroke-width: 2px;
+}
+
+.track-mark-label {
+  fill: var(--text);
+}
+
+.track-handle {
+  cursor: grab;
+  outline: none;
+}
+
+.track-view[data-dragging] .track-handle {
+  cursor: grabbing;
+}
+
+.track-handle-dot {
+  fill: var(--chart-point);
+  stroke: var(--chart-point-stroke);
+  stroke-width: 1.5px;
+}
+
+.track-handle-ring {
+  fill: none;
+  stroke: none;
+}
+
+.track-handle.outside .track-handle-dot {
+  fill: var(--chart-locked);
+  opacity: 0.7;
+}
+
+.track-handle.selected .track-handle-ring {
+  stroke: var(--chart-point-selected);
+  stroke-width: 2px;
+}
+
+/* A handle stopped at the bend limit: dashed ring in the error colour. */
+.track-handle.stopped .track-handle-dot {
+  fill: var(--error);
+}
+
+.track-handle.stopped .track-handle-ring {
+  stroke: var(--error);
+  stroke-width: 2px;
+  stroke-dasharray: 2 2;
+}
+
+/* A handle stopped at the end of the value range: dashed ring in the text colour. */
+.track-handle.stopped-range .track-handle-ring {
+  stroke: var(--text);
+  stroke-width: 2px;
+  stroke-dasharray: 2 2;
+}
+
+.track-handle:focus-visible .track-handle-ring {
+  stroke: var(--focus);
+  stroke-width: 3px;
+}
+
+.track-live:empty {
+  display: none;
+}
+
+.subgroup {
+  margin: 16px 0 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+
+.subgroup legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.track-presets > button,
+.track-editor .field > button {
+  margin-top: 8px;
+}
+
 .unit-row {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
@@ -1720,4 +1862,50 @@ body.printing-report [popover] {
   .report-table thead {
     display: table-header-group;
   }
+}
+
+.optimise {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.optimise-title {
+  margin: 4px 0;
+  font-size: 1rem;
+}
+
+.optimise-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.optimise-running progress {
+  width: 100%;
+  margin-top: 10px;
+  accent-color: var(--accent);
+}
+
+.optimise-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.optimise-table th,
+.optimise-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.optimise-table thead th {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.optimise-table tbody th {
+  font-weight: 400;
 }

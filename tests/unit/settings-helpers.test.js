@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { INCH, LBF } from '../../src/core/units.js';
+import { sampleTrack } from '../../src/core/freeform.js';
 import { defaultState } from '../../src/state/presets.js';
 import { validate } from '../../src/state/schema.js';
 import {
@@ -11,7 +12,10 @@ import {
   parseField,
   parseLimbRows,
   quantityOf,
+  freeformSummary,
   seedLimbTable,
+  shapeChange,
+  shapeChangeNote,
   sliderStep,
   stringTrackExtra,
   stringTrackMessage,
@@ -125,6 +129,59 @@ describe('string track checks', () => {
         expect(message !== null, `${shape} ${key} ${value}`).toBe(errors.length > 0);
       }
     }
+  });
+});
+
+describe('free-form string track settings', () => {
+  it('check the number and range of the values, and no offset rule', () => {
+    const s = defaultState();
+    const free = { ...s.stringTrack, shape: /** @type {const} */ ('freeform') };
+    expect(stringTrackMessage(free, s.units)).toBeNull();
+    expect(stringTrackMessage({ ...free, offset: 0.049 }, s.units)).toBeNull();
+    expect(stringTrackMessage({ ...free, freeform: { values: Array(7).fill(0.03) } }, s.units)).toBe('A free-form track needs 8 to 16 values');
+    expect(stringTrackMessage({ ...free, freeform: { values: [...Array(11).fill(0.03), 0.001] } }, s.units)).toBe(
+      'Free-form track value 12 must be between 2 and 150 mm',
+    );
+    // The eccentric track does not look at the free-form values.
+    expect(stringTrackMessage({ ...s.stringTrack, freeform: { values: [] } }, s.units)).toBeNull();
+  });
+
+  it('switch a strongly elliptical track to free-form at 16 points and say that it does not follow closely', () => {
+    const s = defaultState();
+    const strong = { ...s, stringTrack: { ...s.stringTrack, shape: /** @type {const} */ ('ellipse'), semiMajor: 0.06, semiMinor: 0.025, offset: 0, phase: 0 } };
+    expect(shapeChange('freeform', strong).freeform?.values).toEqual(sampleTrack(strong.stringTrack, 16));
+    expect(shapeChangeNote('freeform', strong)).toBe('The ellipse sampled at 16 points does not follow it closely: the groove radius '
+      + 'differs by up to 0.1 mm, and the sharpest bend of the groove is 9.2 mm against 10.4 mm. '
+      + 'Check the sharpest bend in the editor; Undo goes back.');
+    // 14 points follow this ellipse: no note.
+    const moderate = { ...s, stringTrack: { ...strong.stringTrack, semiMajor: 0.05, semiMinor: 0.035, offset: 0.02, phase: 1 } };
+    expect(shapeChange('freeform', moderate).freeform?.values).toHaveLength(14);
+    expect(shapeChangeNote('freeform', moderate)).toBe('');
+    expect(shapeChangeNote('ellipse', strong)).toBe('');
+    expect(shapeChangeNote('freeform', s)).toBe('');
+  });
+
+  it('switch to free-form by sampling the current track at 12 points', () => {
+    const s = defaultState();
+    const ellipse = { ...s, stringTrack: { ...s.stringTrack, shape: /** @type {const} */ ('ellipse'), offset: 0.01 } };
+    expect(shapeChange('freeform', ellipse)).toEqual({ shape: 'freeform', freeform: { values: sampleTrack(ellipse.stringTrack, 12) } });
+    expect(shapeChange('freeform', s).freeform?.values).toEqual(s.stringTrack.freeform.values);
+    // Already free-form, or back to an analytic shape: the shape only.
+    const free = { ...s, stringTrack: { ...s.stringTrack, shape: /** @type {const} */ ('freeform'), freeform: { values: Array(8).fill(0.03) } } };
+    expect(shapeChange('freeform', free)).toEqual({ shape: 'freeform' });
+    expect(shapeChange('eccentric', free)).toEqual({ shape: 'eccentric' });
+    expect(shapeChange('ellipse', s)).toEqual({ shape: 'ellipse' });
+    // A sampled value below 2 mm fails the check before the store sees it.
+    const tiny = { ...s, stringTrack: { ...s.stringTrack, radius: 0.005, offset: 0.0035 } };
+    expect(validate(tiny)).toEqual([]);
+    const change = shapeChange('freeform', tiny);
+    expect(stringTrackMessage({ ...tiny.stringTrack, ...change }, s.units)).toMatch(/^Free-form track value \d+ must be between 2 and 150 mm$/);
+  });
+
+  it('summarise the track in one line', () => {
+    const s = defaultState();
+    expect(freeformSummary(s.stringTrack)).toBe('Free-form track, 12 points');
+    expect(freeformSummary({ ...s.stringTrack, freeform: { values: Array(16).fill(0.03) } })).toBe('Free-form track, 16 points');
   });
 });
 

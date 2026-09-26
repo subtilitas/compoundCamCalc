@@ -4,7 +4,7 @@ import { CAM_SIZE_SHARE, lowestCamPoint, plausibility } from '../../src/core/pla
 import { solve } from '../../src/core/solve.js';
 import { INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
-import { SAMPLES } from '../../src/state/samples.js';
+import { SAMPLES, sampleState } from '../../src/state/samples.js';
 
 const fmt = formatter({ ...defaultState().units, dims: 'mm', draw: 'in' });
 
@@ -82,7 +82,7 @@ describe('plausibility', () => {
 
   it('gives no warning for the samples and both for an oversized mini cam', () => {
     for (const s of SAMPLES) expect(solve(s.state()).warnings, s.id).toEqual([]);
-    const st = SAMPLES[3].state();
+    const st = sampleState('mini');
     st.limb = { ...st.limb, mode: 'travel', travel: 0.03 };
     const r = solve(st);
     expect(r.warnings.map((w) => w.code)).toEqual(['cam-size', 'cam-overlap']);

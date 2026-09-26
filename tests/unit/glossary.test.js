@@ -6,6 +6,7 @@ import { QUICK_START, SHORTCUTS, USER_GUIDE_URL, glossaryParts } from '../../src
 import { GLOSSARY_OF, METRIC_KEYS } from '../../src/ui/results.js';
 import { FIELD_GLOSSARY } from '../../src/ui/settings.js';
 import { STAT_GLOSSARY } from '../../src/ui/stats.js';
+import { EDITOR_GLOSSARY } from '../../src/ui/trackeditor.js';
 
 /** @typedef {keyof typeof GLOSSARY} GlossaryKey */
 
@@ -24,6 +25,7 @@ const LEGEND_WITHOUT_TERM = [
 const WITH_BUTTON = new Set([
   ...FIELD_GLOSSARY,
   ...STAT_GLOSSARY,
+  ...EDITOR_GLOSSARY,
   ...Object.values(GLOSSARY_OF),
   ...LEGEND.flatMap((row) => (row.glossary ? [row.glossary] : [])),
 ]);
@@ -134,6 +136,9 @@ describe('help dialog contents', () => {
     expect(text).toContain('Zoom in by 1.5 times, up to 8 times');
     expect(text).toContain('10 % of the visible size');
     expect(text).toContain('50 %');
+    // Free-form track editor (ui/trackeditor EDIT_STEP).
+    expect(text).toContain('by 0.1 mm (0.005 in)');
+    expect(text).toContain('by 0.5 mm (0.02 in)');
     // Undo and redo (ui/app).
     expect(text).toContain('Ctrl + Z');
     expect(text).toContain('Ctrl + Y');

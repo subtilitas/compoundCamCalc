@@ -4,8 +4,8 @@ import { MAX_POINTS, MIN_GAP, pointMetrics } from '../../src/core/curve.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
 import {
-  FIELDS, SCHEMA_VERSION, drawLengthMessage, fromJSON, migrate, rangeMessage, specValue, toJSON, validate,
-  validateField, validatePoints,
+  ENUMS, FIELDS, FREEFORM_POINTS, FREEFORM_VALUE, SCHEMA_VERSION, drawLengthMessage, freeformErrors, fromJSON, migrate, rangeMessage,
+  specValue, toJSON, validate, validateField, validatePoints,
 } from '../../src/state/schema.js';
 
 /** @typedef {import('../../src/state/schema.js').ProjectState} ProjectState */
@@ -303,5 +303,77 @@ describe('migrate', () => {
     const r = migrate(data);
     expect(r.errors).toEqual([]);
     expect(r.state).toEqual(defaultState());
+  });
+});
+
+describe('free-form string track', () => {
+  it('has the free-form shape, 8 to 16 values from 2 mm to 150 mm, and 12 values by default', () => {
+    expect(ENUMS['stringTrack.shape'].values).toEqual(['eccentric', 'ellipse', 'freeform']);
+    expect(FREEFORM_POINTS).toEqual({ min: 8, max: 16, default: 12 });
+    expect([FREEFORM_VALUE.min, FREEFORM_VALUE.max]).toEqual([0.002, 0.15]);
+    const s = defaultState();
+    expect(s.stringTrack.freeform.values).toHaveLength(12);
+    expect(validate(modified((d) => (d.stringTrack.shape = 'freeform')))).toEqual([]);
+  });
+
+  it('checks the structure of the values only', () => {
+    const at = 'stringTrack.freeform.values';
+    expect(freeformErrors(undefined)).toEqual([{ path: at, message: 'The free-form track values are missing' }]);
+    expect(freeformErrors({ 0: 0.03 })).toEqual([{ path: at, message: 'The free-form track values are missing' }]);
+    for (const n of [0, 7, 17]) {
+      expect(freeformErrors(Array(n).fill(0.03))).toEqual([{ path: at, message: 'A free-form track needs 8 to 16 values' }]);
+    }
+    for (const n of [8, 11, 16]) expect(freeformErrors(Array(n).fill(0.03))).toEqual([]);
+    const values = Array(12).fill(0.03);
+    for (const [bad, message] of /** @type {const} */ ([
+      ['0.03', 'Free-form track value 4 must be a number'],
+      [NaN, 'Free-form track value 4 must be a number'],
+      [Infinity, 'Free-form track value 4 must be a number'],
+      [0.0019, 'Free-form track value 4 must be between 2 and 150 mm'],
+      [0.1501, 'Free-form track value 4 must be between 2 and 150 mm'],
+    ])) {
+      const v = [...values];
+      v[3] = /** @type {any} */ (bad);
+      expect(freeformErrors(v)).toEqual([{ path: `${at}[3]`, message }]);
+    }
+    expect(freeformErrors([...values.slice(0, 3), 0.002, 0.15])).toEqual([{ path: at, message: 'A free-form track needs 8 to 16 values' }]);
+    expect(freeformErrors([...values.slice(0, 6), 0.002, 0.15])).toEqual([]);
+    // Every shape carries valid values: they are checked whatever the shape.
+    expect(messagesAt(modified((d) => (d.stringTrack.freeform.values = [0.03])), at)).toEqual(['A free-form track needs 8 to 16 values']);
+    expect(messagesAt(modified((d) => (d.stringTrack.freeform = [0.03])), 'stringTrack.freeform')).toEqual([
+      'The string track has no free-form values',
+    ]);
+    // A concave track, and one whose groove reaches the bore, are valid:
+    // the solver reports them (string-radius, string-clearance).
+    const concave = modified((d) => {
+      d.stringTrack.shape = 'freeform';
+      d.stringTrack.freeform.values = [0.04, 0.04, 0.04, 0.002, 0.04, 0.04, 0.04, 0.04];
+    });
+    expect(validate(concave)).toEqual([]);
+    // The offset rules of the analytic shapes do not apply.
+    expect(validate(modified((d) => {
+      d.stringTrack.shape = 'freeform';
+      d.stringTrack.offset = 0.049;
+    }))).toEqual([]);
+  });
+
+  it('fills the default values into older files and keeps the values of a file', () => {
+    const old = /** @type {any} */ (structuredClone(defaultState()));
+    delete old.stringTrack.freeform;
+    expect(migrate(old).state?.stringTrack.freeform).toEqual(defaultState().stringTrack.freeform);
+    const saved = modified((d) => {
+      d.stringTrack.shape = 'freeform';
+      d.stringTrack.freeform = { values: Array(16).fill(0.035), extra: 1 };
+    });
+    const r = migrate(saved);
+    expect(r.state?.stringTrack.freeform).toEqual({ values: Array(16).fill(0.035) });
+    // A copy: later changes to the file data do not reach the state.
+    expect(r.state?.stringTrack.freeform.values).not.toBe(saved.stringTrack.freeform.values);
+    const loaded = fromJSON(toJSON(/** @type {ProjectState} */ (r.state)));
+    expect(loaded.errors).toEqual([]);
+    expect(loaded.state.stringTrack.shape).toBe('freeform');
+    // Invalid values make the file invalid, as any other field.
+    const bad = fromJSON(toJSON(modified((d) => (d.stringTrack.freeform.values = Array(20).fill(0.03)))));
+    expect(bad.errors.map((e) => e.path)).toEqual(['stringTrack.freeform.values']);
   });
 });

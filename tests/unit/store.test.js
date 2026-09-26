@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MIN_GAP, pointMetrics } from '../../src/core/curve.js';
 import { AMO_OFFSET, INCH } from '../../src/core/units.js';
 import { defaultState } from '../../src/state/presets.js';
-import { SAMPLES } from '../../src/state/samples.js';
+import { sampleState } from '../../src/state/samples.js';
 import { HISTORY_LIMIT, createStore, reduce } from '../../src/state/store.js';
 
 /** @typedef {import('../../src/state/schema.js').ProjectState} ProjectState */
@@ -27,7 +27,7 @@ describe('replace', () => {
     /** @type {{ replaced: boolean }[]} */
     const seen = [];
     store.subscribe((_s, _p, info) => seen.push(info));
-    const other = SAMPLES[2].state();
+    const other = sampleState('crossbow');
     expect(store.replace(other)).toEqual([]);
     expect(store.getState()).toBe(other);
     expect(store.inTransaction()).toBe(false);
