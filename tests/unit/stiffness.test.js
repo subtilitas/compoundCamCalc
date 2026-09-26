@@ -53,23 +53,36 @@ describe('elastic cords', () => {
   const rigid = analyseTiming(base);
   const elastic = analyseTiming({ ...base, stiffness: equal });
 
-  it('reproduce the rigid analysis in the limit of stiff cords', () => {
+  it('approach the rigid analysis as the cords stiffen', () => {
     for (const offsets of [{}, { topCable: 1 * MM, nockHeight: 5 * MM }]) {
       const r = analyseTiming({ ...base, offsets });
-      const e = analyseTiming({ ...base, offsets, stiffness: { string: 1e15, topCable: 1e15, bottomCable: 1e15 } });
-      expect(e.elastic).toBe(true);
-      expect(r.elastic).toBe(false);
-      expect(e.stops.first).toBe(r.stops.first);
-      expect(Math.abs(e.stops.x - r.stops.x)).toBeLessThan(1e-9);
-      // The rigid draw ends at x₁; the stiff one continues to x₂ within a hair.
-      for (let i = 0; i < r.end; i += 13) {
-        expect(Math.abs(e.x[i] - r.x[i])).toBeLessThan(1e-12);
-        expect(Math.abs(e.y[i] - r.y[i])).toBeLessThan(1e-9);
-        expect(Math.abs(e.thetaTop[i] - r.thetaTop[i])).toBeLessThan(1e-9);
-        expect(Math.abs(e.thetaBottom[i] - r.thetaBottom[i])).toBeLessThan(1e-9);
-        expect(Math.abs(e.F[i] - r.F[i])).toBeLessThan(1e-8 * Math.max(1, r.F[i]));
+      /** Largest differences from rigid cords up to x₁, and x₁ itself. */
+      const gap = (/** @type {number} */ ea) => {
+        const e = analyseTiming({ ...base, offsets, stiffness: { string: ea, topCable: ea, bottomCable: ea } });
+        expect(e.elastic).toBe(true);
+        expect(e.stops.first).toBe(r.stops.first);
+        let y = 0;
+        let theta = 0;
+        let F = 0;
+        for (let i = 0; i < r.end; i++) {
+          expect(Math.abs(e.x[i] - r.x[i])).toBeLessThan(1e-6);
+          y = Math.max(y, Math.abs(e.y[i] - r.y[i]));
+          theta = Math.max(theta, Math.abs(e.thetaTop[i] - r.thetaTop[i]), Math.abs(e.thetaBottom[i] - r.thetaBottom[i]));
+          F = Math.max(F, Math.abs(e.F[i] - r.F[i]) / Math.max(1, r.F[i]));
+        }
+        return { x1: Math.abs(e.stops.x - r.stops.x), y, theta, F };
+      };
+      const g9 = gap(1e9);
+      const g10 = gap(1e10);
+      // The stretch is proportional to 1/EA: ten times the stiffness, a tenth of the difference.
+      for (const key of /** @type {const} */ (['x1', 'y', 'theta', 'F'])) {
+        expect(g10[key], key).toBeLessThan(0.15 * g9[key] + 1e-11);
       }
+      expect(g10.x1).toBeLessThan(1e-7);
+      expect(g10.theta).toBeLessThan(1e-6);
+      expect(g10.F).toBeLessThan(1e-5);
     }
+    expect(analyseTiming(base).elastic).toBe(false);
   });
 
   it('brace at the design brace and keep the nock level and the cams in time with equal stiffness', () => {
@@ -284,8 +297,8 @@ describe('elastic cords', () => {
   });
 
   it('solve the wall stiffness of very unequal cords', () => {
-    // EA from 2.6e4 N to 1.3e13 N: the closure tolerance scales with the compliance ratio.
-    const a = analyseTiming({ ...base, stiffness: { string: 8.04e10, topCable: 2.62e4, bottomCable: 1.31e13 } });
+    // EA from 2.6e4 N to 1e10 N: the closure tolerance scales with the compliance ratio.
+    const a = analyseTiming({ ...base, stiffness: { string: 1e10, topCable: 2.62e4, bottomCable: 1e10 } });
     expect(a.status).toBe('ok');
     expect(a.stops.second).not.toBeNull();
     expect(a.stops.wallStiffness).toBeGreaterThan(0);

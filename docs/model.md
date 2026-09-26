@@ -981,7 +981,7 @@ nock mode.
 | String length change, whole string | ΔL_s | −0.1 m to 0.1 m |
 | Nocking point above the string centre, along the string | h | −0.1 m to 0.1 m |
 | Nock mode | | free (default) or draw board |
-| Axial stiffness of the string, the top cable and the bottom cable | EA_s, EA_c,t, EA_c,b | 1e3 N to 1e18 N each, or none for rigid cords (default) |
+| Axial stiffness of the string, the top cable and the bottom cable | EA_s, EA_c,t, EA_c,b | 1e4 N to 1e10 N each, or none for rigid cords (default) |
 
 Each half keeps its own mirror frame, M = diag(1, −1): the top half is the
 frame of [Bow geometry](#bow-geometry), the bottom half its mirror image.
@@ -1138,8 +1138,8 @@ the cam can reach its stop again. `stops.releases` counts the releases.
   from forward differences over 1e-7 rad in q and 1 N in λ, is carried from
   pose to pose, and follows Broyden updates. It is formed again when an
   iteration reduces the residual by less than a factor 4. Newton stops when
-  each closure row k is within 1e-14 m · max(1, C_k / C_min) and each stop
-  row within 1e-14 m: the tension noise of a stiff cord shows in the
+  each closure row k is within 1e-14 m · min(1e4, max(1, C_k / C_min)) and
+  each stop row within 1e-14 m: the tension noise of a stiff cord shows in the
   closure of a softer one. Otherwise it stops by the stop rule of the
   forward model, with the limit 1e-10 m scaled the same way per row. ∇gap_i
   comes from central differences over 1e-7 rad of the cable contact of
@@ -1155,8 +1155,8 @@ the cam can reach its stop again. `stops.releases` counts the releases.
   difference over 10 µm at x₂, from a fresh copy of the pose at x₂; a
   failed solve is tried again in 4 and then 16 sub-steps. A solve that
   still fails gives `analysis-no-convergence`; no input tested (EA from
-  1e3 N to 1e16 N, cable changes within ±5 mm) reaches it. The sample at x₂ holds the
-  pose with both cams on their stops.
+  1e4 N to 1e10 N, cable changes within ±5 mm) reaches it. The sample at
+  x₂ holds the pose with both cams on their stops.
 - **Continuation.** A step of the march, of a stop search or of a release
   search that fails from its predicted start is solved again from the last
   pose, directly and then in 4 and 16 equal steps, so that the sample
@@ -1165,6 +1165,10 @@ the cam can reach its stop again. `stops.releases` counts the releases.
   Jacobian over (q, λ), formed by forward differences at the sample with
   its stops held: J·dz = e_c,t. With EA = 3e5 N on the default design it
   is 66.7 rad/m at the stop, against 116 rad/m from the rigid Jacobian.
+- **Folds.** With elastic cords a fold is where the elastic Jacobian over
+  (q, λ) turns singular, not the rigid closure Jacobian. The fold checks
+  and the branch checks of the retries use its determinant, from forward
+  differences, between poses with the same stops held.
 - **Energy.** The work of the draw force equals the limb energy plus the
   cord energy, ½·Σ_k C_k·T_k².
 
@@ -1493,13 +1497,13 @@ Measured values are the largest errors over the tested samples.
 | Asymmetric analysis: dΔθ/dL_c,t against s_a / (p_c·s_a + p_s·(c_o − c_x)) from positions, draw board | 1e-9 relative | 6.9e-16 |
 | Asymmetric analysis: one test per code, stop order and gap, a stop beyond full draw, no stop peg | | passes |
 | Asymmetric analysis of the default design, top cable 1 mm longer, timed in the worker thread | 25 ms, tested with a factor 5 margin | 11 ms median after warm-up |
-| Elastic cords, EA = 1e15 N, against rigid cords, unchanged and changed cords, samples up to x₁: x₁, y, θ_t and θ_b, F | 1e-9 m, 1e-9 m, 1e-9 rad, 1e-8 relative | 2.1e-13 m, 2.6e-13 m, 4.6e-12 rad, 4.8e-12 |
+| Elastic cords at EA = 1e9 N and 1e10 N against rigid cords, unchanged and changed cords, samples up to x₁: the differences in x₁, y, θ_t and θ_b and F fall with 1/EA, and at 1e10 N | a tenth, ×1.5; 1e-7 m, 1e-6 rad, 1e-5 relative | passes |
 | Elastic cords, equal EA and unchanged cords: y and Δθ on every sample; brace at the design brace | 1e-12 m and rad | 5.0e-13 |
 | Elastic cords, swapped cable stiffness: y mirrored and Δθ flipped, same x₁ | 1e-10 m, 1e-9 rad | 4.3e-12 m, 2.0e-11 rad, 0 m |
 | Elastic cords: trapezoid work of F on 3000 samples against E1(α_t) + E1(α_b) + ½·Σ C_k·T_k², to x₁ and to x₂ | 1e-7 and 1e-5 relative | 3.1e-9, 2.3e-7 |
 | Elastic cords: Δθ at x₁ from EA 2e5 N and 4e5 N on the cables against dΔθ/dL_c,t times the differential stretch | 2 % | 0.38 % |
 | Elastic cords: wall stiffness at x₂ against the closed form of [Elastic cords](#elastic-cords) | 1 % | 0.10 % |
-| Asymmetric analysis with elastic cords, EA 2.97e5 N, top cable 1 mm longer, with its reference, timed in the worker thread | 60 ms, tested with a factor 5 margin | 58 ms to 61 ms median after warm-up, on a machine where the rigid analysis above measures 20 ms to 26 ms |
+| Asymmetric analysis with elastic cords, EA 2.97e5 N, top cable 1 mm longer, with its reference, timed in the worker thread | 80 ms, tested with a factor 5 margin | 63 ms to 75 ms median after warm-up, on a machine where the rigid analysis above measures 23 ms to 28 ms; the exact elastic Jacobian per sample (timing rate and fold check) takes about 15 ms of it |
 | Elastic cords: dΔθ/dL_c,t at the first stop against the finite-difference sensitivity, draw board | 1e-6 relative | passes |
 | Coarse solve with point 2 at 10 in and 50 N, where no lead-in wrap closes the track: no trial solves, timed in the worker thread | 10 times the 30 ms coarse budget | 75 ms to 89 ms after warm-up; 75 ms to 99 ms in the coverage run (spread of 7 runs) |
 
@@ -1541,7 +1545,7 @@ first 123 mm of the power stroke.
 | Outline samples | 360 (coarse), 720 (full) intervals |
 | Forward model of the final cam | 100 (coarse), 1500 (full) samples |
 | Asymmetric analysis | 300 samples to full draw; closures as the forward model; F_y and brace F below 1e-11 of the largest tension; secant steps at most 10 mm in y and 20 mm in x, at most 40; stop located to 1e-12 m in the gap or 1e-11 m in x; stops within 1e-9 m count as simultaneous; stop search to 10 % of the draw beyond x_f in at least 10 equal steps |
-| Elastic cords | EA from 1e3 N to 1e18 N; Newton stop at 1e-14 m · max(1, C_k/C_min) per closure row; F_y accepted at 1e-6 of the largest tension when the nock search stagnates; Jacobian correction from forward differences over 1e-7 rad and 1 N, formed again below a residual reduction of 4; stop-gap gradient by central differences over 1e-7 rad; wall stiffness over 10 µm; second-stop search ends at 5 times the peak force |
+| Elastic cords | EA from 1e4 N to 1e10 N; Newton stop at 1e-14 m · min(1e4, max(1, C_k/C_min)) per closure row; F_y accepted at 1e-6 of the largest tension when the nock search stagnates; Jacobian correction from forward differences over 1e-7 rad and 1 N, formed again below a residual reduction of 4; stop-gap gradient by central differences over 1e-7 rad; wall stiffness over 10 µm; second-stop search ends at 5 times the peak force |
 
 ## Limitations
 

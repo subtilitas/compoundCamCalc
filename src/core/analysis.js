@@ -115,6 +115,8 @@ const MIN_EXTENSION_STEPS = 10;
 const EVENT_ITERATIONS = 100;
 /** Closure residual at which the elastic Newton stops early (m): its Broyden steps converge superlinearly, not quadratically. */
 const ELASTIC_TOLERANCE = 1e-14;
+/** Largest factor on ELASTIC_TOLERANCE for a soft cord beside a stiff one: 1e4, so 1e-10 m. */
+const NOISE_RATIO_MAX = 1e4;
 /** Step of the forward differences of the elastic Jacobian (rad) and of the stop gap gradient (rad). */
 const FD_STEP = 1e-7;
 /** The elastic Jacobian is formed again when an iteration reduces the residual by less than this factor. */
@@ -128,9 +130,13 @@ const NOCK_SCAN = 1e-3;
 const NOCK_SCAN_STEPS = 30;
 /** The search for the second stop ends when the draw force exceeds this multiple of the peak before the first stop. */
 const FORCE_CAP = 5;
-/** Range of the axial stiffness EA of a cord (N). */
-export const STIFFNESS_MIN = 1e3;
-export const STIFFNESS_MAX = 1e18;
+/**
+ * Range of the axial stiffness EA of a cord (N): 5 strands of Dacron B50
+ * (10 590 N) lie above the lower end; the upper end is 100 times a
+ * 200-strand 452X cord.
+ */
+export const STIFFNESS_MIN = 1e4;
+export const STIFFNESS_MAX = 1e10;
 
 /**
  * @typedef {'analysis-invalid-input' | 'analysis-brace' | 'analysis-no-convergence' | 'analysis-slack'
@@ -730,9 +736,7 @@ function solveAt(ctx, pose, x) {
   const q0 = Float64Array.from(pose.q);
   const y0 = pose.y;
   const lambda0 = Float64Array.from(pose.lambda);
-  const branch = Number.isFinite(pose.top.theta) && Number.isFinite(pose.bottom.theta)
-    ? Math.sign(determinant(jacobian(pose.top, pose.bottom), 4))
-    : 0;
+  const branchPose = Number.isFinite(pose.top.theta) && Number.isFinite(pose.bottom.theta) ? copyPose(pose) : null;
   const reason = secantNock(ctx, pose, x);
   if (!reason) return '';
   const start = copyPose(pose);
@@ -741,7 +745,7 @@ function solveAt(ctx, pose, x) {
   start.lambda.set(lambda0);
   const found = bracketNock(ctx, start, x);
   // Only on the branch of the start: the bracket must not cross a fold.
-  if (!found || (branch !== 0 && Math.sign(determinant(jacobian(found.top, found.bottom), 4)) !== branch)) return reason;
+  if (!found || (branchPose && !sameBranch(ctx, { x, pose: branchPose }, { x, pose: found }))) return reason;
   Object.assign(pose, found);
   return '';
 }
@@ -837,12 +841,32 @@ function solveFrom(ctx, from, x) {
 }
 
 /**
- * True when two poses have closure determinants of one sign.
- * @param {Pose} a
- * @param {Pose} b
+ * Determinant that decides the branch of a pose at nock position x: of the
+ * closure Jacobian with rigid cords; of the elastic Jacobian over (q, λ)
+ * from forward differences with elastic cords, whose size is 4 plus the
+ * number of cams on their stops. NaN when it cannot be formed.
+ * @param {Context} ctx
+ * @param {Pose} pose
+ * @param {number} x
+ * @returns {{ det: number, size: number }}
  */
-function sameBranch(a, b) {
-  return determinant(jacobian(a.top, a.bottom), 4) * determinant(jacobian(b.top, b.bottom), 4) > 0;
+function branchDet(ctx, pose, x) {
+  if (!ctx.elastic) return { det: determinant(jacobian(pose.top, pose.bottom), 4), size: 4 };
+  const lin = elasticLinear(ctx, pose, x);
+  return lin ? { det: determinant(lin.J, lin.size), size: lin.size } : { det: NaN, size: 0 };
+}
+
+/**
+ * True unless two poses with one set of held stops have branch
+ * determinants of opposite sign.
+ * @param {Context} ctx
+ * @param {{ x: number, pose: Pose }} a
+ * @param {{ x: number, pose: Pose }} b
+ */
+function sameBranch(ctx, a, b) {
+  const da = branchDet(ctx, a.pose, a.x);
+  const db = branchDet(ctx, b.pose, b.x);
+  return da.size !== db.size || !(da.det * db.det < 0);
 }
 
 /**
@@ -1042,7 +1066,7 @@ function analyseChecked(input) {
     ctx.elastic = true;
     // Tension noise of the stiffest cord shows in the closure of a softer one.
     const cMin = Math.min(...C);
-    for (let k = 0; k < 4; k++) ctx.noise[k] = ELASTIC_TOLERANCE * Math.max(1, C[k] / cMin);
+    for (let k = 0; k < 4; k++) ctx.noise[k] = ELASTIC_TOLERANCE * Math.min(NOISE_RATIO_MAX, Math.max(1, C[k] / cMin));
   }
 
   const pose = createAnalysisPose();
@@ -1176,11 +1200,11 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     }
     const direct = solveAt(ctx, trial, x);
     if (direct) {
-      const fold = before !== null && foldAhead(before, last, x);
+      const fold = before !== null && foldAhead(ctx, before, last, x);
       // Without the prediction, by continuation from the last pose; never
       // across a fold, where the closure determinant changes sign.
       const again = fold ? null : solveFrom(ctx, last, x);
-      if (!again || sameBranch(last.pose, again) === false) {
+      if (!again || !sameBranch(ctx, last, { x, pose: again })) {
         march.failure = direct;
         march.failedAt = x;
         march.fold = fold;
@@ -1393,15 +1417,16 @@ function wallStiffness(ctx, sample) {
 }
 
 /**
- * dΔθ/dL_c,t of an elastic pose at a fixed nock: the Jacobian of the
- * elastic residual over (q, λ) by forward differences, the stops of the
- * pose held, solved for a unit change of the top cable length (rad/m).
- * NaN when the residual cannot be evaluated.
+ * Jacobian of the elastic residual over (q, λ) of a pose at nock position
+ * x, by forward differences, the stops of the pose held; null when the
+ * residual cannot be evaluated.
  * @param {Context} ctx
- * @param {{ x: number, pose: Pose }} sample
+ * @param {Pose} pose
+ * @param {number} x
+ * @returns {{ J: Float64Array, size: number } | null}
  */
-function elasticTimingRate(ctx, sample) {
-  const p = copyPose(sample.pose);
+function elasticLinear(ctx, pose, x) {
+  const p = copyPose(pose);
   /** @type {(0 | 1)[]} */
   const stops = [];
   if (p.active[0]) stops.push(0);
@@ -1415,29 +1440,45 @@ function elasticTimingRate(ctx, sample) {
     for (let i = 0; i < 4; i++) p.q[i] = v[i];
     stops.forEach((w, j) => { p.lambda[w] = v[4 + j]; });
   };
-  // The pose is converged: its residual is below ELASTIC_TOLERANCE, zero
-  // within the accuracy of the forward differences.
   const r = new Float64Array(size);
-  const J = elasticJacobian(ctx, p, sample.x, z, r, setZ);
-  if (!J) return NaN;
-  // R(z, L) = 0 with ∂R_1/∂L_c,t = −1: J·dz = e_1·dL.
-  const e = new Array(size).fill(0);
+  if (!elasticResidual(ctx, p, x, r)) return null;
+  const J = elasticJacobian(ctx, p, x, z, r, setZ);
+  return J ? { J, size } : null;
+}
+
+/**
+ * dΔθ/dL_c,t of an elastic pose at a fixed nock, and the determinant of
+ * its elastic Jacobian: the rate solves J·dz = e_1 for a unit change of the
+ * top cable length (rad/m). NaN when the Jacobian cannot be formed.
+ * @param {Context} ctx
+ * @param {{ x: number, pose: Pose }} sample
+ * @returns {{ rate: number, det: number, size: number }}
+ */
+function elasticTimingRate(ctx, sample) {
+  const lin = elasticLinear(ctx, sample.pose, sample.x);
+  if (!lin) return { rate: NaN, det: NaN, size: 0 };
+  const e = new Array(lin.size).fill(0);
   e[1] = 1;
-  const dz = solveLinear(J, e, size);
-  return dz ? dz[0] - dz[2] : NaN;
+  const dz = solveLinear(lin.J, e, lin.size);
+  return { rate: dz ? dz[0] - dz[2] : NaN, det: determinant(lin.J, lin.size), size: lin.size };
 }
 
 /**
  * True when the closure determinant of the last two samples falls towards
  * zero and its linear extrapolation reaches zero within FOLD_STEPS steps
  * beyond the failed position.
+ * @param {Context} ctx
  * @param {{ x: number, pose: Pose }} a older sample
  * @param {{ x: number, pose: Pose }} b last sample
  * @param {number} x failed nock position (m)
  */
-function foldAhead(a, b, x) {
-  const da = determinant(jacobian(a.pose.top, a.pose.bottom), 4);
-  const db = determinant(jacobian(b.pose.top, b.pose.bottom), 4);
+function foldAhead(ctx, a, b, x) {
+  const A = branchDet(ctx, a.pose, a.x);
+  const B = branchDet(ctx, b.pose, b.x);
+  // Poses with different stops held have no common branch.
+  if (A.size !== B.size) return false;
+  const da = A.det;
+  const db = B.det;
   if (!(da * db > 0 && Math.abs(db) < Math.abs(da))) return false;
   const xZero = b.x + (db * (b.x - a.x)) / (da - db);
   return xZero <= x + FOLD_STEPS * (x - b.x);
@@ -1510,6 +1551,7 @@ function finish(ctx, march, brace, nock, xFull, input) {
     ky: arr(), dThetaDL: arr(),
   };
   const det = arr();
+  const detSize = new Uint8Array(n);
   const offTrack = new Uint8Array(n);
   const psiEndS = input.stringTermination;
   const psiEndC = input.cableTermination;
@@ -1545,8 +1587,11 @@ function finish(ctx, march, brace, nock, xFull, input) {
     r.psiCableTop[i] = pose.top.cable.psi;
     r.psiCableBottom[i] = pose.bottom.cable.psi;
     r.ky[i] = ctx.free ? pose.ky : NaN;
-    r.dThetaDL[i] = !rates ? NaN : ctx.elastic ? elasticTimingRate(ctx, list[i]) : d ? d[0] - d[2] : NaN;
-    det[i] = determinant(J, 4);
+    const el = rates && ctx.elastic ? elasticTimingRate(ctx, list[i]) : null;
+    r.dThetaDL[i] = !rates ? NaN : el ? el.rate : d ? d[0] - d[2] : NaN;
+    // Elastic cords: the determinant of the elastic Jacobian of the rate, none without rates.
+    det[i] = !ctx.elastic ? determinant(J, 4) : el ? el.det : NaN;
+    detSize[i] = !ctx.elastic ? 4 : el ? el.size : 0;
     offTrack[i] = leaves(pose.top) || leaves(pose.bottom) ? 1 : 0;
   }
 
@@ -1555,7 +1600,8 @@ function finish(ctx, march, brace, nock, xFull, input) {
   /** @type {[AnalysisCode, (i: number) => boolean][]} */
   const checks = [
     ['analysis-slack', (i) => !(r.stringTop[i] > 0 && r.stringBottom[i] > 0 && r.cableTop[i] > 0 && r.cableBottom[i] > 0)],
-    ['analysis-fold', (i) => i > 0 && det[i] * det[i - 1] < 0],
+    // Only between samples with the same stops held, whose Jacobians compare.
+    ['analysis-fold', (i) => i > 0 && detSize[i] === detSize[i - 1] && det[i] * det[i - 1] < 0],
     ['analysis-wrap', (i) => offTrack[i] === 1],
     ['analysis-unstable', (i) => ctx.free && !(r.ky[i] > 0)],
   ];
