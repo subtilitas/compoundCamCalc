@@ -1721,3 +1721,49 @@ body.printing-report [popover] {
     display: table-header-group;
   }
 }
+
+.optimise {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.optimise-title {
+  margin: 4px 0;
+  font-size: 1rem;
+}
+
+.optimise-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.optimise-running progress {
+  width: 100%;
+  margin-top: 10px;
+  accent-color: var(--accent);
+}
+
+.optimise-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.optimise-table th,
+.optimise-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.optimise-table thead th {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.optimise-table tbody th {
+  font-weight: 400;
+}

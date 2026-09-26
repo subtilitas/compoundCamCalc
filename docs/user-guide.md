@@ -142,7 +142,8 @@ focus moves to the next useful button.
 - **String track**: an eccentric circle (radius, centre offset from the
   axle, phase), an ellipse (semi-major and semi-minor axis, centre offset,
   phase) or a free-form track (see [Free-form track](#free-form-track)),
-  measured on the groove bottom.
+  measured on the groove bottom. **Optimise shape** at the end of the
+  group searches for a better free-form track (see [Optimise](#optimise)).
 - **Cords**: string and cable diameter and the depth of each groove.
 - **Cam body**: axle bore diameter, minimum wall between groove bottom and
   bore, post diameter, minimum bend radius of a track, flange plate
@@ -183,6 +184,65 @@ solve reports the problem and suggests an outward offset of the whole
 track, for example "Offset the free-form track outward by at least
 2.4 mm". An outward offset raises the radius of curvature everywhere by
 the same amount.
+
+## Optimise
+
+**Optimise shape**, at the end of the String track group, searches for a
+free-form track that improves one goal of the current design. The Goal
+select offers two goals:
+
+- **Smallest cam, force curve no worse than now**: makes the largest cam
+  dimension smaller. The largest force difference from the target may grow
+  to the larger of its current value and 80 % of the fit tolerance (the
+  tolerance is 3 % of the peak, at least 2 N).
+- **Closest force curve, cam no larger than now**: makes the largest force
+  difference smaller. The largest cam dimension stays at its current value
+  or below.
+
+Every track the search keeps meets every check, has no warning, and keeps
+margins, so the result does not sit on the edge of a limit:
+
+- the string pitch line bends no sharper than the limit plus 1 mm, or plus
+  10 % of the limit when that is more;
+- the string wrap and the cable wrap each stay at 350° or below, 10° under a
+  full turn;
+- every groove radius stays from 2 mm to 150 mm, and the groove clears the
+  bore and the wall.
+
+The button is enabled once the full solve of the current design has
+finished and the design meets every check; otherwise a line under it says
+why. It needs a browser that runs Web Workers.
+
+A run works on the free-form points: an eccentric circle or an ellipse is
+sampled at 12 points first. The search changes the whole track at once,
+in smooth patterns around the axle (a uniform offset, a shift, an oval, a
+triangle, a square and finer patterns), and keeps each change that
+improves the goal. It solves the cam for each candidate track. A run takes
+up to 600 solves, usually 5 s to 40 s, and stops after 120 s at the
+latest. Candidates that break a margin on the track shape alone are
+rejected before a solve and do not count.
+
+While a run is active:
+
+- a bar and a line show the solves used out of 600, how many times the
+  step has been halved, the time since the start, and the best value so
+  far with its unit;
+- the other String track settings are locked;
+- **Stop** ends the run at once and keeps the best track found so far;
+- any change of the design stops the run and discards it, and so does
+  opening another design. A change of the display units does not.
+
+At the end a table compares the design before and after: largest cam
+dimension, largest force difference, let-off and sharpest string bend (the
+smallest radius of curvature of the string pitch line). **Apply** sets the
+free-form track; one undo step goes back to the previous track, also when
+it was an eccentric circle or an ellipse. **Discard** keeps the track as it
+is. When no track was better, the line "No better shape found" says so and
+the track stays as it is.
+
+For the browser tests, the query parameter `optimise-budget` lowers the
+number of solves of a run, for example `?optimise-budget=20` for 20 solves
+(1 to 600; any other value means 600).
 
 ## Results
 

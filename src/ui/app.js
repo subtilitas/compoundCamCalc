@@ -1,7 +1,8 @@
 /**
  * Application wiring: store, editor, chart, table, settings, stats,
  * solver, results, cam view, toolbar, keyboard shortcuts, notices,
- * autosave, the File menu, share links, the Help button and the print report.
+ * autosave, the File menu, share links, the Help button, the print report
+ * and Optimise.
  * @module ui/app
  */
 
@@ -26,6 +27,7 @@ import { createLoadChart } from './loadchart.js';
 import { createScrubber } from './scrubber.js';
 import { createStringPlan } from './stringplan.js';
 import { attachReport } from './report.js';
+import { budgetFromSearch, createOptimise } from './optimise.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
@@ -144,6 +146,19 @@ export function startApp() {
     editor,
   );
   const settings = createSettings(byId('settings-body', HTMLDivElement), store);
+  // Optimise sits at the end of the String track group and locks the rest
+  // of the group while it runs.
+  const trackGroup = /** @type {HTMLElement} */ (document.querySelector('[data-testid="settings-string-track"]'));
+  const optimise = createOptimise(store, {
+    budget: budgetFromSearch(location.search),
+    lock: (locked) => {
+      for (const child of trackGroup.children) {
+        if (child.tagName !== 'SUMMARY' && child !== optimise.element) child.toggleAttribute('inert', locked);
+      }
+      trackGroup.dataset.locked = String(locked);
+    },
+  });
+  trackGroup.append(optimise.element);
   const stats = createStats(byId('stats', HTMLDListElement));
   const status = byId('edit-status', HTMLParagraphElement);
   const modeBadge = byId('curve-mode', HTMLSpanElement);
@@ -343,6 +358,7 @@ export function startApp() {
       }
       latest = { result, state };
       if (meetsEveryCheck(result)) lastGood = latest;
+      optimise.setLatest(latest);
       showSolve();
     },
     onStatus(status) {
@@ -377,6 +393,7 @@ export function startApp() {
     generation++;
     latest = null;
     lastGood = null;
+    optimise.setLatest(null);
     showSolve();
   });
   store.subscribe((s) => requestSolve(s));

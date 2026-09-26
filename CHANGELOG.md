@@ -20,6 +20,21 @@ All notable changes are listed here. Versions follow semantic versioning.
   bump with its limit, resampling with a check, and the contact points.
   The print report lists the points; DXF and STEP export the track as
   splines.
+- Optimise (`src/core/optimise.js`, `src/worker/optimise.worker.js`,
+  `src/ui/optimise.js`): **Optimise shape** in the String track group
+  searches for a free-form track with one of two goals, "Smallest cam,
+  force curve no worse than now" or "Closest force curve, cam no larger
+  than now". A compass search over Fourier modes of the track values in a
+  second module worker, up to 600 solves (120 s at most), with margins:
+  pitch-line radius of curvature at least 1 mm (or 10 %) over its limit,
+  string and cable wrap at most 350°, no diagnostic and no warning. The
+  run shows solves, step halvings, elapsed time and the best value; Stop
+  keeps the best track so far; a change of the design or another design
+  discards the run. A before/after table (cam size, force difference,
+  let-off, sharpest string bend) offers Apply, one undo step, and
+  Discard. The query parameter `optimise-budget` lowers the budget for
+  the browser tests. On the default design the cam goal reaches 90.8 mm
+  from 98.2 mm.
 
 - Plausibility warnings (`src/core/plausibility.js`) for a cam wider than
   35 % of the axle-to-axle length and for cams that overlap at a draw
