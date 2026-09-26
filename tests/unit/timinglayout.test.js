@@ -184,6 +184,26 @@ describe('timing export of an infeasible analysis', () => {
     expect(ok.readme).not.toContain('Problems of the timing analysis');
   });
 
+  it('names why the timing files are left out when the analysis has no draw', () => {
+    const state = sampleState('mini');
+    state.tuning = { topCable: -20 * MM, bottomCable: 20 * MM, string: -50 * MM, nockHeight: -50 * MM };
+    const result = solve(state, { analysis: { offsets: state.tuning } });
+    const a = /** @type {import('../../src/core/analysis.js').AnalysisResult} */ (result.analysis);
+    expect(result.status).toBe('ok');
+    expect(a.end).toBe(-1);
+    expect(a.diagnostics.map((d) => d.code)).toContain('analysis-brace');
+    const set = /** @type {NonNullable<ReturnType<typeof exportFiles>['set']>} */ (
+      exportFiles(result, state, { date, version: '0.2.0', units: state.units }).set);
+    expect(set.files.some((f) => f.part.startsWith('timing'))).toBe(false);
+    const warning = set.warnings.find((w) => w.startsWith('Timing files left out: '));
+    expect(warning).toContain(a.diagnostics[0].message);
+    expect(set.readme).toContain(`  ${warning}`);
+    // Unchanged cords: no timing warning.
+    const plainSet = /** @type {NonNullable<ReturnType<typeof exportFiles>['set']>} */ (
+      exportFiles(plain.result, plain.state, { date, version: '0.2.0', units: plain.state.units }).set);
+    expect(plainSet.warnings.some((w) => w.startsWith('Timing'))).toBe(false);
+  });
+
   it('holds the timing files only for the timing settings of the current inputs', () => {
     const lastGood = { result: changed.result, state: changed.state };
     expect(timingCurrent({ lastGood, now: changed.state })).toBe(true);

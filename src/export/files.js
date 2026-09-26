@@ -422,6 +422,14 @@ function exportChecked(result, state, options) {
   const tl = createTimingLayout(result, ctx);
   /** @type {string[]} */
   let timingProblems = [];
+  /** @type {string[]} */
+  const warnings = [...model.warnings];
+  const analysis = result.analysis ?? null;
+  if (!tl && analysis !== null && analysis !== result.analysisReference) {
+    // Changed cords whose analysis has no draw: no timing files, and why.
+    const why = analysis.diagnostics.map((d) => d.message).join('; ') || 'the analysis has no draw';
+    warnings.push(`Timing files left out: ${why}`);
+  }
   if (tl) {
     timingProblems = tl.analysis.diagnostics.map((d) => d.message);
     const tbase = `${base}-timing-${timingId(state.tuning)}`;
@@ -481,14 +489,14 @@ function exportChecked(result, state, options) {
     'The stacked file has plate 5 at z = 0 and plate 1 on top, and the pitch lines as wireframe in the middle of their groove plates; '
       + 'some programs hide wireframe on import. Outlines lie within 0.01 mm of the model, without the cut offset of the DXF files.',
     ...bossNote(model),
-    ...(model.warnings.length ? ['', 'Warnings:', ...model.warnings.map((w) => `  ${w}`)] : []),
+    ...(warnings.length ? ['', 'Warnings:', ...warnings.map((w) => `  ${w}`)] : []),
     ...(tl
       ? ['', 'The timing files analyse the cam above with the timing settings; they do not change it.',
           ...(timingProblems.length ? ['Problems of the timing analysis:', ...timingProblems.map((p) => `  ${p}`)] : [])]
       : []),
     '',
   ].join('\r\n');
-  return { set: { files, readme, id, warnings: model.warnings }, error: null };
+  return { set: { files, readme, id, warnings }, error: null };
 }
 
 /**

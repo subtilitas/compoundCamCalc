@@ -612,7 +612,9 @@ has timing settings not 0 and they are the timing settings of the current
 inputs; while an edited timing setting is being solved, the group and the
 ZIP leave them out. Problems of the analysis, for example a cord that runs
 off its track, are listed in the text block of the timing string plan and
-in the README.
+in the README. When the analysis finds no braced bow for the timing
+settings, the timing files are left out and a warning under the buttons
+and in the README names the problem.
 
 **Plates.** The plates stack from the string side (+Z towards the viewer):
 
