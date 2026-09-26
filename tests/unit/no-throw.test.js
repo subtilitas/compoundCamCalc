@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { analyseTiming } from '../../src/core/analysis.js';
 import { fitSupport } from '../../src/core/bspline.js';
 import { fitCableTrack } from '../../src/core/fit.js';
 import { solveForward } from '../../src/core/forward.js';
@@ -29,6 +30,7 @@ const opaque = () => new Proxy({}, {
 const CASES = /** @type {const} */ ([
   ['solve', (/** @type {any} */ v) => solve(v, v), (/** @type {any} */ r) => r.status !== 'ok'],
   ['solveForward', (/** @type {any} */ v) => solveForward(v), (/** @type {any} */ r) => r.status !== 'ok'],
+  ['analyseTiming', (/** @type {any} */ v) => analyseTiming(v), (/** @type {any} */ r) => r.status !== 'ok'],
   ['fitCableTrack', (/** @type {any} */ v) => fitCableTrack(v), (/** @type {any} */ r) => r.status === 'invalid'],
   ['solveQP', (/** @type {any} */ v) => solveQP(v, v), (/** @type {any} */ r) => r.status === 'invalid'],
   ['createInverse', (/** @type {any} */ v) => createInverse(v), (/** @type {any} */ r) => r.context === null && typeof r.error === 'string'],

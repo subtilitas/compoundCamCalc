@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 /** Time budgets of the solve for the default preset, docs/PLAN.md (ms). */
 const COARSE_BUDGET = 30;
 const FULL_BUDGET = 200;
+/** Time budget of the asymmetric analysis, docs/research.md (ms). */
+const ANALYSIS_BUDGET = 25;
 /** Allowance for slow and shared CI machines. */
 const MARGIN = 5;
 
@@ -14,6 +16,7 @@ const MARGIN = 5;
  * @property {number} coarse median coarse solve (ms)
  * @property {number} full median full solve (ms)
  * @property {import('../../src/core/solve.js').SolveResult['timings']} timings of one full solve (ms)
+ * @property {number} analysis median time of the asymmetric analysis, top cable 1 mm longer (ms)
  * @property {{ codes: string[], trials: number, coarse: number }} open coarse solve of a state whose closing
  *   blend no lead-in wrap closes: diagnostic codes, time of its trial solves and median time (ms)
  */
@@ -51,6 +54,12 @@ describe('solve performance', () => {
     expect(status).toBe('ok');
     expect(coarse).toBeLessThan(MARGIN * COARSE_BUDGET);
     expect(full).toBeLessThan(MARGIN * FULL_BUDGET);
+  }, 30_000);
+
+  it(`runs the asymmetric analysis within ${ANALYSIS_BUDGET} ms`, async () => {
+    const { analysis } = await timed();
+    console.info(`analysis: median ${analysis.toFixed(1)} ms`);
+    expect(analysis).toBeLessThan(MARGIN * ANALYSIS_BUDGET);
   }, 30_000);
 
   it(`runs no closing-blend trials in a coarse solve and stays within 10 times the ${COARSE_BUDGET} ms coarse budget`, async () => {

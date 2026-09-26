@@ -92,3 +92,34 @@ export function solveLinear(A, b, n) {
   }
   return x.every(Number.isFinite) ? x : null;
 }
+
+/**
+ * Determinant by Gaussian elimination with partial pivoting.
+ * @param {ArrayLike<number>} A row-major n×n, not modified
+ * @param {number} n
+ * @returns {number}
+ */
+export function determinant(A, n) {
+  const M = Float64Array.from(A);
+  let det = 1;
+  for (let i = 0; i < n; i++) {
+    let p = i;
+    for (let r = i + 1; r < n; r++) if (Math.abs(M[r * n + i]) > Math.abs(M[p * n + i])) p = r;
+    const piv = M[p * n + i];
+    if (piv === 0) return 0;
+    if (p !== i) {
+      det = -det;
+      for (let c = 0; c < n; c++) {
+        const t = M[i * n + c];
+        M[i * n + c] = M[p * n + c];
+        M[p * n + c] = t;
+      }
+    }
+    det *= piv;
+    for (let r = i + 1; r < n; r++) {
+      const f = M[r * n + i] / piv;
+      for (let c = i; c < n; c++) M[r * n + c] -= f * M[i * n + c];
+    }
+  }
+  return det;
+}

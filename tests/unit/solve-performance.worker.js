@@ -3,7 +3,8 @@
  * result to the parent: status, cold call and medians of the coarse and full
  * solve (ms), and the timings of one full solve. It also times the coarse
  * solve of a state whose closing blend no lead-in wrap closes (point 2 at
- * 10 in and 50 N), where a full solve runs trial solves. Used by
+ * 10 in and 50 N), where a full solve runs trial solves, and the median
+ * time of the asymmetric analysis with the top cable 1 mm longer. Used by
  * solve-performance.test.js.
  */
 
@@ -40,11 +41,15 @@ open.curve.mode = 'custom';
 open.curve.points[1] = { x: 10 * INCH - AMO_OFFSET, F: 50 };
 const openResult = solve(open, { resolution: 'coarse' });
 const openCoarse = median(() => solve(open, { resolution: 'coarse' }), 5);
+const analysisTimes = [];
+for (let k = 0; k < 9; k++) analysisTimes.push(solve(state, { analysis: { offsets: { topCable: 0.001 } } }).timings.analysis);
+analysisTimes.sort((a, b) => a - b);
 parentPort?.postMessage({
   status: first.status,
   cold,
   coarse,
   full,
   timings: solve(state).timings,
+  analysis: analysisTimes[4],
   open: { codes: openResult.diagnostics.map((d) => d.code), trials: openResult.timings.trials, coarse: openCoarse },
 });
