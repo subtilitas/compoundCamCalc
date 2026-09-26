@@ -20,6 +20,21 @@ All notable changes are listed here. Versions follow semantic versioning.
   bump with its limit, resampling with a check, and the contact points.
   The print report lists the points; DXF and STEP export the track as
   splines.
+- Free-form track editor (`src/ui/trackeditor.js`) in the String track
+  group: a round view at most 280 px wide with one point per value, the
+  working arc of the latest result (brace to full draw) and grey points
+  outside it. A drag moves a smooth bump and stops at the bend limit (one
+  undo step); the keyboard picks a point with Left and Right and changes
+  it by 0.1 mm (Shift 0.5 mm) with Up and Down. A status line reads out the
+  point and the sharpest bend. The Point values table takes typed groove
+  radii and shows the draw length at which the string leaves each point.
+  "Offset all points" and a Points select (8, 12, 16) with a warning when
+  resampling bends the track past the limit.
+- Shape presets: Oval, Rounded triangle, Rounded square, Egg, Size and
+  Shift with Amount and Angle, added to the current track in one undo
+  step. The default amount is clamped to the bend limit plus a 0.5 mm
+  margin. Glossary term "working arc"; the help dialog lists the editor
+  keys.
 
 - Plausibility warnings (`src/core/plausibility.js`) for a cam wider than
   35 % of the axle-to-axle length and for cams that overlap at a draw

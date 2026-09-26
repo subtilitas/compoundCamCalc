@@ -331,6 +331,7 @@ export function startApp() {
     root.dataset.solveStatus = current?.result.status ?? '';
     root.dataset.solveResolution = current?.result.resolution ?? '';
     exportPanel.render({ lastGood, now, busy: solverStatus === 'busy', pending });
+    settings.setResult(withCurve?.result ?? null);
     showPose();
   }
 

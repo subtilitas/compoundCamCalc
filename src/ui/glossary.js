@@ -76,6 +76,10 @@ export const GLOSSARY = Object.freeze({
     term: 'minimum wall',
     text: 'Minimum wall: smallest material thickness between the bottom of a track groove and the axle bore. Every groove bottom stays at least the bore radius plus this wall from the axle centre.',
   },
+  workingArc: {
+    term: 'working arc',
+    text: 'Working arc: part of the string track the string leaves from between brace and full draw. The rest of the track only closes the cam outline.',
+  },
 });
 
 let counter = 0;

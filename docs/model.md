@@ -182,6 +182,16 @@ its knot. `dragLimit` finds the largest δ in a direction that keeps the
 limit by bisection to 1 µm; along the bump the feasible set is one
 interval, since ρ is linear in δ.
 
+The editor (`src/ui/trackeditor.js`) rounds dragged values to 0.1 µm like
+sampled ones. Rounding can move ρ by about a micrometre, and the solver
+compares ρ with ρ_lim without tolerance, so a rounded track that misses the
+limit steps back by 1 µm until it keeps it. A single keyboard step of one
+value is refused when it takes a track within the limit past it. The
+working arc is the range of the string contact angle ψ_s of the forward
+model, from brace (ψ_s(x_b)) to full draw (ψ_s(x_f)); a knot angle on it,
+taken one turn around, gives the nock position at which the string leaves
+the track there, linear between the samples.
+
 Convexity and bore clearance of a free-form track are solver diagnostics
 (`string-radius`, `string-clearance`), not validation errors. Their limits
 depend on the minimum bend radius, the string diameter, the bore and the

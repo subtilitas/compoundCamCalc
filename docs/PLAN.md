@@ -165,6 +165,31 @@ results are in `docs/model.md`.
   egg) with their largest amount by bisection on the spline, the drag bump
   (raised cosine over ±2 points) with its limit by bisection to 1 µm, and
   the contact points X(ψ_i) = p·n + p'·t of the knots.
+- Free-form editor (`src/ui/trackeditor.js`) in the String track group: an
+  SVG polar view (width 100 %, at most 280 px, `viewBox` in mm) with the
+  groove bottom, the bore and N handles at the contact points; the working
+  arc of the latest result (brace to full-draw contact, `achieved.psiS`)
+  drawn thick with marks B and F, handles outside it grey ("outline
+  only"). A drag projects the pointer onto n_i and moves the bump, stopped
+  by `dragLimit`; values are rounded to 0.1 µm and step back by 1 µm when
+  the rounded track misses the limit. A track that misses the limit
+  already is limited by the value range only. Keyboard: one tab stop
+  (roving focus), Left and Right pick the point, Up and Down change one
+  value by 0.1 mm (Shift 0.5 mm) or 0.005 in (Shift 0.02 in), refused when
+  it crosses the limit. An `aria-live` line reads out the point, its value
+  and "Sharpest bend X mm, limit Y mm". The values table takes typed values
+  in 2 mm to 150 mm (a value past the bend limit is a solver diagnostic),
+  with the draw length at which the string leaves each point. "Offset all
+  points" and the Points select (8, 12, 16, `resampleChecked` with a
+  message when the track falls below the limit) complete it. Every change
+  is one store action; a drag is one transaction and one undo step.
+- Shape presets (the modifiers in the user interface): Oval, Rounded
+  triangle, Rounded square, Egg, Size and Shift, each with Amount and
+  Angle, applied to the current track. The amount starts at the nominal
+  amount clamped by `largestAmount` with a 0.5 mm margin. An eccentric or
+  elliptical track is sampled at 12 points in the same action, so one undo
+  step reverts it. The panel says that a preset can make the design fail
+  and that the solve shows why.
 
 ### Inverse model (target force curve → cable track)
 
@@ -501,15 +526,16 @@ Independent set; everything else is derived and shown read-only.
 - Glossary tooltips for ATA, brace height, draw length (AMO), peak draw
   force, let-off, holding weight, valley, power stroke, draw energy, limb
   energy, axle travel, cam rotation, lever arm, radius of curvature,
-  minimum bend radius, minimum wall. One source, `GLOSSARY` in
+  minimum bend radius, minimum wall, working arc. One source, `GLOSSARY` in
   `src/ui/glossary.js`, feeds the info buttons, the help dialog and the
   Terms section of the user guide; unit tests check that every term here
   has an info button and that the user guide repeats each text word for
   word.
 - Help dialog from a Help button next to the File menu, with no keyboard
   shortcut (Web Content Accessibility Guidelines, WCAG, success criterion
-  2.1.4): quick start in 5 steps, the keyboard shortcuts of the chart, undo
-  and redo, the drawings and the draw position slider, the whole glossary,
+  2.1.4): quick start in 5 steps, the keyboard shortcuts of the chart, the
+  free-form track editor, undo and redo, the drawings and the draw position
+  slider, the whole glossary,
   and a link to the user guide in the wiki (new tab). Focus starts on the
   heading and returns to the Help button; close buttons at the top and the
   bottom; the dialog scrolls within 90 % of the dynamic viewport height
@@ -866,7 +892,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export. Hand-written R2000 writer, five plate profiles with post holes in the flange plates, ZIP of all files, no mirror option (decisions of the user); exports use the last cam that met every check |
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
 | 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
-| 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports |
+| 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`) |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter

@@ -11,6 +11,7 @@ import { openDialog } from './dialog.js';
 import { DRAW_STEP, FORCE_STEP } from './display.js';
 import { h } from './dom.js';
 import { GLOSSARY } from './glossary.js';
+import { EDIT_STEP } from './trackeditor.js';
 import { MAX_ZOOM, PAN_STEP, PAN_STEP_LARGE, ZOOM_STEP } from './viewport.js';
 
 /** @typedef {keyof typeof GLOSSARY} GlossaryKey */
@@ -54,6 +55,16 @@ export const SHORTCUTS = /** @type {readonly ShortcutGroup[]} */ (Object.freeze(
       { keys: ['Shift + arrow'], action: 'Move 10 times as far.' },
       { keys: ['Delete', 'Backspace'], action: 'Remove the point.' },
       { keys: ['Insert', '+'], action: 'Add a point halfway to the next point; on the full-draw point, halfway to the previous one.' },
+    ],
+  },
+  {
+    title: 'Free-form track editor',
+    where: 'Tab to a point of the free-form string track.',
+    keys: [
+      { keys: ['←', '→'], action: 'Pick the previous or the next point.' },
+      { keys: ['↑', '↓'], action: `Change the groove radius of the point by ${EDIT_STEP.mm.step} mm (${EDIT_STEP.in.step} in).` },
+      { keys: ['Shift + ↑', 'Shift + ↓'], action: `Change it by ${EDIT_STEP.mm.large} mm (${EDIT_STEP.in.large} in).` },
+      { keys: ['Home', 'End'], action: 'Pick the first or the last point.' },
     ],
   },
   {

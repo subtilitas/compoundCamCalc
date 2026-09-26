@@ -14,6 +14,7 @@ import { FIELDS, MIN_POWER_STROKE, freeformErrors } from '../state/schema.js';
 import { DEGREE, DIMS_DECIMALS, FORCE_DECIMALS, dimsText, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
 import { h } from './dom.js';
 import { infoButton } from './glossary.js';
+import { VALUE_DECIMALS, createTrackEditor } from './trackeditor.js';
 
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../state/schema.js').Units} Units */
@@ -847,9 +848,6 @@ const TRACK_SHAPES = Object.freeze([
   { value: 'freeform', label: 'Free-form' },
 ]);
 
-/** Decimals of free-form track values in the report, per dimension unit. */
-const FREEFORM_DECIMALS = Object.freeze({ mm: 2, in: 4 });
-
 /**
  * One-line summary of a free-form track, shown in the settings.
  * @param {StringTrack} track
@@ -872,7 +870,7 @@ function freeformRows(track, units) {
     { label: 'Points', text: String(values.length) },
     ...values.map((v, i) => ({
       label: `Point ${i + 1} at ${plain((angles[i] * 180) / Math.PI, 4)}°: groove radius`,
-      text: `${fixed(fromSI(v, 'length', units.dims), FREEFORM_DECIMALS[units.dims])} ${units.dims}`,
+      text: `${fixed(fromSI(v, 'length', units.dims), VALUE_DECIMALS[units.dims])} ${units.dims}`,
     })),
   ];
 }
@@ -956,7 +954,9 @@ const UNIT_SELECTS = /** @type {const} */ ([
  * (settings-cam-body).
  * @param {HTMLElement} panel element to fill
  * @param {Store} store
- * @returns {{ render: (state: ProjectState) => void }}
+ * @returns {{ render: (state: ProjectState) => void,
+ *   setResult: (result: import('../core/solve.js').SolveResult | null) => void }} setResult: the
+ *   latest result with a forward model, for the working arc of the free-form editor
  */
 export function createSettings(panel, store) {
   /** @type {((s: ProjectState) => void)[]} */
@@ -1448,8 +1448,10 @@ export function createSettings(panel, store) {
     extra: (value, s) => stringTrackMessage({ ...s.stringTrack, ...shapeChange(/** @type {StringTrack['shape']} */ (value), s) }, s.units),
   });
 
-  // The free-form editor is not part of the panel yet: a line names the
-  // track and its number of points.
+  // A line names the free-form track and its number of points; the editor
+  // and the shape presets follow the fields.
+  const trackEditor = createTrackEditor(store);
+  renderers.push((s) => trackEditor.render(s));
   const freeformLine = h('p', { class: 'hint', 'data-testid': 'track-freeform-summary' });
   renderers.push((s) => {
     freeformLine.hidden = s.stringTrack.shape !== 'freeform';
@@ -1469,7 +1471,7 @@ export function createSettings(panel, store) {
     h('fieldset', { class: 'group', 'data-testid': 'settings-geometry' }, h('legend', {}, 'Bow geometry'), ...GEOMETRY_FIELDS.map(field)),
     h('fieldset', { class: 'group', 'data-testid': 'settings-force' }, h('legend', {}, 'Draw force'), ...FORCE_FIELDS.map(field), customHint),
     group('limbs', 'Limbs', limbMode, limbModeHint, ...LIMB_FIELDS.map(field), limbTable()),
-    group('string-track', 'String track', trackShape, freeformLine, ...TRACK_FIELDS.map(field)),
+    group('string-track', 'String track', trackShape, freeformLine, ...TRACK_FIELDS.map(field), trackEditor.editor, trackEditor.presets),
     group('cords', 'Cords', ...CORD_FIELDS.map(field)),
     group('cam-body', 'Cam body', ...BODY_FIELDS.map(field)),
     units,
@@ -1480,5 +1482,6 @@ export function createSettings(panel, store) {
       for (const r of renderers) r(s);
       customHint.hidden = s.curve.mode !== 'custom';
     },
+    setResult: trackEditor.setResult,
   };
 }

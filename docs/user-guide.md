@@ -175,7 +175,8 @@ samples the current eccentric circle or ellipse, so the cam stays the same
 within 0.1 mm; one undo step goes back. The radius, offset and phase
 fields do not apply to a free-form track and are hidden; they keep their
 values for a switch back. The settings show the line "Free-form track, 12
-points", and the print report lists every point.
+points" and the [editor](#free-form-editor), and the print report lists
+every point.
 
 A free-form track can bend more sharply than the minimum bend radius, or
 come too close to the axle bore. The design still saves and loads; the
@@ -183,6 +184,87 @@ solve reports the problem and suggests an outward offset of the whole
 track, for example "Offset the free-form track outward by at least
 2.4 mm". An outward offset raises the radius of curvature everywhere by
 the same amount.
+
+### Free-form editor
+
+The editor sits in the String track group under the Shape select and shows
+for a free-form track only. It holds a round view of the track, the
+sharpest bend, the Points select, **Offset all points** and the table of
+point values.
+
+- The view, at most 280 px wide, shows the groove bottom, the axle bore
+  (the circle with the cross marks the axle) and one point per value. A
+  point sits where the tangent line of its value touches the groove, not
+  on the line from the axle; that spot moves sideways when the neighbours
+  change. The dashed line through each point is the direction the point
+  moves in.
+- The thick part of the outline is the working arc of the latest result:
+  the string leaves the track from mark B at brace to mark F at full draw.
+  Grey points lie outside it; they change the outline of the cam, not the
+  draw force curve. Until the first result there is no working arc.
+- Drag a point along its dashed line. Its neighbours follow in a smooth
+  bump: the neighbours move 0.75 and 0.25 times as far, so the track does
+  not kink at the point. The drag stops exactly at the bend limit, the
+  larger of the minimum bend radius and half the string diameter plus
+  0.2 mm, or at the value range of 2 mm to 150 mm. A point stopped at the
+  limit turns red with a dashed ring, and the status line under the view
+  says "stopped at the bend limit". One drag is one undo step. The points
+  take pointer, pen and touch input; a press within 22 px of a point
+  catches it.
+- Keyboard: the points are one tab stop. Left and Right pick the previous
+  or the next point, Home and End the first or the last. Up and Down change
+  the groove radius of the picked point alone by 0.1 mm, with Shift by
+  0.5 mm; with inch dimensions by 0.005 in, with Shift by 0.02 in. A step
+  that would bend the track past the limit, or leave the value range, is
+  refused and the status line says why. Each step is one undo step.
+- The status line under the view reads out the point, its value and the
+  sharpest bend, for example "Point 2 at 30°: 25.18 mm. Sharpest bend
+  45.7 mm, limit 5.0 mm". Screen readers announce it.
+- **Points** changes the number of values to 8, 12 or 16. The new values
+  lie on the old curve, but the curve through them differs slightly: the
+  default track at 8 points keeps its groove radius within 25 µm and its
+  radius of curvature within 1.4 mm. A track close to the limit can fall
+  below it; a message then says so, and Undo goes back.
+- **Offset all points** moves the whole track outwards by the amount in the
+  field (default 0.5 mm, negative values move it inwards). This is the
+  change the solve suggests for a track that bends too sharply.
+- **Point values** opens the table: the angle of each point, the draw
+  length at which the string leaves the track there (from the latest
+  result, blank outside the working arc) and the groove radius. Type a
+  value and press Enter or leave the cell; Escape restores it. A typed
+  value only has to lie in 2 mm to 150 mm: it can bend the track past the
+  limit, and the solve then reports it. The lever arm of the string, on its
+  pitch line, is half the string diameter larger than the groove radius.
+
+### Shape presets
+
+**Shape presets** below the editor change the current track and keep its
+size and position, which is what makes the cam work:
+
+| Preset | Adds to the groove radius |
+|---|---|
+| Oval | a·cos 2(ψ − φ) |
+| Rounded triangle | a·cos 3(ψ − φ) |
+| Rounded square | a·cos 4(ψ − φ) |
+| Egg | a·(cos 2(ψ − φ) + 0.5·cos 3(ψ − φ)) |
+| Size | a, the whole track grows by a |
+| Shift | a·cos(ψ − φ), the track moves by a towards the angle φ |
+
+a is the **Amount** and φ the **Angle** (Size has no angle). The amount
+starts at 1 mm (0.5 mm for the square), reduced when needed so the track
+keeps the bend limit plus a 0.5 mm margin; the line under the field names
+the largest such amount. **Apply preset** turns an eccentric circle or an
+ellipse into a free-form track first; the rounded triangle and the egg
+need at least 12 points and the rounded square 16, so a track with fewer
+points is resampled. Each application is one undo step.
+
+A preset within the bend limit can still make the design fail, for
+example because the cable track can no longer follow; the solve shows why
+in Results. On the sample designs at the default amounts and angle 0°,
+the rounded square fails on "Compound bow, hunting (70 lbf)", and the oval
+and the egg fail on "Mini bow for FDM printing" (FDM: fused deposition
+modelling); the other 21 combinations
+solve without problems.
 
 ## Results
 
@@ -471,7 +553,8 @@ uses 900 N".
 ## Undo and redo
 
 **Undo** and **Redo** step through the last 100 changes, including settings
-and unit changes. One drag of a point or of a slider counts as one change;
+and unit changes. One drag of a point, of a slider or of a free-form track point counts as
+one change;
 Undo and Redo wait until the drag ends.
 
 ## File menu
@@ -595,8 +678,9 @@ keyboard shortcut opens it; Tab to the button and press Enter or Space. The
 dialog holds:
 
 - a quick start in 5 steps;
-- the keyboard shortcuts of the force chart, undo and redo, the cam view
-  and string plan, the draw position slider, and the dialogs;
+- the keyboard shortcuts of the force chart, the free-form track editor,
+  undo and redo, the cam view and string plan, the draw position slider,
+  and the dialogs;
 - every term of the list below, with the same text;
 - a link to this user guide on GitHub, which opens in a new tab.
 
@@ -626,6 +710,7 @@ dialog, word for word. A unit test keeps them the same.
 - Radius of curvature: radius of the circle that matches the bend of a track pitch line at a point, ρ = p + p'' with the lever arm p as a function of the contact angle. A smaller value is a sharper bend.
 - Minimum bend radius: smallest radius of curvature allowed on a track pitch line. The solver uses the larger of this value and half the cord diameter plus 0.2 mm, so the groove bottom stays convex.
 - Minimum wall: smallest material thickness between the bottom of a track groove and the axle bore. Every groove bottom stays at least the bore radius plus this wall from the axle centre.
+- Working arc: part of the string track the string leaves from between brace and full draw. The rest of the track only closes the cam outline.
 
 Info buttons stand next to the settings, stats and results values with a
 term, and next to the lever arm in the cam view legend. They open
