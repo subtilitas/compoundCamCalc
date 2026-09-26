@@ -2,3 +2,4 @@
 - [User guide](user-guide.md)
 - [Model](model.md)
 - [Plan](PLAN.md)
+- [Research](research.md)

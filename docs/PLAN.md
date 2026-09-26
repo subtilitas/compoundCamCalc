@@ -1018,6 +1018,13 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
 | 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
 | 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`). Optimise part: the search in `src/core/optimise.js`, the optimise worker and the Optimise section of the String track group. Sample part: light hunting, short-brace hunting (free-form track with a rounded triangle), long draw and youth compound bows, and the target with an optimised track |
+| 9 | Forward compatibility before new inputs: dropped unknown keys reported, newer-version messages pointing to the Version select, design id ignoring analysis-only inputs, `solve` option `analysis` (off by default). Details in [research.md](research.md#delivery-plan) |
+| 10a | Asymmetric rigid analysis `src/core/analysis.js` (cam timing, nock travel, stop order), no user interface |
+| 10b | Timing user interface: cable and string length changes, nocking point height, timing results block and chart |
+| 10c | String plan with both halves, CSV columns and print report section for the analysis |
+| 11 | Cord stiffness: EA per cord, compliant closures, wall stiffness, free and loaded build lengths |
+| 12 | Reference-bow fixture format and report-only harness |
+| 13 to 15 | Binary cam (forward, then design), then hybrid and single cam; each needs a go-ahead of the user |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter
@@ -1115,10 +1122,15 @@ tolerance (41 of 45).
 - Limb stop is not modelled; only a cable stop.
 - Hybrid, binary and single-cam systems are not modelled.
 - The model is not validated against measured bows; no reference data is in
-  the repository.
+  the repository. The default limb has 78 mm of axle travel at 499 N to
+  702 N at the axle; the reported range of real bows is 32 mm to 50 mm at
+  about twice the force, and the default stores 9 % to 16 % less energy
+  than current flagship bows at the same peak and power stroke
+  ([research.md](research.md#the-apps-default-design-against-these-ranges)).
 
 ## Later
 
 Cable guard 3D lengths and fleet angle, yoke legs, draw-length modules, limb
-bolt range sweep, mass and inertia, import of an existing cam for analysis,
-reference bows from measured data, tuning sensitivities.
+bolt range sweep, separate top and bottom limbs, a cable lever arm below the
+bore-and-wall limit at full draw (post or anchor case), mass and inertia,
+import of an existing cam for analysis.

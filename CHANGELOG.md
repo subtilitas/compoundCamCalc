@@ -18,6 +18,10 @@ All notable changes are listed here. Versions follow semantic versioning.
 - `scripts/build-site.js` builds the site: main at the root, each tag from
   its own worktree with its own `npm ci`. CI runs it on every push to main
   and after each release; the release workflow dispatches CI on main.
+- `docs/research.md`: measured bow and cord data with its source status, the
+  default design against measured ranges, the formulation of cam timing
+  and cord stiffness with numbers computed on the default design, the
+  feasibility of other cam systems and the delivery plan (slices 9 to 15).
 
 ## 0.1.0 — 2026-09-26
 
