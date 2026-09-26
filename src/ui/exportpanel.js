@@ -70,6 +70,15 @@ export function timingChanged(state) {
 }
 
 /**
+ * True when the timing settings of the exported cam are those of the
+ * current inputs: only then does the export hold the timing files.
+ * @param {{ lastGood: { state: ProjectState } | null, now: ProjectState }} v
+ */
+export function timingCurrent(v) {
+  return v.lastGood !== null && JSON.stringify(v.lastGood.state.tuning) === JSON.stringify(v.now.tuning);
+}
+
+/**
  * Status text of the panel, or null to keep the text shown. A solve that
  * has run for less than PENDING_DELAY keeps the text, so a quick edit does
  * not announce anything.
@@ -169,7 +178,7 @@ export function createExportPanel(container, { version, date = () => new Date() 
    * @param {Date} d
    */
   const cached = (v, d) => cache !== null && v.lastGood !== null && cache.result === v.lastGood.result
-    && cache.key === exportKey(v.now.units, d);
+    && cache.key === `${exportKey(v.now.units, d)}|${timingCurrent(v)}`;
 
   /**
    * Files of the last cam that met every check, built now if needed.
@@ -180,13 +189,15 @@ export function createExportPanel(container, { version, date = () => new Date() 
     if (!v || !v.lastGood) return null;
     const d = date();
     if (cache && cached(v, d)) return cache.set;
-    const out = exportFiles(v.lastGood.result, v.lastGood.state, { date: d, version, units: v.now.units });
+    // Timing files only for the timing settings of the current inputs.
+    const result = timingCurrent(v) ? v.lastGood.result : { ...v.lastGood.result, analysis: null, analysisReference: null };
+    const out = exportFiles(result, v.lastGood.state, { date: d, version, units: v.now.units });
     if (!out.set) {
       failed = v.lastGood.result;
       showError(`The export failed: ${out.error}`);
       return null;
     }
-    cache = { key: exportKey(v.now.units, d), result: v.lastGood.result, set: out.set, date: d };
+    cache = { key: `${exportKey(v.now.units, d)}|${timingCurrent(v)}`, result: v.lastGood.result, set: out.set, date: d };
     markMissing(out.set);
     failed = null;
     alert.replaceChildren();
@@ -287,7 +298,7 @@ export function createExportPanel(container, { version, date = () => new Date() 
       for (const b of [zip, ...buttons.values()]) setAttrs(b, { 'aria-disabled': has ? null : 'true' });
       setAttrs(print, { 'aria-disabled': has ? null : 'true', title: has ? null : PRINT_OFF_TITLE });
       container.classList.toggle('export-off', !has);
-      timingGroup.hidden = !(next.lastGood && timingChanged(next.lastGood.state));
+      timingGroup.hidden = !(next.lastGood && timingChanged(next.lastGood.state) && timingCurrent(next));
       let id = '';
       let current = false;
       if (next.lastGood) {

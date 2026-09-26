@@ -608,7 +608,11 @@ from the four Timing settings, for example
 `cam-20260925-187dd8-timing-3fa2c1.csv` and
 `cam-20260925-187dd8-timing-3fa2c1-string-plan.dxf`. The Export panel
 shows them in the group "Timing (analysis only)" when the exported cam
-has timing settings not 0.
+has timing settings not 0 and they are the timing settings of the current
+inputs; while an edited timing setting is being solved, the group and the
+ZIP leave them out. Problems of the analysis, for example a cord that runs
+off its track, are listed in the text block of the timing string plan and
+in the README.
 
 **Plates.** The plates stack from the string side (+Z towards the viewer):
 

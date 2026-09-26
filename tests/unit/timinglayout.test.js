@@ -6,6 +6,7 @@ import { TIMING_CSV_COLUMNS, writeTimingCsv } from '../../src/export/csv.js';
 import { exportFiles } from '../../src/export/files.js';
 import { defaultState } from '../../src/state/presets.js';
 import { reportData } from '../../src/ui/report.js';
+import { timingCurrent } from '../../src/ui/exportpanel.js';
 import { planBounds, planDims, planLabel, timingHalves, timingPoseText, timingX } from '../../src/ui/stringplan.js';
 import { sampleState } from '../../src/state/samples.js';
 import { readDxf } from './dxf-reader.js';
@@ -159,6 +160,35 @@ describe('timing export files', () => {
     const texts = entities.filter((e) => e.type === 'TEXT').map((e) => str(e, 1)).join('\n');
     expect(texts).toContain('Top cable +1.00 mm, bottom cable +0.00 mm');
     expect(texts).toMatch(/top cam first, bottom gap 3\.81 mm; cam timing 6\.89 deg/);
+  });
+});
+
+describe('timing export of an infeasible analysis', () => {
+  it('names the problems of the analysis in the timing string plan and the README', () => {
+    const bad = solved({ topCable: -20 * MM, bottomCable: -20 * MM, string: 50 * MM });
+    const a = /** @type {import('../../src/core/analysis.js').AnalysisResult} */ (bad.result.analysis);
+    expect(a.diagnostics.length).toBeGreaterThan(0);
+    const set = /** @type {NonNullable<ReturnType<typeof exportFiles>['set']>} */ (
+      exportFiles(bad.result, bad.state, { date, version: '0.2.0', units: bad.state.units }).set);
+    const plan = /** @type {(typeof set.files)[number]} */ (set.files.find((f) => f.part === 'timing-string-plan'));
+    const texts = readDxf(plan.text).sections.ENTITIES.filter((e) => e.type === 'TEXT')
+      .map((e) => e.pairs.find((p) => p[0] === 1)?.[1]).join('\n');
+    expect(texts).toContain('Problems of the analysis:');
+    expect(set.readme).toContain('Problems of the timing analysis:');
+    for (const d of a.diagnostics) {
+      expect(texts).toContain(d.message);
+      expect(set.readme).toContain(`  ${d.message}`);
+    }
+    const ok = /** @type {NonNullable<ReturnType<typeof exportFiles>['set']>} */ (
+      exportFiles(changed.result, changed.state, { date, version: '0.2.0', units: changed.state.units }).set);
+    expect(ok.readme).not.toContain('Problems of the timing analysis');
+  });
+
+  it('holds the timing files only for the timing settings of the current inputs', () => {
+    const lastGood = { result: changed.result, state: changed.state };
+    expect(timingCurrent({ lastGood, now: changed.state })).toBe(true);
+    expect(timingCurrent({ lastGood, now: { ...changed.state, tuning: { ...changed.state.tuning, topCable: 2 * MM } } })).toBe(false);
+    expect(timingCurrent({ lastGood: null, now: changed.state })).toBe(false);
   });
 });
 

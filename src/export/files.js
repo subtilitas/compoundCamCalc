@@ -420,7 +420,10 @@ function exportChecked(result, state, options) {
   // Timing files: only for changed cords. The design files above never
   // depend on the timing settings; these names carry their id.
   const tl = createTimingLayout(result, ctx);
+  /** @type {string[]} */
+  let timingProblems = [];
   if (tl) {
+    timingProblems = tl.analysis.diagnostics.map((d) => d.message);
     const tbase = `${base}-timing-${timingId(state.tuning)}`;
     const a = tl.analysis;
     /** @type {DxfEntity[]} */
@@ -444,6 +447,7 @@ function exportChecked(result, state, options) {
       `Top cable ${signedMm(t.topCable)}, bottom cable ${signedMm(t.bottomCable)}, string ${signedMm(t.string)}, nocking point ${signedMm(t.nockHeight)}`,
       `Brace height ${mmIn(tl.xBrace)}, nock ${(tb.y * MM).toFixed(2)} mm above the axis at brace`,
       `End of the draw ${mmIn(tl.xEnd + AMO_OFFSET)} (AMO): ${stopText}; cam timing ${((a.dTheta[a.end] * 180) / Math.PI).toFixed(2)} deg`,
+      ...(timingProblems.length > 0 ? ['Problems of the analysis:', ...timingProblems] : ['Problems of the analysis: none']),
     ];
     tplan.push(...textBlock(ttext, Math.min(0, tb.pivotX * MM) - 20, (tb.top.axleY * MM) + 40 + LEADING * ttext.length));
     const tout = writeDxf({ layers: layerList(TIMING_PLAN_LAYERS), entities: tplan });
@@ -478,6 +482,10 @@ function exportChecked(result, state, options) {
       + 'some programs hide wireframe on import. Outlines lie within 0.01 mm of the model, without the cut offset of the DXF files.',
     ...bossNote(model),
     ...(model.warnings.length ? ['', 'Warnings:', ...model.warnings.map((w) => `  ${w}`)] : []),
+    ...(tl
+      ? ['', 'The timing files analyse the cam above with the timing settings; they do not change it.',
+          ...(timingProblems.length ? ['Problems of the timing analysis:', ...timingProblems.map((p) => `  ${p}`)] : [])]
+      : []),
     '',
   ].join('\r\n');
   return { set: { files, readme, id, warnings: model.warnings }, error: null };
