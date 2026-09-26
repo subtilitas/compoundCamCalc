@@ -304,6 +304,15 @@ describe('elastic cords', () => {
     expect(a.stops.wallStiffness).toBeGreaterThan(0);
   });
 
+  it('reports a fold with and without rates', () => {
+    const geometry = { ...base.geometry, limbAngleBrace: (-30 * Math.PI) / 180 };
+    for (const rates of [true, false]) {
+      const a = analyseTiming({ ...base, geometry, stiffness: equal, rates });
+      expect(codes(a)[0]).toBe('analysis-fold');
+      expect(a.status).toBe('infeasible');
+    }
+  });
+
   it('refuse a stiffness out of range', () => {
     for (const bad of [0, -1, NaN, Infinity, STIFFNESS_MIN / 2, STIFFNESS_MAX * 2]) {
       const a = analyseTiming({ ...base, stiffness: { ...equal, topCable: bad } });

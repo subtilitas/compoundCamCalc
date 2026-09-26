@@ -187,7 +187,8 @@ export const ANALYSIS_CODES = /** @type {Record<AnalysisCode, string>} */ ({
  * @property {number} [samples] from brace to full draw, default {@link ANALYSIS_SAMPLES}
  * @property {number} [maxIterations] Newton iteration limit per closure, default 30
  * @property {boolean} [rates] default true; false leaves dThetaDL and
- *   sensitivity at NaN, for a run that needs only the draw
+ *   sensitivity at NaN, for a run that needs only the draw; the fold
+ *   check runs either way
  */
 
 /**
@@ -1587,11 +1588,11 @@ function finish(ctx, march, brace, nock, xFull, input) {
     r.psiCableTop[i] = pose.top.cable.psi;
     r.psiCableBottom[i] = pose.bottom.cable.psi;
     r.ky[i] = ctx.free ? pose.ky : NaN;
-    const el = rates && ctx.elastic ? elasticTimingRate(ctx, list[i]) : null;
+    // Elastic cords: the fold check needs the elastic Jacobian with or without rates.
+    const el = ctx.elastic ? elasticTimingRate(ctx, list[i]) : null;
     r.dThetaDL[i] = !rates ? NaN : el ? el.rate : d ? d[0] - d[2] : NaN;
-    // Elastic cords: the determinant of the elastic Jacobian of the rate, none without rates.
-    det[i] = !ctx.elastic ? determinant(J, 4) : el ? el.det : NaN;
-    detSize[i] = !ctx.elastic ? 4 : el ? el.size : 0;
+    det[i] = el ? el.det : determinant(J, 4);
+    detSize[i] = el ? el.size : 4;
     offTrack[i] = leaves(pose.top) || leaves(pose.bottom) ? 1 : 0;
   }
 

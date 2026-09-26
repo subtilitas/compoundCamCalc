@@ -1098,7 +1098,7 @@ holds the result, `timings.analysis` its time; without the option, in a
 coarse solve or without a cam it is null. `result.analysisReference` holds
 the analysis with unchanged cords and the same options, stiffness
 included, the reference of the changes of peak and let-off; it runs with
-`rates: false`, which leaves dΔθ/dL_c,t and `sensitivity` at NaN; with unchanged cords it is
+`rates: false`, which leaves dΔθ/dL_c,t and `sensitivity` at NaN and keeps the fold check; with unchanged cords it is
 `result.analysis` itself. The two analyses re-solve their own brace, so
 their 300-sample grids differ slightly: over the default design, the nine
 samples and five sets of changes, the peak and let-off changes differ from
@@ -1503,7 +1503,7 @@ Measured values are the largest errors over the tested samples.
 | Elastic cords: trapezoid work of F on 3000 samples against E1(α_t) + E1(α_b) + ½·Σ C_k·T_k², to x₁ and to x₂ | 1e-7 and 1e-5 relative | 3.1e-9, 2.3e-7 |
 | Elastic cords: Δθ at x₁ from EA 2e5 N and 4e5 N on the cables against dΔθ/dL_c,t times the differential stretch | 2 % | 0.38 % |
 | Elastic cords: wall stiffness at x₂ against the closed form of [Elastic cords](#elastic-cords) | 1 % | 0.10 % |
-| Asymmetric analysis with elastic cords, EA 2.97e5 N, top cable 1 mm longer, with its reference, timed in the worker thread | 80 ms, tested with a factor 5 margin | 63 ms to 75 ms median after warm-up, on a machine where the rigid analysis above measures 23 ms to 28 ms; the exact elastic Jacobian per sample (timing rate and fold check) takes about 15 ms of it |
+| Asymmetric analysis with elastic cords, EA 2.97e5 N, top cable 1 mm longer, with its reference, timed in the worker thread | 90 ms, tested with a factor 5 margin | 70 ms to 81 ms median after warm-up, on a machine where the rigid analysis above measures 23 ms to 28 ms; the exact elastic Jacobian per sample (timing rate and fold check, in the analysis and in its reference) takes about 25 ms of it |
 | Elastic cords: dΔθ/dL_c,t at the first stop against the finite-difference sensitivity, draw board | 1e-6 relative | passes |
 | Coarse solve with point 2 at 10 in and 50 N, where no lead-in wrap closes the track: no trial solves, timed in the worker thread | 10 times the 30 ms coarse budget | 75 ms to 89 ms after warm-up; 75 ms to 99 ms in the coverage run (spread of 7 runs) |
 

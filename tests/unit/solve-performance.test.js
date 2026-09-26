@@ -6,7 +6,7 @@ const COARSE_BUDGET = 30;
 const FULL_BUDGET = 200;
 /** Time budgets of the asymmetric analysis with rigid and with elastic cords, docs/research.md (ms). */
 const ANALYSIS_BUDGET = 25;
-const ELASTIC_BUDGET = 80;
+const ELASTIC_BUDGET = 90;
 /** Allowance for slow and shared CI machines. */
 const MARGIN = 5;
 
