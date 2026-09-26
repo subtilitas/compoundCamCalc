@@ -172,3 +172,72 @@ function writeCsvChecked(result, layout, units, labels) {
   }
   return `${lines.join('\r\n')}\r\n`;
 }
+
+/** Header labels of the timing table, in output order, with their quantity. */
+export const TIMING_CSV_COLUMNS = Object.freeze(/** @type {const} */ ([
+  ['Draw length AMO', 'draw'],
+  ['Nock to pivot point', 'draw'],
+  ['Nock height', 'draw'],
+  ['Draw force', 'force'],
+  ['Top cam rotation from design brace', 'deg'],
+  ['Bottom cam rotation from design brace', 'deg'],
+  ['Cam timing top minus bottom', 'deg'],
+  ['Tension of the top string part', 'force'],
+  ['Tension of the bottom string part', 'force'],
+  ['Tension of the top cable', 'force'],
+  ['Tension of the bottom cable', 'force'],
+]));
+
+/**
+ * Writes the timing table of an analysis of changed cords: one row per
+ * sample from the brace of the changed bow to the end of its draw (the
+ * first stop, or full draw), in display units, in the format of
+ * {@link writeCsv}. Never throws.
+ * @param {import('../core/analysis.js').AnalysisResult} analysis
+ * @param {Units} units display units; draw and force are read
+ * @returns {{ text: string | null, error: string | null }}
+ */
+export function writeTimingCsv(analysis, units) {
+  try {
+    const drawUnit = units?.draw;
+    const forceUnit = units?.force;
+    if (drawUnit !== 'in' && drawUnit !== 'mm' && drawUnit !== 'cm') throw new Error(`CSV: unknown draw length unit ${String(drawUnit)}`);
+    if (forceUnit !== 'N' && forceUnit !== 'lbf') throw new Error(`CSV: unknown force unit ${String(forceUnit)}`);
+    const a = analysis;
+    const rows = a?.end + 1;
+    if (!Number.isInteger(rows) || rows < 1) throw new Error('CSV: the analysis has no draw');
+    const len = UNITS.length[drawUnit];
+    const force = UNITS.force[forceUnit];
+    const dl = DECIMALS[drawUnit];
+    const df = DECIMALS[forceUnit];
+    const unitOf = { draw: drawUnit, force: forceUnit, deg: 'deg' };
+    const header = TIMING_CSV_COLUMNS.map(([label, q]) => headerCell(`${label} (${unitOf[q]})`)).join(',');
+    const columns = [
+      samples(a.x, rows, 'draw position'), samples(a.y, rows, 'nock height'), samples(a.F, rows, 'draw force'),
+      samples(a.thetaTop, rows, 'top cam rotation'), samples(a.thetaBottom, rows, 'bottom cam rotation'),
+      samples(a.stringTop, rows, 'top string tension'), samples(a.stringBottom, rows, 'bottom string tension'),
+      samples(a.cableTop, rows, 'top cable tension'), samples(a.cableBottom, rows, 'bottom cable tension'),
+    ];
+    const [x, y, F, tt, tb, st, sb, ct, cb] = columns;
+    const lines = [header];
+    for (let i = 0; i < rows; i++) {
+      lines.push([
+        formatFixed((x[i] + AMO_OFFSET) / len, dl),
+        formatFixed(x[i] / len, dl),
+        formatFixed(y[i] / len, dl),
+        formatFixed(F[i] / force, df),
+        formatFixed(tt[i] * DEG, DECIMALS.deg),
+        formatFixed(tb[i] * DEG, DECIMALS.deg),
+        formatFixed((tt[i] - tb[i]) * DEG, DECIMALS.deg),
+        formatFixed(st[i] / force, df),
+        formatFixed(sb[i] / force, df),
+        formatFixed(ct[i] / force, df),
+        formatFixed(cb[i] / force, df),
+      ].join(','));
+    }
+    return { text: `${lines.join('\r\n')}\r\n`, error: null };
+  } catch (err) {
+    // Any exception while reading or validating malformed input.
+    return { text: null, error: describeError(err) };
+  }
+}

@@ -13,9 +13,10 @@
 import { transform } from '../core/bspline.js';
 import { describeError } from '../core/errors.js';
 import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
+import { createTimingLayout, timingId, timingPoseAt } from '../core/timinglayout.js';
 import { AMO_OFFSET, INCH } from '../core/units.js';
 import { ANALYSIS_ONLY } from '../state/schema.js';
-import { writeCsv } from './csv.js';
+import { writeCsv, writeTimingCsv } from './csv.js';
 import { writeDxf } from './dxf.js';
 import { writeStep } from './step.js';
 import { buildExportModel } from './model.js';
@@ -62,6 +63,7 @@ const LAYERS = Object.freeze({
 });
 /** Layers of the string plan. */
 const PLAN_LAYERS = Object.freeze({ BRACE: 3, FULL: 1, TEXT: 7 });
+const TIMING_PLAN_LAYERS = Object.freeze({ BRACE: 3, END: 1, TEXT: 7 });
 
 /**
  * @param {Record<string, number>} table
@@ -259,6 +261,43 @@ function plateEntities(plate) {
 }
 
 /**
+ * DXF entities of one half of the bow: limb lever, axle, the pitch lines of
+ * the cam, the string to the nock and the cable to its anchor. The half is
+ * given in its own frame; sy = −1 mirrors the bottom half into the world.
+ * @param {ExportCurve[]} pitch pitch-line curves of the cam
+ * @param {string} layer
+ * @param {{ pivotX: number, pivotY: number, axleX: number, axleY: number, theta: number, stringX: number,
+ *   stringY: number, cableX: number, cableY: number, anchorX: number, anchorY: number }} h
+ * @param {1 | -1} sy
+ * @param {{ x: number, y: number }} nock world (m)
+ * @returns {DxfEntity[]}
+ */
+function halfEntities(pitch, layer, h, sy, nock) {
+  /** @type {DxfEntity[]} */
+  const out = [];
+  const c = Math.cos(h.theta);
+  const s = Math.sin(h.theta);
+  // World = O + R(−θ)·v for the cam; the bottom half mirrors y.
+  out.push({ type: 'line', layer, x1: h.pivotX * MM, y1: sy * h.pivotY * MM, x2: h.axleX * MM, y2: sy * h.axleY * MM });
+  out.push({ type: 'circle', layer, x: h.axleX * MM, y: sy * h.axleY * MM, r: 3 });
+  for (const curve of pitch) {
+    if (curve.circle) {
+      const k = curve.circle;
+      out.push({
+        type: 'circle', layer,
+        x: (h.axleX + c * k.cx + s * k.cy) * MM, y: sy * (h.axleY - s * k.cx + c * k.cy) * MM, r: k.r * MM,
+      });
+    } else if (curve.spline) {
+      const placed = transform(curve.spline, c * MM, s * MM, -s * sy * MM, c * sy * MM, h.axleX * MM, sy * h.axleY * MM);
+      out.push({ type: 'spline', layer, degree: 3, knots: placed.knots, points: placed.points, id: `${curve.id}-${layer.toLowerCase()}-${sy > 0 ? 'top' : 'bottom'}` });
+    }
+  }
+  out.push({ type: 'line', layer, x1: h.stringX * MM, y1: sy * h.stringY * MM, x2: nock.x * MM, y2: nock.y * MM });
+  out.push({ type: 'line', layer, x1: h.cableX * MM, y1: sy * h.cableY * MM, x2: h.anchorX * MM, y2: sy * h.anchorY * MM });
+  return out;
+}
+
+/**
  * All export files of a result. Never throws.
  * @param {SolveResult} result a full solve with status ok
  * @param {ProjectState} state the state the result was solved for
@@ -355,27 +394,7 @@ function exportChecked(result, state, options) {
   for (const [layer, x] of /** @type {const} */ ([['BRACE', ctx.xBrace], ['FULL', ctx.xFull]])) {
     const pose = createBowPose();
     if (!bowPoseAt(ctx, x, pose) || pose.beyondSolution) return { set: null, error: 'The string plan needs a solve that reaches full draw' };
-    for (const sy of [1, -1]) {
-      const c = Math.cos(pose.theta);
-      const s = Math.sin(pose.theta);
-      // World = O + R(−θ)·v for the top cam; the bottom half mirrors y.
-      plan.push({ type: 'line', layer, x1: pose.pivotX * MM, y1: sy * pose.pivotY * MM, x2: pose.axleX * MM, y2: sy * pose.axleY * MM });
-      plan.push({ type: 'circle', layer, x: pose.axleX * MM, y: sy * pose.axleY * MM, r: 3 });
-      for (const curve of pitch) {
-        if (curve.circle) {
-          const k = curve.circle;
-          plan.push({
-            type: 'circle', layer,
-            x: (pose.axleX + c * k.cx + s * k.cy) * MM, y: sy * (pose.axleY - s * k.cx + c * k.cy) * MM, r: k.r * MM,
-          });
-        } else if (curve.spline) {
-          const placed = transform(curve.spline, c * MM, s * MM, -s * sy * MM, c * sy * MM, pose.axleX * MM, sy * pose.axleY * MM);
-          plan.push({ type: 'spline', layer, degree: 3, knots: placed.knots, points: placed.points, id: `${curve.id}-${layer.toLowerCase()}-${sy > 0 ? 'top' : 'bottom'}` });
-        }
-      }
-      plan.push({ type: 'line', layer, x1: pose.stringX * MM, y1: sy * pose.stringY * MM, x2: pose.x * MM, y2: 0 });
-      plan.push({ type: 'line', layer, x1: pose.cableX * MM, y1: sy * pose.cableY * MM, x2: pose.anchorX * MM, y2: sy * pose.anchorY * MM });
-    }
+    for (const sy of /** @type {const} */ ([1, -1])) plan.push(...halfEntities(pitch, layer, pose, sy, { x: pose.x, y: 0 }));
   }
   const brace = createBowPose();
   bowPoseAt(ctx, ctx.xBrace, brace);
@@ -397,6 +416,43 @@ function exportChecked(result, state, options) {
   const csv = writeCsv(result, ctx, units);
   if (csv.text === null) return { set: null, error: `Force table: ${csv.error}` };
   files.push({ part: 'force-curve', name: `${base}-force-curve.csv`, label: 'Force table (CSV)', mime: 'text/csv;charset=utf-8', text: csv.text });
+
+  // Timing files: only for changed cords. The design files above never
+  // depend on the timing settings; these names carry their id.
+  const tl = createTimingLayout(result, ctx);
+  if (tl) {
+    const tbase = `${base}-timing-${timingId(state.tuning)}`;
+    const a = tl.analysis;
+    /** @type {DxfEntity[]} */
+    const tplan = [];
+    for (const [layer, x] of /** @type {const} */ ([['BRACE', tl.xBrace], ['END', tl.xEnd]])) {
+      const p = /** @type {import('../core/timinglayout.js').TimingPose} */ (timingPoseAt(tl, x));
+      tplan.push(...halfEntities(pitch, layer, { ...p.top, pivotX: p.pivotX, pivotY: p.pivotY }, 1, { x: p.x, y: p.y }));
+      tplan.push(...halfEntities(pitch, layer, { ...p.bottom, pivotX: p.pivotX, pivotY: p.pivotY }, -1, { x: p.x, y: p.y }));
+    }
+    const tb = /** @type {import('../core/timinglayout.js').TimingPose} */ (timingPoseAt(tl, tl.xBrace));
+    tplan.push({ type: 'line', layer: 'BRACE', x1: tb.pivotX * MM, y1: tb.pivotY * MM, x2: tb.pivotX * MM, y2: -tb.pivotY * MM });
+    const t = state.tuning;
+    const signedMm = (/** @type {number} */ v) => `${v >= 0 ? '+' : '-'}${Math.abs(v * MM).toFixed(2)} mm`;
+    const stopText = a.stops.first === 'both' ? 'both cams together'
+      : a.stops.first === 'top' ? `top cam first, bottom gap ${(a.stops.gapBottom * MM).toFixed(2)} mm`
+        : a.stops.first === 'bottom' ? `bottom cam first, top gap ${(a.stops.gapTop * MM).toFixed(2)} mm` : 'no stop reached';
+    const ttext = [
+      title[0],
+      'Timing analysis only: the cam is the design above; rigid cords, nock free to move up and down.',
+      'Units mm, 1:1. Origin grip pivot point, archer to the right. BRACE green, END red (end of the draw).',
+      `Top cable ${signedMm(t.topCable)}, bottom cable ${signedMm(t.bottomCable)}, string ${signedMm(t.string)}, nocking point ${signedMm(t.nockHeight)}`,
+      `Brace height ${mmIn(tl.xBrace)}, nock ${(tb.y * MM).toFixed(2)} mm above the axis at brace`,
+      `End of the draw ${mmIn(tl.xEnd + AMO_OFFSET)} (AMO): ${stopText}; cam timing ${((a.dTheta[a.end] * 180) / Math.PI).toFixed(2)} deg`,
+    ];
+    tplan.push(...textBlock(ttext, Math.min(0, tb.pivotX * MM) - 20, (tb.top.axleY * MM) + 40 + LEADING * ttext.length));
+    const tout = writeDxf({ layers: layerList(TIMING_PLAN_LAYERS), entities: tplan });
+    if (tout.text === null) throw new Error(`Timing string plan: ${tout.error}`);
+    files.push({ part: 'timing-string-plan', name: `${tbase}-string-plan.dxf`, label: 'String plan with the timing settings (DXF)', mime: 'application/octet-stream', text: tout.text });
+    const tcsv = writeTimingCsv(a, units);
+    if (tcsv.text === null) return { set: null, error: `Timing table: ${tcsv.error}` };
+    files.push({ part: 'timing-table', name: `${tbase}.csv`, label: 'Timing table (CSV)', mime: 'text/csv;charset=utf-8', text: tcsv.text });
+  }
 
   const timestamp = `${iso}T${[date.getHours(), date.getMinutes(), date.getSeconds()].map((v) => String(v).padStart(2, '0')).join(':')}`;
   const system = `Compound Cam Calculator ${String(version)}`;

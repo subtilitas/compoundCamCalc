@@ -50,7 +50,24 @@ const GROUPS = Object.freeze([
     ],
   },
   { title: 'Data (CSV)', parts: [['force-curve', 'Force table']] },
+  {
+    title: 'Timing (analysis only)',
+    parts: [['timing-string-plan', 'String plan with the timing settings (DXF)'], ['timing-table', 'Timing table (CSV)']],
+  },
 ]);
+
+/** Index of the timing group in GROUPS: shown only while a timing setting is not 0. */
+const TIMING_GROUP = GROUPS.length - 1;
+
+/**
+ * True when any timing setting of a state is not 0: the export then holds
+ * the timing files.
+ * @param {ProjectState} state
+ */
+export function timingChanged(state) {
+  const t = state.tuning;
+  return t.topCable !== 0 || t.bottomCable !== 0 || t.string !== 0 || t.nockHeight !== 0;
+}
 
 /**
  * Status text of the panel, or null to keep the text shown. A solve that
@@ -110,8 +127,10 @@ export function createExportPanel(container, { version, date = () => new Date() 
       buttons.set(part, b);
       list.append(b);
     }
-    return h('div', { class: 'export-group' }, h('h3', { class: 'export-heading', id: headingId }, g.title), list);
+    return h('div', { class: 'export-group', 'data-testid': `export-group-${i}` }, h('h3', { class: 'export-heading', id: headingId }, g.title), list);
   });
+  const timingGroup = groups[TIMING_GROUP];
+  timingGroup.hidden = true;
   // The report itself is built on beforeprint (ui/report), so the print
   // command of the browser prints it too.
   const print = h('button', { type: 'button', class: 'export-btn', 'data-testid': 'export-print' }, 'Print report');
@@ -268,6 +287,7 @@ export function createExportPanel(container, { version, date = () => new Date() 
       for (const b of [zip, ...buttons.values()]) setAttrs(b, { 'aria-disabled': has ? null : 'true' });
       setAttrs(print, { 'aria-disabled': has ? null : 'true', title: has ? null : PRINT_OFF_TITLE });
       container.classList.toggle('export-off', !has);
+      timingGroup.hidden = !(next.lastGood && timingChanged(next.lastGood.state));
       let id = '';
       let current = false;
       if (next.lastGood) {

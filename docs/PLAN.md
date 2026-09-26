@@ -684,6 +684,14 @@ Independent set; everything else is derived and shown read-only.
   height and cam timing, stacked, over the draw length with full draw of
   the design dashed. A coarse solve keeps the values of the last full solve,
   marked as belonging to the previous inputs.
+- Changed bow (slice 10c, decisions of the user): with any timing setting
+  not 0, the string plan draws both halves from the analysis
+  (`src/core/timinglayout.js`): outlines at brace and at the end of the
+  draw, nock off the axis, caption "Bow with the timing settings; the cam
+  and the lengths listed are those of the design", no load arrow. Exports
+  keep the design files unchanged and add a timing string plan (DXF) and a
+  timing table (CSV), named with the design id and a timing id. The print
+  report adds a Timing section.
 - Touch: Pointer Events, `touch-action: none` on the editor, hit targets
   ≥ 44 px. Keyboard: points focusable, arrows move 0.1 in / 1 N, Shift ×10.
 - Responsive layout: side-by-side panels on screens from 960 px, stacked
@@ -1060,7 +1068,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 9 | Forward compatibility before new inputs: dropped unknown keys reported, newer-version messages pointing to the Version select, design id ignoring analysis-only sections. Released as 0.2.0. Details in [research.md](research.md#delivery-plan) |
 | 10a | Asymmetric rigid analysis `src/core/analysis.js` (cam timing, nock travel, stop order; the first stop is the wall with rigid cords) and the `solve` option `analysis`, no user interface |
 | 10b | Timing user interface: cable and string length changes, nocking point height, timing results block and chart (`src/ui/timing.js`) |
-| 10c | String plan with both halves, CSV columns and print report section for the analysis |
+| 10c | Changed bow in the string plan (`src/core/timinglayout.js`), timing string plan (DXF) and timing table (CSV) as separate export files, Timing section of the print report |
 | 11 | Cord stiffness: EA per cord, compliant closures, wall stiffness, free and loaded build lengths |
 | 12 | Reference-bow fixture format and harness; first fixture Tiermas's round-wheel bow B1 |
 | 13 | Open spiral tracks: a track may end at a post with a step in the outline; step clearance, non-convex overlap check and exports (request of the user) |

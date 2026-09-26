@@ -20,6 +20,8 @@ import { inputGroups } from './settings.js';
 import { staticChartModel, staticChartSvg } from './staticchart.js';
 import { statItems } from './stats.js';
 import { createStringPlan, planDims } from './stringplan.js';
+import { timingItems } from './timing.js';
+import { hasChangedTiming } from '../core/timinglayout.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../core/layout.js').LayoutContext} LayoutContext */
@@ -64,6 +66,10 @@ const LOADS_WIDTH = 640;
  * @property {{ label: string, key: string, text: string }[]} lengths build lengths
  * @property {{ label: string, key: string, text: string }[]} loads load maxima
  * @property {{ head: string[], rows: string[][] }} table force table at 10 % steps
+ * @property {import('./timing.js').TimingItem[]} timing results of the Timing
+ *   settings, empty without an analysis of the settings listed in the inputs
+ * @property {boolean} timingChanged the cords differ from the design: the
+ *   string plan shows the changed bow
  * @property {string} note
  */
 
@@ -89,6 +95,10 @@ export function reportData(src) {
   // cam: the design id ignores them.
   const state = { ...src.state, units, ...(current ? { tuning: src.now.tuning } : {}) };
   const ctx = createLayout(src.result, src.state.geometry).layout;
+  // The timing results belong to the settings of the solved inputs; they
+  // show when the listed settings are those.
+  const sameTiming = JSON.stringify(state.tuning) === JSON.stringify(src.state.tuning);
+  const timing = sameTiming && src.result.analysis ? timingItems(src.result, units) : [];
   return {
     name: src.name,
     printed: dateTimeText(src.date),
@@ -107,6 +117,8 @@ export function reportData(src) {
     lengths: ctx ? planDims(ctx, units) : [],
     loads: ctx ? loadMaxima(ctx.loads, units) : [],
     table: ctx ? loadTable(ctx, units) : { head: [], rows: [] },
+    timing,
+    timingChanged: hasChangedTiming(src.result),
     note: MODEL_NOTE,
   };
 }
@@ -200,7 +212,9 @@ export function buildReport(src) {
   // The build lengths have their own section.
   planBody.querySelector('.plan-dims')?.remove();
   planBody.querySelector('svg.plan-view')?.removeAttribute('aria-describedby');
-  const planSection = section('plan', 'String plan', figure('The whole bow at brace (dashed) and full draw (dotted)', planBody));
+  const planSection = section('plan', 'String plan', figure(data.timingChanged
+    ? 'The whole bow with the timing settings at brace (dashed) and at the end of the draw (dotted)'
+    : 'The whole bow at brace (dashed) and full draw (dotted)', planBody));
 
   const lengths = section('lengths', 'Build lengths', list(data.lengths),
     h('p', {}, 'Pitch-line lengths are the cord centre line between the termination points; add loops, serving and stretch for the build.'));
@@ -211,6 +225,11 @@ export function buildReport(src) {
   const loads = section('loads', 'Loads', figure('String tension, cable tension and limb tip load against the draw', loadsBody),
     h('h3', {}, 'Largest loads'), list(data.loads));
 
+  const timingSection = data.timing.length > 0
+    ? [section('timing', 'Timing (analysis only)', list(data.timing),
+        h('p', {}, 'Results of the length changes in the Timing settings. The cam, the results and the build lengths above are those of the design.'))]
+    : [];
+
   const table = section('table', 'Force table',
     h('table', { class: 'report-table' },
       h('caption', {}, 'Draw force and loads at 10 % steps of the draw from brace to full draw'),
@@ -219,7 +238,7 @@ export function buildReport(src) {
 
   const note = h('p', { class: 'report-note', 'data-testid': 'report-note' }, data.note);
   const root = h('article', { class: 'report', 'data-testid': 'report', 'aria-label': 'Print report' },
-    head, inputs, target, results, force, camSection, planSection, lengths, loads, table, note);
+    head, inputs, target, results, force, camSection, planSection, lengths, loads, ...timingSection, table, note);
 
   // Static figures: no zoom buttons, no focus stops, no test ids of the page.
   for (const el of root.querySelectorAll('.camview-controls')) el.remove();

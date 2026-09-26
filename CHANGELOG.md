@@ -12,8 +12,16 @@ All notable changes are listed here. Versions follow semantic versioning.
   stop and the gap of the other cam, nock travel, the changes of brace
   height, draw length, peak and let-off, the timing change per mm of top
   cable, and a chart of nock height and cam timing over the draw. These
-  settings never change the cam, its checks or the exports; files, share
-  links and saved designs keep them.
+  settings never change the cam, its checks or the design export files;
+  files, share links and saved designs keep them.
+- String plan: with timing settings not 0 it draws the changed bow, each
+  half from its own pose, at brace and at the end of its draw, with the
+  nock height and cam timing at the draw position.
+- Export: with timing settings not 0, a timing string plan (DXF) and a
+  timing table (CSV) with nock height, both cam rotations, cam timing and
+  the four cord tensions per sample; names carry the design id and a
+  timing id.
+- Print report: a Timing section with the values of the Timing panel.
 - Glossary: cam timing, nock travel, draw stop.
 - `src/core/analysis.js`: asymmetric analysis of the designed cam with
   changed cable and string lengths and nocking point height, rigid cords.
