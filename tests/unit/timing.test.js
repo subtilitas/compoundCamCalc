@@ -25,7 +25,12 @@ const texts = (items) => Object.fromEntries(items.map((i) => [i.key, i.text]));
 
 describe('timing settings', () => {
   it('default to unchanged cords and keep the ranges of the schema', () => {
-    expect(defaultState().tuning).toEqual({ topCable: 0, bottomCable: 0, string: 0, nockHeight: 0 });
+    expect(defaultState().tuning).toEqual({
+      topCable: 0, bottomCable: 0, string: 0, nockHeight: 0, cordModel: 'rigid',
+      stringMaterial: '452x', stringStrands: 24, stringEA: 296640,
+      topCableMaterial: '452x', topCableStrands: 24, topCableEA: 296640,
+      bottomCableMaterial: '452x', bottomCableStrands: 24, bottomCableEA: 296640,
+    });
     expect(TUNING_FIELDS.map((f) => f.path)).toEqual(['tuning.topCable', 'tuning.bottomCable', 'tuning.string', 'tuning.nockHeight']);
     expect([FIELDS['tuning.topCable'].min, FIELDS['tuning.topCable'].max]).toEqual([-20 * MM, 20 * MM]);
     expect([FIELDS['tuning.bottomCable'].min, FIELDS['tuning.bottomCable'].max]).toEqual([-20 * MM, 20 * MM]);
@@ -120,7 +125,7 @@ describe('timing results', () => {
 
   it('end the draw at full draw when no stop is reached', () => {
     const state = sampleState('youth');
-    state.tuning = { topCable: -20 * MM, bottomCable: -20 * MM, string: 50 * MM, nockHeight: 0 };
+    state.tuning = { ...state.tuning, topCable: -20 * MM, bottomCable: -20 * MM, string: 50 * MM, nockHeight: 0 };
     const result = solve(state, { analysis: { offsets: state.tuning } });
     const a = /** @type {import('../../src/core/analysis.js').AnalysisResult} */ (result.analysis);
     expect(a.diagnostics.map((d) => d.code)).toContain('analysis-no-stop');

@@ -18,6 +18,7 @@
 
 import { fromSI } from '../core/units.js';
 import { bowPoseAt, createBowPose } from '../core/layout.js';
+import { buildLengths } from '../core/cords.js';
 import { createTimingLayout, timingPoseAt } from '../core/timinglayout.js';
 import { pathOf } from './camview.js';
 import { DEGREE, dimsText, drawText, fixed, forceText } from './display.js';
@@ -233,13 +234,16 @@ export function timingPoseText(tp, units) {
 
 /**
  * Lengths listed under the plan: label, test id and text. With a layout of
- * the changed bow, the brace height and the end of its draw follow.
+ * the changed bow, the brace height and the end of its draw follow; with
+ * elastic cords, the free length of each cord and its length at 445 N
+ * (100 lbf) follow the pitch-line lengths.
  * @param {LayoutContext} ctx
  * @param {Units} units
  * @param {TimingLayout | null} [tl]
+ * @param {import('../core/cords.js').CordStiffness | null} [stiffness] EA of each cord, null for rigid cords
  * @returns {{ label: string, key: string, text: string }[]}
  */
-export function planDims(ctx, units, tl = null) {
+export function planDims(ctx, units, tl = null, stiffness = null) {
   /** @param {number} v */
   const both = (v) => {
     if (!Number.isFinite(v)) return '—';
@@ -248,9 +252,25 @@ export function planDims(ctx, units, tl = null) {
   };
   /** @param {number} v */
   const one = (v) => (Number.isFinite(v) ? dimsText(v, units) : '—');
+  /** @type {{ label: string, key: string, text: string }[]} */
+  const stretch = [];
+  const Ts = ctx.loads.Ts[0];
+  const Tc = ctx.loads.Tc[0];
+  if (stiffness && Number.isFinite(Ts) && Number.isFinite(Tc)) {
+    const b = buildLengths(ctx.lengths, { string: Ts, cable: Tc }, stiffness);
+    // core/cords BUILD_TENSION: 100 lbf, 444.8 N.
+    const load = units.force === 'lbf' ? '100 lbf (445 N)' : '445 N (100 lbf)';
+    for (const [label, key, c] of /** @type {const} */ ([['String', 'string', b.string], ['Top cable', 'top-cable', b.topCable], ['Bottom cable', 'bottom-cable', b.bottomCable]])) {
+      stretch.push(
+        { label: `${label}, free length`, key: `${key}-free`, text: both(c.free) },
+        { label: `${label} at ${load}`, key: `${key}-loaded`, text: both(c.loaded) },
+      );
+    }
+  }
   return [
     { label: 'String, pitch line', key: 'string', text: both(ctx.lengths.string) },
     { label: 'Power cable, pitch line, each of 2', key: 'cable', text: both(ctx.lengths.cable) },
+    ...stretch,
     { label: 'Axle-to-axle at brace', key: 'ataBrace', text: one(ctx.lengths.ataBrace) },
     {
       label: 'Axle-to-axle at full draw',
@@ -335,10 +355,12 @@ function placePose(g, p, r) {
 
 /**
  * @typedef {object} StringPlan
- * @property {(result: SolveResult | null, ctx: LayoutContext | null, units: Units, stale: boolean, outdated?: boolean) => void} render
+ * @property {(result: SolveResult | null, ctx: LayoutContext | null, units: Units, stale: boolean, outdated?: boolean,
+ *   stiffness?: import('../core/cords.js').CordStiffness | null) => void} render
  *   draw the bow of a result: stale when it is the last cam that met every
- *   check, outdated while newer inputs are being solved; the same arguments
- *   again do nothing
+ *   check, outdated while newer inputs are being solved; stiffness: EA of
+ *   the cords of its inputs for the build lengths, null for rigid cords;
+ *   the same arguments again do nothing
  * @property {(pose: BowPose | null, units: Units) => void} setPose move the solid pose
  * @property {() => void} destroy remove the elements and with them their listeners
  */
@@ -442,8 +464,8 @@ export function createStringPlan(container) {
   });
 
   return {
-    render(result, next, units, stale, outdated = false) {
-      const nextKey = `${units.dims}|${units.draw}|${units.force}|${stale}|${outdated}`;
+    render(result, next, units, stale, outdated = false, stiffness = null) {
+      const nextKey = `${units.dims}|${units.draw}|${units.force}|${stale}|${outdated}|${JSON.stringify(stiffness)}`;
       if (result === shownResult && next === ctx && nextKey === key) return;
       key = nextKey;
       ctx = next;
@@ -506,7 +528,7 @@ export function createStringPlan(container) {
       setAttrs(axis, { x1: 0, y1: 0, x2: coord(Math.max(next.xFull, tl ? tl.xEnd : 0)), y2: 0 });
       setAttrs(grip, { cx: 0, cy: 0, r: 1.5 * r });
       dims.replaceChildren(
-        ...planDims(next, units, tl).flatMap((d) => [h('dt', {}, d.label), h('dd', { 'data-testid': `plan-${d.key}` }, d.text)]),
+        ...planDims(next, units, tl, stiffness).flatMap((d) => [h('dt', {}, d.label), h('dd', { 'data-testid': `plan-${d.key}` }, d.text)]),
       );
       setAttrs(root, { 'aria-label': planLabel(next.lengths.ataBrace, hasFull, stale, units, timing) });
     },

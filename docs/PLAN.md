@@ -684,6 +684,15 @@ Independent set; everything else is derived and shown read-only.
   height and cam timing, stacked, over the draw length with full draw of
   the design dashed. A coarse solve keeps the values of the last full solve,
   marked as belonging to the previous inputs.
+- Cord stiffness (slice 11b, decisions of the user): in the Timing group,
+  a Cord model select (Rigid by default, Elastic) and per cord a material
+  select (BCY 452X, Fastflight Plus, Dacron B50 with their measured
+  stiffness per strand, or Custom EA) with a strand count (5 to 200) or an
+  EA (1e4 N to 1e8 N); the line under them gives each EA. With elastic
+  cords the Timing panel adds the second stop, the wall stiffness and the
+  draw change of the stretch alone; the build lengths under the string
+  plan and the export README add the free length and the length at 445 N
+  (100 lbf) of each cord.
 - Changed bow (slice 10c, decisions of the user): with any timing setting
   not 0, the string plan draws both halves from the analysis
   (`src/core/timinglayout.js`): outlines at brace and at the end of the

@@ -186,7 +186,7 @@ describe('timing export of an infeasible analysis', () => {
 
   it('names why the timing files are left out when the analysis has no draw', () => {
     const state = sampleState('mini');
-    state.tuning = { topCable: -20 * MM, bottomCable: 20 * MM, string: -50 * MM, nockHeight: -50 * MM };
+    state.tuning = { ...state.tuning, topCable: -20 * MM, bottomCable: 20 * MM, string: -50 * MM, nockHeight: -50 * MM };
     const result = solve(state, { analysis: { offsets: state.tuning } });
     const a = /** @type {import('../../src/core/analysis.js').AnalysisResult} */ (result.analysis);
     expect(result.status).toBe('ok');
@@ -262,7 +262,7 @@ describe('report of the timing settings', () => {
 
   it('lists the problems of the analysis with the timing results', () => {
     const state = sampleState('youth');
-    state.tuning = { topCable: -20 * MM, bottomCable: -20 * MM, string: 50 * MM, nockHeight: 0 };
+    state.tuning = { ...state.tuning, topCable: -20 * MM, bottomCable: -20 * MM, string: 50 * MM, nockHeight: 0 };
     const result = solve(state, { analysis: { offsets: state.tuning } });
     const d = reportData({ result, state, now: state, name: 'Youth', version: '0.2.0', date });
     expect(d.timing.length).toBeGreaterThan(0);

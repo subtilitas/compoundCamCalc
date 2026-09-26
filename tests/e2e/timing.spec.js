@@ -85,6 +85,38 @@ test.describe('Timing', () => {
     await expect(page.getByTestId('export-timing-table')).toBeHidden();
   });
 
+  test('elastic cords add the second stop, the wall stiffness and the free lengths', async ({ page }) => {
+    await expect(page.getByTestId('timing-second-stop')).toBeHidden();
+    await expect(page.getByTestId('choice-string-material')).toBeHidden();
+    await page.getByTestId('choice-cord-model').selectOption('elastic');
+    await solved(page);
+    await expect(page.getByTestId('stiffness-summary')).toHaveText('EA: string 296640 N, top cable 296640 N, bottom cable 296640 N');
+    await expect(page.getByTestId('timing-second-stop')).toHaveText('Both cams at the first stop');
+    await expect(page.getByTestId('timing-wall-stiffness')).toHaveText('475.5 N/mm');
+    await expect(page.getByTestId('timing-stretch-draw')).toHaveText('−0.66 mm');
+    await expect(page.getByTestId('plan-string-free')).toHaveText(/^\d+\.\d mm \(\d+\.\d{3} in\)$/);
+    await expect(page.getByTestId('plan-top-cable-loaded')).toBeVisible();
+
+    await setField(page, 'top-cable', '1');
+    await solved(page);
+    await expect(page.getByTestId('timing-second-stop')).toHaveText(/^Bottom cam, 5\.\d\d mm after the first$/);
+
+    // A custom material takes an EA instead of a strand count.
+    await expect(page.getByTestId('field-top-cable-ea')).toBeHidden();
+    await page.getByTestId('choice-top-cable-material').selectOption('custom');
+    await expect(page.getByTestId('field-top-cable-ea')).toBeVisible();
+    await expect(page.getByTestId('field-top-cable-strands')).toBeHidden();
+    await setField(page, 'string-strands', '20');
+    await solved(page);
+    await expect(page.getByTestId('stiffness-summary')).toHaveText('EA: string 247200 N, top cable 296640 N, bottom cable 296640 N');
+
+    await page.getByTestId('choice-cord-model').selectOption('rigid');
+    await solved(page);
+    await expect(page.getByTestId('timing-second-stop')).toBeHidden();
+    await expect(page.getByTestId('plan-string-free')).toHaveCount(0);
+    await expect(page.getByTestId('stiffness-summary')).toBeHidden();
+  });
+
   test('rejects a change outside its range', async ({ page }) => {
     await setField(page, 'top-cable', '25');
     await expect(page.getByTestId('field-top-cable-msg')).toContainText('Top cable length change');
@@ -113,7 +145,9 @@ test.describe('Timing', () => {
     test(`the timing panel and settings have no detectable accessibility violations (${colorScheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme });
       await setField(page, 'top-cable', '1');
+      await page.getByTestId('choice-cord-model').selectOption('elastic');
       await solved(page);
+      await expect(page.getByTestId('timing-second-stop')).toBeVisible();
       const results = await new AxeBuilder({ page }).include('.panel-timing').include('[data-testid="settings-timing"]').analyze();
       expect(results.violations).toEqual([]);
     });

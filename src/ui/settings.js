@@ -9,6 +9,7 @@
  */
 
 import { AMO_OFFSET, INCH, fromSI, parseNumber, parseQuantity, toSI } from '../core/units.js';
+import { CORD_MATERIALS, CUSTOM_MATERIAL, cordStiffness } from '../core/cords.js';
 import { knotAngles } from '../core/freeform.js';
 import { FIELDS, MIN_POWER_STROKE, freeformErrors } from '../state/schema.js';
 import { DEGREE, DIMS_DECIMALS, FORCE_DECIMALS, dimsText, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain } from './display.js';
@@ -21,6 +22,7 @@ import { VALUE_DECIMALS, createTrackEditor, sampledText, trackSample } from './t
 /** @typedef {import('../state/schema.js').LimbState} LimbState */
 /** @typedef {import('../state/schema.js').LimbRow} LimbRow */
 /** @typedef {import('../state/schema.js').StringTrack} StringTrack */
+/** @typedef {import('../state/schema.js').Tuning} Tuning */
 /** @typedef {import('../state/store.js').Store} Store */
 /** @typedef {import('../state/store.js').Action} Action */
 /** @typedef {import('../core/interp.js').CurvePoint} CurvePoint */
@@ -34,7 +36,8 @@ import { VALUE_DECIMALS, createTrackEditor, sampledText, trackSample } from './t
  * - percent: ratio shown in %
  * - angle: angle shown in degrees (°)
  * - stiffness: stiffness in units.stiffness
- * @typedef {'draw' | 'dims' | 'force' | 'percent' | 'angle' | 'stiffness'} FieldKind
+ * - count: a whole number, for example strands
+ * @typedef {'draw' | 'dims' | 'force' | 'percent' | 'angle' | 'stiffness' | 'count'} FieldKind
  */
 
 /**
@@ -58,12 +61,15 @@ import { VALUE_DECIMALS, createTrackEditor, sampledText, trackSample } from './t
  */
 
 /**
- * Quantity of a field kind as used by core/units, or 'ratio' for percent.
+ * Quantity of a field kind as used by core/units, 'ratio' for percent, or
+ * 'count' for a plain number.
  * @param {FieldKind} kind
- * @returns {'length' | 'force' | 'angle' | 'stiffness' | 'ratio'}
+ * @returns {'length' | 'force' | 'angle' | 'stiffness' | 'ratio' | 'count'}
  */
 export function quantityOf(kind) {
   switch (kind) {
+    case 'count':
+      return 'count';
     case 'draw':
     case 'dims':
       return 'length';
@@ -96,6 +102,8 @@ export function unitOf(def, units) {
       return DEGREE;
     case 'stiffness':
       return units.stiffness;
+    case 'count':
+      return 'strands';
     default:
       return '%';
   }
@@ -130,6 +138,7 @@ export function withUnit(text, unit) {
 export function toDisplay(def, v, units) {
   const q = quantityOf(def.kind);
   if (q === 'ratio') return v * 100;
+  if (q === 'count') return v;
   return fromSI(v, q, convUnitOf(def, units));
 }
 
@@ -143,6 +152,7 @@ export function toDisplay(def, v, units) {
 export function fromDisplay(def, v, units) {
   const q = quantityOf(def.kind);
   if (q === 'ratio') return v / 100;
+  if (q === 'count') return v;
   return toSI(v, q, convUnitOf(def, units));
 }
 
@@ -158,6 +168,7 @@ export function fromDisplay(def, v, units) {
 export function parseField(def, text, units) {
   const q = quantityOf(def.kind);
   if (q === 'ratio') return parseNumber(text.replace(/\s*%\s*$/, '')) / 100;
+  if (q === 'count') return parseNumber(text.replace(/\s*strands?\s*$/, ''));
   if (q === 'angle') return parseQuantity(text.replace(/\s*°\s*$/, ''), q, 'deg');
   return parseQuantity(text, q, unitOf(def, units));
 }
@@ -878,12 +889,80 @@ export const TUNING_FIELDS = [
   },
 ];
 
+/** Cords of the stiffness settings: key prefix of their Tuning fields, label and id. */
+const STRETCH_CORDS = /** @type {const} */ ([
+  { key: 'string', label: 'String', id: 'string' },
+  { key: 'topCable', label: 'Top cable', id: 'top-cable' },
+  { key: 'bottomCable', label: 'Bottom cable', id: 'bottom-cable' },
+]);
+
+/** Options of the cord model select. */
+export const CORD_MODELS = Object.freeze([
+  { value: 'rigid', label: 'Rigid' },
+  { value: 'elastic', label: 'Elastic' },
+]);
+
+/** Options of a cord material select: the measured materials with their stiffness per strand, then custom. */
+export const MATERIAL_OPTIONS = Object.freeze([
+  ...CORD_MATERIALS.map((m) => ({ value: m.id, label: `${m.label}, ${plain(m.strand)} N per strand` })),
+  { value: CUSTOM_MATERIAL, label: 'Custom EA' },
+]);
+
+/**
+ * Strand count and custom EA of each cord. Shown with elastic cords: the
+ * strand count for a measured material, the EA for a custom one.
+ * @type {FieldDef[]}
+ */
+export const STRETCH_FIELDS = STRETCH_CORDS.flatMap(({ key, label, id }) => {
+  const material = /** @type {`${typeof key}Material`} */ (`${key}Material`);
+  const strands = /** @type {`${typeof key}Strands`} */ (`${key}Strands`);
+  const ea = /** @type {`${typeof key}EA`} */ (`${key}EA`);
+  const elastic = (/** @type {ProjectState} */ s) => s.tuning.cordModel === 'elastic';
+  return /** @type {FieldDef[]} */ ([
+    {
+      id: `${id}-strands`,
+      label: `${label} strands`,
+      ...(key === 'string' ? { glossary: /** @type {GlossaryKey} */ ('cordStiffness') } : {}),
+      path: `tuning.${strands}`,
+      kind: 'count',
+      get: (s) => s.tuning[strands],
+      action: (v) => ({ type: 'setTuning', tuning: { [strands]: v } }),
+      step: { strands: 1 },
+      decimals: { strands: 0 },
+      visible: (s) => elastic(s) && s.tuning[material] !== CUSTOM_MATERIAL,
+    },
+    {
+      id: `${id}-ea`,
+      label: `${label} stiffness EA`,
+      path: `tuning.${ea}`,
+      kind: 'force',
+      get: (s) => s.tuning[ea],
+      action: (v) => ({ type: 'setTuning', tuning: { [ea]: v } }),
+      step: { N: 1000, lbf: 200 },
+      decimals: { N: 0, lbf: 0 },
+      visible: (s) => elastic(s) && s.tuning[material] === CUSTOM_MATERIAL,
+    },
+  ]);
+});
+
+/**
+ * EA of each cord as text, for the line under the stiffness settings, or
+ * '' for rigid cords.
+ * @param {ProjectState} s
+ */
+export function stiffnessSummary(s) {
+  const ea = cordStiffness(s.tuning);
+  if (!ea) return '';
+  const f = (/** @type {number} */ v) => `${plain(Math.round(fromSI(v, 'force', s.units.force)))} ${s.units.force}`;
+  return `EA: string ${f(ea.string)}, top cable ${f(ea.topCable)}, bottom cable ${f(ea.bottomCable)}`;
+}
+
 /** Hint of the timing group. */
 export const TUNING_HINT = 'Analysis only: these changes show in the Timing panel. The cam, its checks and the exports stay the same.';
 
 /** Glossary entries of the fields that have an info button, in panel order. */
 export const FIELD_GLOSSARY = Object.freeze(
-  [GEOMETRY_FIELDS, FORCE_FIELDS, LIMB_FIELDS, TRACK_FIELDS, CORD_FIELDS, BODY_FIELDS, TUNING_FIELDS]
+  [GEOMETRY_FIELDS, FORCE_FIELDS, LIMB_FIELDS, TRACK_FIELDS, CORD_FIELDS, BODY_FIELDS, TUNING_FIELDS, STRETCH_FIELDS]
     .flat()
     .flatMap((def) => (def.glossary ? [def.glossary] : [])),
 );
@@ -996,7 +1075,20 @@ export function inputGroups(s) {
     },
     { title: 'Cords', rows: rows(CORD_FIELDS) },
     { title: 'Cam body', rows: rows(BODY_FIELDS) },
-    { title: 'Timing (analysis only)', rows: rows(TUNING_FIELDS) },
+    {
+      title: 'Timing (analysis only)',
+      rows: [
+        ...rows(TUNING_FIELDS),
+        { label: 'Cord model', text: option(CORD_MODELS, s.tuning.cordModel) },
+        ...(s.tuning.cordModel === 'elastic'
+          ? STRETCH_CORDS.flatMap(({ key, label }) => [
+              { label: `${label} material`, text: option(MATERIAL_OPTIONS, s.tuning[`${key}Material`]) },
+              ...rows(STRETCH_FIELDS.filter((def) => def.path.startsWith(`tuning.${key}`))),
+            ])
+          : []),
+        ...(s.tuning.cordModel === 'elastic' ? [{ label: 'Stiffness', text: stiffnessSummary(s) }] : []),
+      ],
+    },
   ];
 }
 
@@ -1257,8 +1349,10 @@ export function createSettings(panel, store) {
    * @param {{ id: string, label: string, options: readonly { value: string, label: string }[],
    *   get: (s: ProjectState) => string, action: (value: string, s: ProjectState) => Action,
    *   extra?: (value: string, s: ProjectState) => string | null,
-   *   note?: (value: string, s: ProjectState) => string }} def note: text
-   *   under the select after an accepted change (s: the state before it)
+   *   note?: (value: string, s: ProjectState) => string,
+   *   visible?: (s: ProjectState) => boolean }} def note: text
+   *   under the select after an accepted change (s: the state before it);
+   *   visible: false hides the select, default always shown
    */
   function choice(def) {
     const selectId = `c-${def.id}`;
@@ -1283,8 +1377,10 @@ export function createSettings(panel, store) {
       }
       select.value = value;
       shown = value;
+      wrap.hidden = def.visible ? !def.visible(s) : false;
     });
-    return h('div', { class: 'field unit-field', 'data-field': def.id }, h('label', { for: selectId }, def.label), select, msg);
+    const wrap = h('div', { class: 'field unit-field', 'data-field': def.id }, h('label', { for: selectId }, def.label), select, msg);
+    return wrap;
   }
 
   /**
@@ -1523,6 +1619,29 @@ export function createSettings(panel, store) {
     freeformLine.textContent = s.stringTrack.shape === 'freeform' ? freeformSummary(s.stringTrack) : '';
   });
 
+  const cordModel = choice({
+    id: 'cord-model',
+    label: 'Cord model',
+    options: CORD_MODELS,
+    get: (s) => s.tuning.cordModel,
+    action: (value) => ({ type: 'setTuning', tuning: { cordModel: /** @type {Tuning['cordModel']} */ (value) } }),
+  });
+  /** @param {(typeof STRETCH_CORDS)[number]} cord */
+  const materialChoice = ({ key, label, id }) => choice({
+    id: `${id}-material`,
+    label: `${label} material`,
+    options: MATERIAL_OPTIONS,
+    get: (s) => s.tuning[`${key}Material`],
+    action: (value) => ({ type: 'setTuning', tuning: { [`${key}Material`]: value } }),
+    visible: (s) => s.tuning.cordModel === 'elastic',
+  });
+  const stiffnessLine = h('p', { class: 'hint', 'data-testid': 'stiffness-summary', 'aria-live': 'polite' });
+  renderers.push((s) => {
+    const text = stiffnessSummary(s);
+    stiffnessLine.hidden = text === '';
+    if (stiffnessLine.textContent !== text) stiffnessLine.textContent = text;
+  });
+
   /**
    * @param {string} id
    * @param {string} title
@@ -1539,7 +1658,18 @@ export function createSettings(panel, store) {
     group('string-track', 'String track', trackShape, freeformLine, ...TRACK_FIELDS.map(field), trackEditor.editor, trackEditor.presets),
     group('cords', 'Cords', ...CORD_FIELDS.map(field)),
     group('cam-body', 'Cam body', ...BODY_FIELDS.map(field)),
-    group('timing', 'Timing (analysis only)', h('p', { class: 'hint', 'data-testid': 'timing-hint' }, TUNING_HINT), ...TUNING_FIELDS.map(field)),
+    group(
+      'timing',
+      'Timing (analysis only)',
+      h('p', { class: 'hint', 'data-testid': 'timing-hint' }, TUNING_HINT),
+      ...TUNING_FIELDS.map(field),
+      cordModel,
+      ...STRETCH_CORDS.flatMap((cord) => [
+        materialChoice(cord),
+        ...STRETCH_FIELDS.filter((def) => def.path.startsWith(`tuning.${cord.key}`)).map(field),
+      ]),
+      stiffnessLine,
+    ),
     units,
   );
 

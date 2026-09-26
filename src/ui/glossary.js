@@ -87,6 +87,10 @@ export const GLOSSARY = Object.freeze({
     term: 'nock travel',
     text: 'Nock travel: vertical movement of the nock point over the draw when the archer pulls only horizontally, from its highest to its lowest position.',
   },
+  cordStiffness: {
+    term: 'cord stiffness (EA)',
+    text: 'Cord stiffness (EA): axial stiffness of a cord, the strand count times the stiffness per strand of its material; a cord of length L under tension T stretches by L·T/EA.',
+  },
   drawStop: {
     term: 'draw stop',
     text: 'Draw stop: peg on the cam that touches the power cable at full draw and ends the draw. The gap is its clearance to the cable.',

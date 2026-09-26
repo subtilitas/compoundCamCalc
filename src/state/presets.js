@@ -93,6 +93,13 @@ export function defaultState() {
       flangeThickness: 0.002,
       grooveClearance: 0.0005,
     },
-    tuning: { topCable: 0, bottomCable: 0, string: 0, nockHeight: 0 },
+    // Rigid cords; the elastic values: 24 strands of BCY 452X, EA 296 640 N.
+    tuning: {
+      topCable: 0, bottomCable: 0, string: 0, nockHeight: 0,
+      cordModel: 'rigid',
+      stringMaterial: '452x', stringStrands: 24, stringEA: 296640,
+      topCableMaterial: '452x', topCableStrands: 24, topCableEA: 296640,
+      bottomCableMaterial: '452x', bottomCableStrands: 24, bottomCableEA: 296640,
+    },
   };
 }

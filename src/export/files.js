@@ -11,6 +11,7 @@
  */
 
 import { transform } from '../core/bspline.js';
+import { buildLengths, cordStiffness } from '../core/cords.js';
 import { describeError } from '../core/errors.js';
 import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
 import { createTimingLayout, timingId, timingPoseAt } from '../core/timinglayout.js';
@@ -298,6 +299,45 @@ function halfEntities(pitch, layer, h, sy, nock) {
 }
 
 /**
+ * Cord model of the timing files as text: 'rigid cords', or the EA of
+ * each elastic cord.
+ * @param {ProjectState} state
+ */
+function timingCords(state) {
+  const ea = cordStiffness(state.tuning);
+  if (!ea) return 'rigid cords';
+  return `elastic cords, EA string ${Math.round(ea.string)} N, top cable ${Math.round(ea.topCable)} N, bottom cable ${Math.round(ea.bottomCable)} N`;
+}
+
+/**
+ * README lines of the build lengths with elastic cords: free length and
+ * length at 445 N (100 lbf) of each cord, with its EA; none for rigid cords.
+ * @param {import('../core/layout.js').LayoutContext} ctx
+ * @param {ProjectState} state
+ * @returns {string[]}
+ */
+function stretchLines(ctx, state) {
+  const stiffness = cordStiffness(state.tuning);
+  const Ts = ctx.loads.Ts[0];
+  const Tc = ctx.loads.Tc[0];
+  if (!stiffness || !Number.isFinite(Ts) || !Number.isFinite(Tc)) return [];
+  const b = buildLengths(ctx.lengths, { string: Ts, cable: Tc }, stiffness);
+  /**
+   * @param {string} label
+   * @param {{ free: number, loaded: number }} c
+   * @param {number} ea
+   */
+  const line = (label, c, ea) => `  ${label} (EA ${Math.round(ea)} N): free ${mmIn(c.free)}, at 445 N (100 lbf) ${mmIn(c.loaded)}`;
+  return [
+    '',
+    'Build lengths with cord stretch (Timing settings, analysis only), pitch line:',
+    line('String', b.string, stiffness.string),
+    line('Top cable', b.topCable, stiffness.topCable),
+    line('Bottom cable', b.bottomCable, stiffness.bottomCable),
+  ];
+}
+
+/**
  * All export files of a result. Never throws.
  * @param {SolveResult} result a full solve with status ok
  * @param {ProjectState} state the state the result was solved for
@@ -450,7 +490,7 @@ function exportChecked(result, state, options) {
         : a.stops.first === 'bottom' ? `bottom cam first, top gap ${(a.stops.gapTop * MM).toFixed(2)} mm` : 'no stop reached';
     const ttext = [
       title[0],
-      'Timing analysis only: the cam is the design above; rigid cords, nock free to move up and down.',
+      `Timing analysis only: the cam is the design above; ${timingCords(state)}, nock free to move up and down.`,
       'Units mm, 1:1. Origin grip pivot point, archer to the right. BRACE green, END red (end of the draw).',
       `Top cable ${signedMm(t.topCable)}, bottom cable ${signedMm(t.bottomCable)}, string ${signedMm(t.string)}, nocking point ${signedMm(t.nockHeight)}`,
       `Brace height ${mmIn(tl.xBrace)}, nock ${(tb.y * MM).toFixed(2)} mm above the axis at brace`,
@@ -490,6 +530,7 @@ function exportChecked(result, state, options) {
       + 'some programs hide wireframe on import. Outlines lie within 0.01 mm of the model, without the cut offset of the DXF files.',
     ...bossNote(model),
     ...(warnings.length ? ['', 'Warnings:', ...warnings.map((w) => `  ${w}`)] : []),
+    ...stretchLines(ctx, state),
     ...(tl
       ? ['', 'The timing files analyse the cam above with the timing settings; they do not change it.',
           ...(timingProblems.length ? ['Problems of the timing analysis:', ...timingProblems.map((p) => `  ${p}`)] : [])]

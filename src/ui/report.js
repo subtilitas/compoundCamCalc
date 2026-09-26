@@ -22,6 +22,7 @@ import { statItems } from './stats.js';
 import { createStringPlan, planDims } from './stringplan.js';
 import { timingItems, timingProblems } from './timing.js';
 import { hasChangedTiming } from '../core/timinglayout.js';
+import { cordStiffness } from '../core/cords.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../core/layout.js').LayoutContext} LayoutContext */
@@ -116,7 +117,7 @@ export function reportData(src) {
     diagnostics: diagnosticItems(src.result),
     warnings: warningItems(src.result),
     ctx,
-    lengths: ctx ? planDims(ctx, units) : [],
+    lengths: ctx ? planDims(ctx, units, null, cordStiffness(state.tuning)) : [],
     loads: ctx ? loadMaxima(ctx.loads, units) : [],
     table: ctx ? loadTable(ctx, units) : { head: [], rows: [] },
     timing,

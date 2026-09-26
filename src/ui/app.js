@@ -13,6 +13,7 @@ import { loadCurrent, startAutosave, loadSaved } from './autosave.js';
 import { createFileMenu } from './filemenu.js';
 import { createHelpButton } from './help.js';
 import { createCamView } from './camview.js';
+import { cordStiffness } from '../core/cords.js';
 import { bowPoseAt, createBowPose, createLayout } from '../core/layout.js';
 import { createChart } from './chart.js';
 import { byId, h } from './dom.js';
@@ -350,7 +351,7 @@ export function startApp() {
     }
     const ctx = layoutOf.layout;
     scrubber.setDomain(ctx, now.units);
-    plan.render(shownResult, ctx, now.units, stale, outdated);
+    plan.render(shownResult, ctx, now.units, stale, outdated, shown ? cordStiffness(shown.state.tuning) : null);
     loads.render(ctx, now.units, stale, outdated);
     timing.render(current?.result ?? null, now.units, stale, outdated);
     // Cached values show in the units selected now.

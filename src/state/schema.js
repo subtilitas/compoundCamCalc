@@ -5,6 +5,7 @@
  */
 
 import { MAX_FORCE, MAX_POINTS, MIN_FORCE, MIN_GAP, drawRange, generateCurve } from '../core/curve.js';
+import { CORD_MATERIALS, CUSTOM_MATERIAL } from '../core/cords.js';
 import { FREEFORM_POINTS, FREEFORM_RANGE } from '../core/freeform.js';
 import { INCH, fromSI } from '../core/units.js';
 import { defaultState } from './presets.js';
@@ -121,15 +122,29 @@ export const ANALYSIS_ONLY = Object.freeze(['tuning']);
  */
 
 /**
- * Cord length changes of the timing analysis: they change the analysis of
- * the cam, never the cam. Positive values lengthen the cord or raise the
- * nocking point.
+ * Cord length changes and cord stiffness of the timing analysis: they
+ * change the analysis of the cam, never the cam. Positive values lengthen
+ * the cord or raise the nocking point. With elastic cords each cord takes
+ * its EA from a measured material and a strand count, or from the entered
+ * EA for a custom material (core/cords).
  * @typedef {object} Tuning
  * @property {number} topCable top cable length change (m)
  * @property {number} bottomCable bottom cable length change (m)
  * @property {number} string string length change, whole string (m)
  * @property {number} nockHeight nocking point above the string centre, along the string (m)
+ * @property {'rigid' | 'elastic'} cordModel
+ * @property {CordMaterial} stringMaterial
+ * @property {number} stringStrands
+ * @property {number} stringEA EA of a custom string (N)
+ * @property {CordMaterial} topCableMaterial
+ * @property {number} topCableStrands
+ * @property {number} topCableEA (N)
+ * @property {CordMaterial} bottomCableMaterial
+ * @property {number} bottomCableStrands
+ * @property {number} bottomCableEA (N)
  */
+
+/** @typedef {'452x' | 'fastflight-plus' | 'dacron-b50' | 'custom'} CordMaterial */
 
 /**
  * @typedef {object} ProjectState
@@ -153,14 +168,17 @@ export const ANALYSIS_ONLY = Object.freeze(['tuning']);
 /**
  * @typedef {object} FieldSpec
  * @property {string} label name used at the start of messages
- * @property {'length' | 'force' | 'angle' | 'stiffness' | 'ratio'} quantity
+ * @property {'length' | 'force' | 'angle' | 'stiffness' | 'ratio' | 'count'} quantity
  * @property {string} unit unit of the message; '%' for ratios
  * @property {number} min SI value (ratio for '%')
  * @property {number} max SI value (ratio for '%')
+ * @property {boolean} [integer] whole numbers only
  */
 
 const DEG = Math.PI / 180;
 const MM = 1e-3;
+/** Values of a cord material select: the measured materials, then custom. */
+const CORD_MATERIAL_VALUES = Object.freeze([...CORD_MATERIALS.map((m) => m.id), CUSTOM_MATERIAL]);
 
 /**
  * Ranges of the numeric fields, keyed by path.
@@ -201,6 +219,12 @@ export const FIELDS = Object.freeze({
   'tuning.bottomCable': { label: 'Bottom cable length change', quantity: 'length', unit: 'mm', min: -20 * MM, max: 20 * MM },
   'tuning.string': { label: 'String length change', quantity: 'length', unit: 'mm', min: -50 * MM, max: 50 * MM },
   'tuning.nockHeight': { label: 'Nocking point above centre', quantity: 'length', unit: 'mm', min: -50 * MM, max: 50 * MM },
+  'tuning.stringStrands': { label: 'String strands', quantity: 'count', unit: 'strands', min: 5, max: 200, integer: true },
+  'tuning.topCableStrands': { label: 'Top cable strands', quantity: 'count', unit: 'strands', min: 5, max: 200, integer: true },
+  'tuning.bottomCableStrands': { label: 'Bottom cable strands', quantity: 'count', unit: 'strands', min: 5, max: 200, integer: true },
+  'tuning.stringEA': { label: 'String stiffness EA', quantity: 'force', unit: 'N', min: 1e4, max: 1e8 },
+  'tuning.topCableEA': { label: 'Top cable stiffness EA', quantity: 'force', unit: 'N', min: 1e4, max: 1e8 },
+  'tuning.bottomCableEA': { label: 'Bottom cable stiffness EA', quantity: 'force', unit: 'N', min: 1e4, max: 1e8 },
 });
 
 /**
@@ -216,6 +240,10 @@ export const ENUMS = Object.freeze({
   'curve.mode': { label: 'Curve mode', values: ['parametric', 'custom'] },
   'limb.mode': { label: 'Limb input mode', values: ['stiffness', 'travel', 'table'] },
   'stringTrack.shape': { label: 'String track shape', values: ['eccentric', 'ellipse', 'freeform'] },
+  'tuning.cordModel': { label: 'Cord model', values: ['rigid', 'elastic'] },
+  'tuning.stringMaterial': { label: 'String material', values: CORD_MATERIAL_VALUES },
+  'tuning.topCableMaterial': { label: 'Top cable material', values: CORD_MATERIAL_VALUES },
+  'tuning.bottomCableMaterial': { label: 'Bottom cable material', values: CORD_MATERIAL_VALUES },
 });
 
 /**
@@ -250,6 +278,7 @@ function plain(v) {
  */
 export function specValue(spec, value) {
   if (spec.quantity === 'ratio') return value * 100;
+  if (spec.quantity === 'count') return value;
   return fromSI(value, spec.quantity, spec.unit);
 }
 
@@ -303,6 +332,7 @@ export function validateField(path, value) {
     return { path, message: `${spec.label} must be a number` };
   }
   if (value < spec.min || value > spec.max) return { path, message: rangeMessage(spec) };
+  if (spec.integer && !Number.isInteger(value)) return { path, message: `${spec.label} must be a whole number` };
   return null;
 }
 
