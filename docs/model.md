@@ -1040,9 +1040,10 @@ reaches 0. Both gaps are 0 at x_f on the design, where the peg is placed.
 When a gap turns negative between two samples, the Illinois method
 locates the stop to a gap below 1e-12 m or a bracket below 1e-11 m. The
 other cam counts as stopped at the same time when its gap there is at
-most 1e-9 m. Without a stop by full draw the march continues at the last
-grid spacing up to 10 % of the design draw beyond x_f; beyond that the
-result reports `analysis-no-stop`.
+most 1e-9 m. Without a stop by full draw the march continues in equal
+steps, at least 10 and none longer than the last grid spacing, to 10 % of
+the design draw beyond x_f; without a stop there the result reports
+`analysis-no-stop`.
 
 With rigid cords the first stop x₁ is the wall, and the grid ends there.
 Past x₁ the stopped cam keeps its gap at 0. The five constraints then leave
@@ -1081,7 +1082,7 @@ other code and `ok` without diagnostics.
 
 | Code | Condition |
 |---|---|
-| `analysis-invalid-input` | an input outside its range, a missing stop diameter, or any exception while reading the input |
+| `analysis-invalid-input` | an input outside its range, a stop that is neither an object nor null or missing, a missing cable diameter with a stop, or any exception while reading the input |
 | `analysis-brace` | the design has no cord tangents at brace, the brace search fails, the changed bow braces at or behind full draw, or a cam rests on its stop at brace |
 | `analysis-no-convergence` | a closure, the nock search or a stop search fails, without a fold ahead |
 | `analysis-slack` | a tension ≤ 0 |
@@ -1379,7 +1380,7 @@ first 123 mm of the power stroke.
 | Groove margin in ρ_lim | 0.2 mm |
 | Outline samples | 360 (coarse), 720 (full) intervals |
 | Forward model of the final cam | 100 (coarse), 1500 (full) samples |
-| Asymmetric analysis | 300 samples to full draw; closures as the forward model; F_y and brace F below 1e-11 of the largest tension; secant steps at most 10 mm in y and 20 mm in x, at most 40; stop located to 1e-12 m in the gap or 1e-11 m in x; stops within 1e-9 m count as simultaneous; stop search up to 10 % of the draw beyond x_f |
+| Asymmetric analysis | 300 samples to full draw; closures as the forward model; F_y and brace F below 1e-11 of the largest tension; secant steps at most 10 mm in y and 20 mm in x, at most 40; stop located to 1e-12 m in the gap or 1e-11 m in x; stops within 1e-9 m count as simultaneous; stop search to 10 % of the draw beyond x_f in at least 10 equal steps |
 
 ## Limitations
 

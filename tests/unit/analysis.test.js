@@ -290,6 +290,16 @@ describe('analysis draw stops', () => {
     expect(a.stops.x).toBeGreaterThan(a.fullDraw);
   });
 
+  it('searches beyond full draw at any sample count', () => {
+    const fine = analyseTiming({ ...base, offsets: { string: 20 * MM } });
+    for (const samples of [2, 5, 20]) {
+      const a = analyseTiming({ ...base, samples, offsets: { string: 20 * MM } });
+      expect(a.status).toBe('ok');
+      expect(a.stops.first).toBe('both');
+      expect(Math.abs(a.stops.x - fine.stops.x)).toBeLessThanOrEqual(1e-9);
+    }
+  });
+
   it('ends at full draw without a stop peg', () => {
     const a = analyseTiming({ ...base, stop: null, offsets: { topCable: 1 * MM } });
     expect(a.status).toBe('ok');
@@ -383,6 +393,10 @@ describe('analysis diagnostics', () => {
     ['a sample count of 1', { ...base, samples: 1 }],
     ['an iteration limit of 0', { ...base, maxIterations: 0 }],
     ['a stop without a cable diameter', { ...base, cableDiameter: undefined }],
+    ['a stop that is false', { ...base, stop: false }],
+    ['a stop that is 0', { ...base, stop: 0 }],
+    ['a stop that is an empty string', { ...base, stop: '' }],
+    ['a stop that is NaN', { ...base, stop: NaN }],
     ['a getter that throws', Object.defineProperty({ ...base }, 'offsets', { get() { throw new Error('boom'); } })],
   ])('rejects %s as invalid input', (_name, input) => {
     const a = analyseTiming(/** @type {any} */ (input));

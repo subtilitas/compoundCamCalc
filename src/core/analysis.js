@@ -85,6 +85,8 @@ const EVENT_WIDTH = 1e-11;
 const SIMULTANEOUS = 1e-9;
 /** A failure counts as a fold when the determinant extrapolates to zero within this many steps. */
 const FOLD_STEPS = 3;
+/** Fewest steps of the stop search beyond full draw. */
+const MIN_EXTENSION_STEPS = 10;
 /** Iteration limit of the stop search. */
 const EVENT_ITERATIONS = 100;
 
@@ -527,7 +529,8 @@ function analyseChecked(input) {
   }
   /** @type {Context['stop']} */
   let stop = null;
-  if (input.stop) {
+  if (input.stop !== undefined && input.stop !== null) {
+    if (typeof input.stop !== 'object') return failed('analysis-invalid-input', 'the stop peg must be an object or null');
     const { x, y, radius } = input.stop;
     const d = input.cableDiameter;
     const lengthsOk = [x, y].every((v) => inRange(v, -LENGTH_MAX, LENGTH_MAX)) && inRange(radius, 0, LENGTH_MAX) && inRange(d, 0, LENGTH_MAX);
@@ -620,8 +623,9 @@ function solveBrace(ctx, pose, x0, slope) {
  */
 
 /**
- * March from brace over the grid, then beyond full draw at the last grid
- * spacing, until the first stop.
+ * March from brace over the grid, then beyond full draw in equal steps no
+ * longer than the last grid spacing (at least 10) up to xLimit, until the
+ * first stop.
  * @param {Context} ctx
  * @param {Pose} pose brace pose
  * @param {Float64Array} grid
@@ -630,13 +634,17 @@ function solveBrace(ctx, pose, x0, slope) {
  */
 function marchDraw(ctx, pose, grid, xLimit) {
   const n = grid.length;
-  const spacing = grid[n - 1] - grid[n - 2];
+  // Steps beyond full draw: the last grid spacing, at least MIN_EXTENSION_STEPS
+  // of them, ending exactly at xLimit.
+  const extension = xLimit - grid[n - 1];
+  const steps = Math.max(MIN_EXTENSION_STEPS, Math.ceil(extension / (grid[n - 1] - grid[n - 2])));
   /** @type {March} */
   const march = { samples: [{ x: grid[0], pose: copyPose(pose) }], failure: '', failedAt: NaN, noStop: false, fold: false, first: null };
   const { stop } = ctx;
   for (let i = 1; ; i++) {
-    const x = i < n ? grid[i] : grid[n - 1] + (i - n + 1) * spacing;
-    if (i >= n && (!stop || x > xLimit)) {
+    const k = i - n + 1;
+    const x = i < n ? grid[i] : k === steps ? xLimit : grid[n - 1] + (k * extension) / steps;
+    if (i >= n && (!stop || k > steps)) {
       march.noStop = Boolean(stop);
       return march;
     }
