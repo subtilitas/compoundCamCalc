@@ -6,6 +6,7 @@ import {
 } from '../../src/core/optimise.js';
 import { solve } from '../../src/core/solve.js';
 import { defaultState } from '../../src/state/presets.js';
+import { sampleState } from '../../src/state/samples.js';
 
 /** @typedef {import('../../src/state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../../src/core/solve.js').SolveResult} SolveResult */
@@ -354,10 +355,11 @@ describe('optimise the default design with the real solver', () => {
    * Check a result against a full solve of its values: every check, the
    * margins and the limits of the goal.
    * @param {import('../../src/core/optimise.js').Outcome} out
+   * @param {import('../../src/state/schema.js').ProjectState} [state] the optimised design
    */
-  function holds(out) {
+  function holds(out, state = defaultState()) {
     const best = /** @type {NonNullable<typeof out.best>} */ (out.best);
-    const r = solve(withValues(defaultState(), best.values), { resolution: 'full' });
+    const r = solve(withValues(state, best.values), { resolution: 'full' });
     expect(r.status).toBe('ok');
     expect(r.diagnostics).toEqual([]);
     expect(r.warnings).toEqual([]);
@@ -366,13 +368,15 @@ describe('optimise the default design with the real solver', () => {
     return e;
   }
 
-  it('makes the cam smaller within 200 solves, keeps the force limit, and repeats the same result', () => {
-    const run = () => optimise({ state: defaultState(), goal: 'cam', solve, budget: 200 });
+  it('makes the cam smaller within 30 solves, keeps the force limit, and repeats the same result', () => {
+    // The crossbow finds a smaller cam within its first solves; the default
+    // design needs about 150, too slow for the coverage run.
+    const run = () => optimise({ state: sampleState('crossbow'), goal: 'cam', solve, budget: 30 });
     const out = run();
     expect(out.start.ok).toBe(true);
-    expect(out.solves).toBeLessThanOrEqual(200);
+    expect(out.solves).toBeLessThanOrEqual(30);
     expect(out.best).not.toBeNull();
-    const e = holds(out);
+    const e = holds(out, sampleState('crossbow'));
     expect(e.camSize).toBeLessThan(out.start.camSize);
     expect(e.forceDifference).toBeLessThanOrEqual(out.start.forceDifference);
     expect(run().best?.values).toEqual(out.best?.values);

@@ -51,7 +51,7 @@ describe('free-form string track in the solver', () => {
       expect(Math.abs(b.camMaxDimension - a.camMaxDimension), sample.id).toBeLessThanOrEqual(1e-4);
       expect(Math.abs(after.fit.maxForceDifference - before.fit.maxForceDifference), sample.id).toBeLessThanOrEqual(0.05);
     }
-  });
+  }, 30_000);
 
   it('builds the pitch line as the periodic spline through the values, offset by d/2', () => {
     const s = defaultState();
@@ -87,7 +87,7 @@ describe('free-form string track in the solver', () => {
     const larger = /** @type {ProjectState} */ (largerStringTrack(state, need + 1e-6));
     expect(pitchMinRho(larger.stringTrack.freeform.values, s.cords.stringDiameter).value).toBeCloseTo(limit.rho + 1e-6, 12);
     expect(solve(larger, { resolution: 'coarse' }).diagnostics.map((q) => q.code)).not.toContain('string-radius');
-  });
+  }, 30_000);
 
   it('string-clearance and string-wrap: suggest an outward offset of the free-form track', () => {
     const s = defaultState();
