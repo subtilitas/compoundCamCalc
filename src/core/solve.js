@@ -936,7 +936,16 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
   if (analysis && resolution === 'full') {
     const tAnalysis = now();
     const peg = res.posts.find((p) => p.id === 'cable-stop');
-    res.analysis = analyseTiming({
+    // Untyped options: a field that cannot be read makes the analysis
+    // input invalid, never the solve.
+    /** @type {AnalysisOption | null} */
+    let fields;
+    try {
+      fields = { offsets: analysis.offsets, nock: analysis.nock, samples: analysis.samples };
+    } catch {
+      fields = null;
+    }
+    res.analysis = !fields ? analyseTiming(/** @type {any} */ (null)) : analyseTiming({
       geometry,
       stringTrack: stringPitch,
       cableTrack: cablePitch,
@@ -945,9 +954,9 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
       cableTermination: closed.psiStart,
       stop: peg ? { x: peg.x, y: peg.y, radius: peg.radius } : null,
       cableDiameter: cords.cableDiameter,
-      offsets: analysis.offsets,
-      nock: analysis.nock,
-      samples: analysis.samples,
+      offsets: fields.offsets,
+      nock: fields.nock,
+      samples: fields.samples,
       maxIterations,
     });
     res.timings.analysis = now() - tAnalysis;

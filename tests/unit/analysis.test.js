@@ -99,6 +99,13 @@ describe('analysis with unchanged cords', () => {
     expect(withAnalysis.status).toBe(plain.status);
     expect(withAnalysis.diagnostics).toEqual(plain.diagnostics);
     expect(withAnalysis.warnings).toEqual(plain.warnings);
+    for (const key of ['offsets', 'nock', 'samples']) {
+      const hostile = Object.defineProperty({}, key, { get() { throw new Error('unreadable'); } });
+      const r = solve(state, { analysis: /** @type {any} */ (hostile) });
+      expect(r.status).toBe(plain.status);
+      expect(r.diagnostics).toEqual(plain.diagnostics);
+      expect(r.analysis?.diagnostics.map((d) => d.code)).toEqual(['analysis-invalid-input']);
+    }
     const slack = solve(state, { analysis: { offsets: { nockHeight: 0.02 }, nock: 'board' } });
     expect(slack.analysis?.status).toBe('infeasible');
     expect(slack.status).toBe('ok');
