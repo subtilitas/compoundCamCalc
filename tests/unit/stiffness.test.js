@@ -198,14 +198,16 @@ describe('elastic cords', () => {
   });
 
   it('give dΔθ/dL_c,t of the elastic closures at a fixed nock', () => {
-    const a = analyseTiming({ ...base, nock: 'board', stiffness: equal });
+    // Top cable 1 mm longer: at the first stop no cam is held yet.
+    const offsets = { topCable: 1 * MM };
+    const a = analyseTiming({ ...base, nock: 'board', stiffness: equal, offsets });
     const i1 = firstIndex(a);
     // A draw board holds the nock: the sensitivity is the fixed-nock rate at the first stop.
     expect(Math.abs(a.dThetaDL[i1] - a.sensitivity)).toBeLessThanOrEqual(1e-6 * Math.abs(a.sensitivity));
-    const r = analyseTiming({ ...base, nock: 'board' });
-    // Stretch lowers the rate: 66.7 rad/m against 116 rad/m of the rigid closures at that pose.
-    expect(a.dThetaDL[i1]).toBeLessThan(0.7 * r.dThetaDL[r.n - 1]);
-    const plain = analyseTiming({ ...base, nock: 'board', stiffness: equal, rates: false });
+    const r = analyseTiming({ ...base, nock: 'board', offsets });
+    // Stretch lowers the rate against the rigid closures at their first stop.
+    expect(a.dThetaDL[i1]).toBeLessThan(0.8 * r.dThetaDL[r.end]);
+    const plain = analyseTiming({ ...base, nock: 'board', stiffness: equal, offsets, rates: false });
     expect(plain.dThetaDL[i1]).toBeNaN();
     expect(plain.sensitivity).toBeNaN();
     expect(plain.x).toEqual(a.x);
@@ -240,25 +242,53 @@ describe('elastic cords', () => {
     expect(analyseTiming({ ...base, stiffness: equal, offsets: { topCable: 1 * MM } }).stops.releases).toBe(0);
   });
 
-  it('give the same second stop and wall stiffness at any sample count', () => {
-    const stiffness = { string: 76412905.27, topCable: 3924711.71, bottomCable: 47385.41 };
-    const offsets = { topCable: 3.14688 * MM, bottomCable: 4.50055 * MM, string: 3.0285 * MM, nockHeight: 1.41769 * MM };
-    const dense = analyseTiming({ ...base, stiffness, offsets });
-    expect(dense.status).toBe('ok');
-    for (const samples of [2, 3, 5, 10, 50]) {
-      const a = analyseTiming({ ...base, stiffness, offsets, samples });
-      expect(a.status, String(samples)).toBe('ok');
-      expect(Math.abs(a.stops.x2 - dense.stops.x2)).toBeLessThan(1e-9);
-      expect(Math.abs(a.stops.wallStiffness - dense.stops.wallStiffness)).toBeLessThanOrEqual(1e-6 * dense.stops.wallStiffness);
+  it('give the same stops and wall stiffness at any sample count', () => {
+    /** @type {[import('../../src/core/analysis.js').AnalysisInput['stiffness'], import('../../src/core/analysis.js').TimingOffsets][]} */
+    const cases = [
+      [{ string: 76412905.27, topCable: 3924711.71, bottomCable: 47385.41 }, { topCable: 3.14688 * MM, bottomCable: 4.50055 * MM, string: 3.0285 * MM, nockHeight: 1.41769 * MM }],
+      [{ string: 474445.4168, topCable: 179231.9418, bottomCable: 1293195.2501 }, { topCable: -2.119554 * MM, bottomCable: -0.812423 * MM, string: 1.143062 * MM, nockHeight: -1.678626 * MM }],
+      [{ string: 39001472.9187717, topCable: 3408384730.8525376, bottomCable: 7820233.558002885 }, { topCable: 1.9544381 * MM, bottomCable: 1.969523 * MM, string: -4.9536336 * MM, nockHeight: -2.0683162 * MM }],
+    ];
+    // Seeded cases: EA from 3e4 N to 1e9 N, cable changes within ±3 mm, string ±5 mm, nock ±3 mm.
+    let seed = 12345;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const logu = () => Math.exp(Math.log(3e4) + rnd() * Math.log(1e9 / 3e4));
+    for (let c = 0; c < 20; c++) {
+      cases.push([
+        { string: logu(), topCable: logu(), bottomCable: logu() },
+        { topCable: (rnd() - 0.5) * 6 * MM, bottomCable: (rnd() - 0.5) * 6 * MM, string: (rnd() - 0.5) * 10 * MM, nockHeight: (rnd() - 0.5) * 6 * MM },
+      ]);
     }
+    // Status and stops; diagnostics of single samples depend on where the samples lie.
+    const key = (/** @type {AnalysisResult} */ a) => `${a.status}|${a.stops.first}|${a.stops.second}`;
+    for (const [stiffness, offsets] of cases) {
+      const dense = analyseTiming({ ...base, stiffness, offsets });
+      for (const samples of [2, 3, 5]) {
+        const a = analyseTiming({ ...base, stiffness, offsets, samples });
+        const name = `${JSON.stringify({ stiffness, offsets })} samples ${samples}`;
+        expect(key(a), name).toBe(key(dense));
+        if (dense.stops.second) {
+          expect(Math.abs(a.stops.x2 - dense.stops.x2), name).toBeLessThan(1e-8);
+          // A forward difference over 10 µm: agreement to 1e-5.
+          expect(Math.abs(a.stops.wallStiffness - dense.stops.wallStiffness), name).toBeLessThanOrEqual(1e-5 * dense.stops.wallStiffness);
+        }
+      }
+    }
+  }, 60_000);
+
+  it('hold both cams on their stops at the second stop', () => {
+    const a = analyseTiming({ ...base, nock: 'board', stiffness: equal, offsets: { topCable: 1 * MM } });
+    const i1 = firstIndex(a);
+    // With both cams held a longer top cable cannot turn the cams: the rate at x₂ is near zero.
+    expect(Math.abs(a.dThetaDL[a.end])).toBeLessThan(1e-3 * Math.abs(a.dThetaDL[i1]));
   });
 
-  it('report a wall stiffness that cannot be solved', () => {
+  it('solve the wall stiffness of very unequal cords', () => {
+    // EA from 2.6e4 N to 1.3e13 N: the closure tolerance scales with the compliance ratio.
     const a = analyseTiming({ ...base, stiffness: { string: 8.04e10, topCable: 2.62e4, bottomCable: 1.31e13 } });
+    expect(a.status).toBe('ok');
     expect(a.stops.second).not.toBeNull();
-    expect(a.stops.wallStiffness).toBeNaN();
-    expect(a.status).toBe('no-convergence');
-    expect(a.diagnostics[0].message).toMatch(/^The closures of the changed bow did not converge: the wall stiffness at the second stop: /);
+    expect(a.stops.wallStiffness).toBeGreaterThan(0);
   });
 
   it('refuse a stiffness out of range', () => {

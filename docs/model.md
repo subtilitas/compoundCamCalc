@@ -1019,7 +1019,12 @@ forward model. ∂g_s,t/∂y = u_s,t,y and ∂g_s,b/∂y = −u_s,b,y.
 - **Closures.** Newton on the 4×4 system at fixed (x, y), step limits
   0.5 rad in θ and 0.1 rad in α, the stop rule of the forward model.
 - **Free nock.** A secant on y at each x drives F_y to at most 1e-11 of
-  the largest tension (y steps at most 10 mm). Its last slope, or a
+  the largest tension (y steps at most 10 mm). When it fails, a bracket
+  search steps y by 1 mm on both sides of the start, at most 30 steps
+  each, until F_y changes sign, then applies the Illinois method. A search
+  whose F_y stops falling accepts its best pose at 1e-6 of the largest
+  tension: with stiff elastic cords the closure residual turns into F_y
+  noise above 1e-11. Its last slope, or a
   difference quotient over 1 µm when the start already balances, is
   k_y = dF_y/dy.
 - **Draw board.** y = 0; F_y is reported.
@@ -1132,8 +1137,11 @@ the cam can reach its stop again. `stops.releases` counts the releases.
   evaluation, plus a correction D for the stretch and the stops. D comes
   from forward differences over 1e-7 rad in q and 1 N in λ, is carried from
   pose to pose, and follows Broyden updates. It is formed again when an
-  iteration reduces the residual by less than a factor 4. Newton stops at a
-  residual of 1e-14 m, or by the stop rule of the forward model. ∇gap_i
+  iteration reduces the residual by less than a factor 4. Newton stops when
+  each closure row k is within 1e-14 m · max(1, C_k / C_min) and each stop
+  row within 1e-14 m: the tension noise of a stiff cord shows in the
+  closure of a softer one. Otherwise it stops by the stop rule of the
+  forward model, with the limit 1e-10 m scaled the same way per row. ∇gap_i
   comes from central differences over 1e-7 rad of the cable contact of
   that cam.
 - **Second stop.** Past x₁ the march continues with the first cam on its
@@ -1146,7 +1154,13 @@ the cam can reach its stop again. `stops.releases` counts the releases.
 - **Wall stiffness.** dF/dx with both cams on their stops, a forward
   difference over 10 µm at x₂, from a fresh copy of the pose at x₂; a
   failed solve is tried again in 4 and then 16 sub-steps. A solve that
-  still fails gives `analysis-no-convergence`.
+  still fails gives `analysis-no-convergence`; no input tested (EA from
+  1e3 N to 1e16 N, cable changes within ±5 mm) reaches it. The sample at x₂ holds the
+  pose with both cams on their stops.
+- **Continuation.** A step of the march, of a stop search or of a release
+  search that fails from its predicted start is solved again from the last
+  pose, directly and then in 4 and 16 equal steps, so that the sample
+  count does not decide whether the draw goes on.
 - **Timing rate.** dΔθ/dL_c,t at a fixed nock per sample from the elastic
   Jacobian over (q, λ), formed by forward differences at the sample with
   its stops held: J·dz = e_c,t. With EA = 3e5 N on the default design it
@@ -1527,7 +1541,7 @@ first 123 mm of the power stroke.
 | Outline samples | 360 (coarse), 720 (full) intervals |
 | Forward model of the final cam | 100 (coarse), 1500 (full) samples |
 | Asymmetric analysis | 300 samples to full draw; closures as the forward model; F_y and brace F below 1e-11 of the largest tension; secant steps at most 10 mm in y and 20 mm in x, at most 40; stop located to 1e-12 m in the gap or 1e-11 m in x; stops within 1e-9 m count as simultaneous; stop search to 10 % of the draw beyond x_f in at least 10 equal steps |
-| Elastic cords | EA from 1e3 N to 1e18 N; Newton stop at 1e-14 m; Jacobian correction from forward differences over 1e-7 rad and 1 N, formed again below a residual reduction of 4; stop-gap gradient by central differences over 1e-7 rad; wall stiffness over 10 µm; second-stop search ends at 5 times the peak force |
+| Elastic cords | EA from 1e3 N to 1e18 N; Newton stop at 1e-14 m · max(1, C_k/C_min) per closure row; F_y accepted at 1e-6 of the largest tension when the nock search stagnates; Jacobian correction from forward differences over 1e-7 rad and 1 N, formed again below a residual reduction of 4; stop-gap gradient by central differences over 1e-7 rad; wall stiffness over 10 µm; second-stop search ends at 5 times the peak force |
 
 ## Limitations
 

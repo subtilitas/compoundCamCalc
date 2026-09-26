@@ -89,6 +89,12 @@ const MAX_Y_STEP = 0.01;
 const MAX_X_STEP = 0.02;
 /** Largest |F_y| of a free nock and |F| at brace, relative to the largest tension. */
 const FORCE_TOLERANCE = 1e-11;
+/**
+ * A nock search whose |F_y| stops falling accepts its best pose at this
+ * fraction of the largest tension: stiff elastic cords turn the closure
+ * residual into tension noise above FORCE_TOLERANCE.
+ */
+const NOISE_TOLERANCE = 1e-6;
 /** Iteration limit of the secants on y and on the brace x. */
 const SECANT_ITERATIONS = 40;
 /** Nock step of the difference quotient k_y (m); a secant step shorter than KY_MIN_STEP (m) is too short for k_y. */
@@ -113,9 +119,13 @@ const ELASTIC_TOLERANCE = 1e-14;
 const FD_STEP = 1e-7;
 /** The elastic Jacobian is formed again when an iteration reduces the residual by less than this factor. */
 const JAC_REFRESH = 0.25;
-/** Draw step of the wall stiffness (m), and the sub-steps of its retries. */
+/** Draw step of the wall stiffness (m). */
 const WALL_STEP = 1e-5;
-const WALL_RETRY_STEPS = Object.freeze([4, 16]);
+/** Steps of a continuation after a failed solve: direct, then in 4 and in 16 steps. */
+const CONTINUATION_STEPS = Object.freeze([1, 4, 16]);
+/** Step (m) and largest number of steps on each side of the bracketing nock search. */
+const NOCK_SCAN = 1e-3;
+const NOCK_SCAN_STEPS = 30;
 /** The search for the second stop ends when the draw force exceeds this multiple of the peak before the first stop. */
 const FORCE_CAP = 5;
 /** Range of the axial stiffness EA of a cord (N). */
@@ -254,6 +264,8 @@ function createHalf() {
  * @typedef {object} Context
  * @property {boolean} elastic the cords stretch
  * @property {Float64Array} compliance C_k of (s,t | c,t | s,b | c,b) (m/N); zeros for rigid cords
+ * @property {Float64Array} noise closure residual each elastic closure row reaches (m):
+ *   ELASTIC_TOLERANCE times C_k / C_min, at least ELASTIC_TOLERANCE
  * @property {import('./geometry.js').BowGeometry} bow
  * @property {import('./support.js').Support} stringSupport
  * @property {import('./support.js').Support} cableSupport
@@ -551,9 +563,10 @@ function closeElastic(ctx, pose, x) {
     setZ(z);
     zEval.set(z);
     if (!elasticResidual(ctx, pose, x, r)) return 'a cord has no tangent from its track';
+    // Residual in units of the tolerance of each row: 1 is converged.
     residual = 0;
-    for (let i = 0; i < size; i++) residual = Math.max(residual, Math.abs(r[i]));
-    if (residual <= ELASTIC_TOLERANCE || (it > 0 && residual >= 0.5 * previous && residual <= CLOSURE_TOLERANCE)) {
+    for (let i = 0; i < size; i++) residual = Math.max(residual, Math.abs(r[i]) / (i < 4 ? ctx.noise[i] : ELASTIC_TOLERANCE));
+    if (residual <= 1 || (it > 0 && residual >= 0.5 * previous && residual <= CLOSURE_TOLERANCE / ELASTIC_TOLERANCE)) {
       pose.jac = D ? { size, m: D } : null;
       return '';
     }
@@ -608,13 +621,13 @@ function closeElastic(ctx, pose, x) {
     updatable = true;
   }
   // Iteration limit with an accepted residual: restore the evaluated pose.
-  if (residual <= CLOSURE_TOLERANCE) {
+  if (residual <= CLOSURE_TOLERANCE / ELASTIC_TOLERANCE) {
     setZ(zEval);
     if (!elasticResidual(ctx, pose, x, r)) return 'a cord has no tangent from its track';
     pose.jac = D ? { size, m: D } : null;
     return '';
   }
-  return `the residual stayed at ${residual.toExponential(2)} m after ${ctx.maxIterations} iterations`;
+  return `the residual stayed at ${residual.toExponential(2)} times its tolerance after ${ctx.maxIterations} iterations`;
 }
 
 /**
@@ -701,7 +714,8 @@ function forceAt(ctx, pose, x, y) {
 
 /**
  * Pose at nock position x: free nock by a secant on y from pose.y, which
- * also leaves k_y in pose.ky; draw board at y = 0.
+ * also leaves k_y in pose.ky, with a bracketing search on y when the secant
+ * fails; draw board at y = 0.
  * @param {Context} ctx
  * @param {Pose} pose
  * @param {number} x
@@ -712,6 +726,133 @@ function solveAt(ctx, pose, x) {
     pose.y = 0;
     return close(ctx, pose, x);
   }
+  // The start of the search, for the bracket after a failed secant.
+  const q0 = Float64Array.from(pose.q);
+  const y0 = pose.y;
+  const lambda0 = Float64Array.from(pose.lambda);
+  const branch = Number.isFinite(pose.top.theta) && Number.isFinite(pose.bottom.theta)
+    ? Math.sign(determinant(jacobian(pose.top, pose.bottom), 4))
+    : 0;
+  const reason = secantNock(ctx, pose, x);
+  if (!reason) return '';
+  const start = copyPose(pose);
+  start.q.set(q0);
+  start.y = y0;
+  start.lambda.set(lambda0);
+  const found = bracketNock(ctx, start, x);
+  // Only on the branch of the start: the bracket must not cross a fold.
+  if (!found || (branch !== 0 && Math.sign(determinant(jacobian(found.top, found.bottom), 4)) !== branch)) return reason;
+  Object.assign(pose, found);
+  return '';
+}
+
+/**
+ * Nock search by a bracket: F_y on steps of NOCK_SCAN in y on both sides of
+ * the start, each side continued from the pose before, until F_y changes
+ * sign; then the Illinois method on the bracket. The pose, or null.
+ * @param {Context} ctx
+ * @param {Pose} start
+ * @param {number} x
+ * @returns {Pose | null}
+ */
+function bracketNock(ctx, start, x) {
+  /**
+   * @param {Pose} from
+   * @param {number} y
+   */
+  const at = (from, y) => {
+    const p = copyPose(from);
+    p.jac = null;
+    const s = forceAt(ctx, p, x, y);
+    return s ? { p, s } : null;
+  };
+  const a0 = at(start, start.y);
+  if (!a0) return null;
+  if (Math.abs(a0.s.Fy) <= FORCE_TOLERANCE * a0.s.scale) return a0.p;
+  /** @type {{ p: Pose, s: NonNullable<ReturnType<typeof statics>> } | null} */
+  let bracket = null;
+  let near = a0;
+  for (const dir of [1, -1]) {
+    let prev = a0;
+    for (let k = 1; k <= NOCK_SCAN_STEPS && !bracket; k++) {
+      const next = at(prev.p, start.y + dir * k * NOCK_SCAN);
+      if (!next) break;
+      if (Math.sign(next.s.Fy) !== Math.sign(prev.s.Fy)) {
+        bracket = next;
+        near = prev;
+      }
+      prev = next;
+    }
+    if (bracket) break;
+  }
+  if (!bracket) return null;
+  let a = near;
+  let b = bracket;
+  let fa = a.s.Fy;
+  let fb = b.s.Fy;
+  let side = 0;
+  let best = Math.abs(fa) < Math.abs(fb) ? a : b;
+  for (let it = 0; it < EVENT_ITERATIONS; it++) {
+    let y = (a.p.y * fb - b.p.y * fa) / (fb - fa);
+    if (!(y > Math.min(a.p.y, b.p.y) && y < Math.max(a.p.y, b.p.y))) y = 0.5 * (a.p.y + b.p.y);
+    const m = at(a.p, y);
+    if (!m) break;
+    if (Math.abs(m.s.Fy) < Math.abs(best.s.Fy)) best = m;
+    if (Math.abs(m.s.Fy) <= FORCE_TOLERANCE * m.s.scale) break;
+    if (Math.sign(m.s.Fy) === Math.sign(fa)) {
+      a = m;
+      fa = m.s.Fy;
+      if (side === 1) fb /= 2;
+      side = 1;
+    } else {
+      b = m;
+      fb = m.s.Fy;
+      if (side === -1) fa /= 2;
+      side = -1;
+    }
+    if (Math.abs(b.p.y - a.p.y) <= EVENT_WIDTH) break;
+  }
+  if (Math.abs(best.s.Fy) > NOISE_TOLERANCE * best.s.scale) return null;
+  const probe = forceAt(ctx, copyPose(best.p), x, best.p.y + KY_STEP);
+  best.p.ky = probe ? (probe.Fy - best.s.Fy) / KY_STEP : NaN;
+  return best.p;
+}
+
+/**
+ * Pose at x continued from a solved pose: directly, else in 4 and then 16
+ * equal steps; null when every attempt fails.
+ * @param {Context} ctx
+ * @param {{ x: number, pose: Pose }} from
+ * @param {number} x
+ * @returns {Pose | null}
+ */
+function solveFrom(ctx, from, x) {
+  for (const steps of CONTINUATION_STEPS) {
+    const p = copyPose(from.pose);
+    let ok = true;
+    for (let k = 1; k <= steps && ok; k++) ok = !solveAt(ctx, p, from.x + ((x - from.x) * k) / steps);
+    if (ok) return p;
+  }
+  return null;
+}
+
+/**
+ * True when two poses have closure determinants of one sign.
+ * @param {Pose} a
+ * @param {Pose} b
+ */
+function sameBranch(a, b) {
+  return determinant(jacobian(a.top, a.bottom), 4) * determinant(jacobian(b.top, b.bottom), 4) > 0;
+}
+
+/**
+ * The secant of {@link solveAt}.
+ * @param {Context} ctx
+ * @param {Pose} pose
+ * @param {number} x
+ * @returns {string} empty on success, else the reason
+ */
+function secantNock(ctx, pose, x) {
   let y0 = pose.y;
   const s0 = forceAt(ctx, pose, x, y0);
   if (!s0) return 'the closures did not converge at the start of the nock search';
@@ -726,6 +867,8 @@ function solveAt(ctx, pose, x) {
     if (Math.abs(f0) <= FORCE_TOLERANCE * s0.scale) return '';
     if (!(Number.isFinite(k) && k !== 0)) return 'F_y does not change with the nock height';
   }
+  // The best pose, for a search that ends in the noise of stiff cords.
+  let best = { f: Math.abs(f0), scale: s0.scale, y: y0 };
   for (let it = 0; it < SECANT_ITERATIONS; it++) {
     const dy = Math.max(-MAX_Y_STEP, Math.min(MAX_Y_STEP, -f0 / k));
     if (!Number.isFinite(dy)) return 'the nock search stalled';
@@ -736,9 +879,11 @@ function solveAt(ctx, pose, x) {
     if (Math.abs(dy) >= KY_MIN_STEP && Number.isFinite(kNew) && kNew !== 0) k = kNew;
     pose.ky = k;
     if (Math.abs(s1.Fy) <= FORCE_TOLERANCE * s1.scale) return '';
+    if (Math.abs(s1.Fy) < best.f) best = { f: Math.abs(s1.Fy), scale: s1.scale, y: y1 };
     y0 = y1;
     f0 = s1.Fy;
   }
+  if (best.f <= NOISE_TOLERANCE * best.scale && forceAt(ctx, pose, x, best.y)) return '';
   return 'the vertical nock force did not reach zero';
 }
 
@@ -867,7 +1012,7 @@ function analyseChecked(input) {
   const gc0 = design.cable.reduced;
   /** @type {Context} */
   const ctx = {
-    elastic: false, compliance: new Float64Array(4),
+    elastic: false, compliance: new Float64Array(4), noise: new Float64Array(4).fill(ELASTIC_TOLERANCE),
     bow, stringSupport, cableSupport, limb, stop, free: nock === 'free', maxIterations, iterations: 0,
     lengths: [
       gs0 + offsets.string / 2 - offsets.nockHeight,
@@ -895,6 +1040,9 @@ function analyseChecked(input) {
     C[3] = cable / ea[2];
     for (let k = 0; k < 4; k++) ctx.lengths[k] -= C[k] * t0.T[k];
     ctx.elastic = true;
+    // Tension noise of the stiffest cord shows in the closure of a softer one.
+    const cMin = Math.min(...C);
+    for (let k = 0; k < 4; k++) ctx.noise[k] = ELASTIC_TOLERANCE * Math.max(1, C[k] / cMin);
   }
 
   const pose = createAnalysisPose();
@@ -1026,12 +1174,19 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
       for (let j = 0; j < 4; j++) trial.q[j] += f * (trial.q[j] - before.pose.q[j]);
       trial.y += f * (trial.y - before.pose.y);
     }
-    const reason = solveAt(ctx, trial, x);
-    if (reason) {
-      march.failure = reason;
-      march.failedAt = x;
-      march.fold = before !== null && foldAhead(before, last, x);
-      return march;
+    const direct = solveAt(ctx, trial, x);
+    if (direct) {
+      const fold = before !== null && foldAhead(before, last, x);
+      // Without the prediction, by continuation from the last pose; never
+      // across a fold, where the closure determinant changes sign.
+      const again = fold ? null : solveFrom(ctx, last, x);
+      if (!again || sameBranch(last.pose, again) === false) {
+        march.failure = direct;
+        march.failedAt = x;
+        march.fold = fold;
+        return march;
+      }
+      Object.assign(trial, again);
     }
     // A stop only pushes on its cable (λ ≤ 0): where the stop force of a
     // held cam turns positive, the cam leaves its stop.
@@ -1120,7 +1275,7 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     }
     if (second) {
       march.second = e.which;
-      setWall(march, wallStiffness(ctx, march.samples[march.samples.length - 1]));
+      setWall(ctx, march);
       return march;
     }
     march.first = both ? 'both' : e.which;
@@ -1128,7 +1283,7 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     if (!ctx.elastic) return march;
     if (both) {
       march.second = 'both';
-      setWall(march, wallStiffness(ctx, march.samples[march.samples.length - 1]));
+      setWall(ctx, march);
       return march;
     }
     // Elastic cords: on with the stopped cam held by its stop.
@@ -1158,10 +1313,7 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
  */
 function locateRelease(ctx, last, xb, which) {
   /** @param {number} x */
-  const at = (x) => {
-    const p = copyPose(last.pose);
-    return solveAt(ctx, p, x) ? null : p;
-  };
+  const at = (x) => solveFrom(ctx, last, x);
   let a = last.x;
   let fa = last.pose.lambda[which];
   let b = xb;
@@ -1194,53 +1346,50 @@ function locateRelease(ctx, last, xb, which) {
 }
 
 /**
+ * Wall stiffness of the last sample, x₂; the sample then holds the pose
+ * with both cams on their stops.
+ * @param {Context} ctx
  * @param {March} march
- * @param {number | string} wall the wall stiffness (N/m) or why it failed
  */
-function setWall(march, wall) {
-  if (typeof wall === 'string') march.wallFailure = wall;
-  else march.wallStiffness = wall;
+function setWall(ctx, march) {
+  const sample = march.samples[march.samples.length - 1];
+  const wall = wallStiffness(ctx, sample);
+  if (typeof wall === 'string') {
+    march.wallFailure = wall;
+    return;
+  }
+  march.wallStiffness = wall.k;
+  sample.pose = wall.pose;
 }
 
 /**
  * Wall stiffness at the second stop: dF/dx with both cams on their stops,
- * by a forward difference over WALL_STEP (N/m); the reason when a solve
- * fails.
+ * by a forward difference over WALL_STEP (N/m), and the pose at x₂ with
+ * both stops held; the reason when a solve fails. Each attempt starts from
+ * a fresh copy of the sample, with the steps of CONTINUATION_STEPS to
+ * x₂ + WALL_STEP.
  * @param {Context} ctx
  * @param {{ x: number, pose: Pose }} sample
- * @returns {number | string}
+ * @returns {{ k: number, pose: Pose } | string}
  */
 function wallStiffness(ctx, sample) {
-  /**
-   * Both stops held, from a fresh copy of the sample, to x + WALL_STEP in
-   * the given number of steps.
-   * @param {number} steps
-   * @returns {number | string}
-   */
-  const attempt = (steps) => {
+  let reason = '';
+  for (const steps of CONTINUATION_STEPS) {
     const p = copyPose(sample.pose);
     p.active[0] = 1;
     p.active[1] = 1;
     p.jac = null;
     p.ky = NaN;
-    const r0 = solveAt(ctx, p, sample.x);
-    if (r0) return r0;
+    reason = solveAt(ctx, p, sample.x);
+    if (reason) continue;
+    const held = copyPose(p);
     const f0 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
-    for (let k = 1; k <= steps; k++) {
-      const r = solveAt(ctx, p, sample.x + (WALL_STEP * k) / steps);
-      if (r) return r;
-    }
+    for (let k = 1; k <= steps && !reason; k++) reason = solveAt(ctx, p, sample.x + (WALL_STEP * k) / steps);
+    if (reason) continue;
     const f1 = /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, p)).F;
-    return (f1 - f0) / WALL_STEP;
-  };
-  // Retries in smaller steps, so that the start pose from the march does
-  // not decide whether the wall solves.
-  let result = attempt(1);
-  for (const steps of WALL_RETRY_STEPS) {
-    if (typeof result === 'number') break;
-    result = attempt(steps);
+    return { k: (f1 - f0) / WALL_STEP, pose: held };
   }
-  return result;
+  return reason;
 }
 
 /**
@@ -1308,10 +1457,7 @@ function locateStop(ctx, last, xb, which) {
   /** @param {Pose} p */
   const gap = (p) => stopGap(stop, which === 'top' ? p.top : p.bottom);
   /** @param {number} x */
-  const at = (x) => {
-    const p = copyPose(last.pose);
-    return solveAt(ctx, p, x) ? null : p;
-  };
+  const at = (x) => solveFrom(ctx, last, x);
   let a = last.x;
   let ga = gap(last.pose);
   let b = xb;
