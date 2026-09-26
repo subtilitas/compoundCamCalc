@@ -2,6 +2,17 @@
 
 All notable changes are listed here. Versions follow semantic versioning.
 
+## Unreleased
+
+### Added
+
+- Reference bows: a fixture format in `tests/fixtures/reference/`, a
+  harness that runs each fixture through the forward model in the unit
+  tests, and `npm run reference`, which prints every check. The first
+  fixture, Tiermas's round-wheel bow B1, is tested against Table 2 of the
+  paper to half a unit of the last printed digit and against 10 forces of
+  the author's equations to 1e-4 N.
+
 ## 0.3.0 — 2026-09-26
 
 ### Added

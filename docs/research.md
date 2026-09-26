@@ -170,8 +170,10 @@ markers overlap; the measured forces themselves come in steps of about
 series lies 5.3 N above the model on average (rms 6.1 N) and the release
 series 4.3 N below (rms 5.4 N), which points to hysteresis, included in
 neither model, and cord stretch near full draw. The readings are not
-stored; slice 12 stores digitised points with their uncertainty before
-any test uses them.
+stored; a fixture takes measured points only once they are digitised with
+their uncertainty. The fixture `tests/fixtures/reference/tiermas-b1.json`
+holds the parameters, the Table 2 targets and 10 forces of the author's
+model ([model.md](model.md#reference-bows)).
 
 ### Tiermas twin-cam bow "Smoke"
 

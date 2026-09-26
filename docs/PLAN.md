@@ -1183,12 +1183,13 @@ tolerance (41 of 45).
 - Yoke legs, cam lean, axle friction and limb twist are not modelled.
 - Limb stop is not modelled; only a cable stop.
 - Hybrid, binary and single-cam systems are not modelled.
-- No reference-bow test runs yet (slice 12 adds the fixtures); the
+- One reference bow is tested (`tests/fixtures/reference/`): Tiermas's
+  round-wheel bow B1, against the author's model and Table 2; the
   reference values read from papers are in
-  [research.md](research.md#reference-data-from-papers). The forward model reproduces the published model of
-  Tiermas's round-wheel bow B1 to 2.3e-12 N; against the measured points
-  of the bow, read from a figure and not yet stored, that model deviates by
-  5 N to 6 N rms (provisional; the cause is not established). The
+  [research.md](research.md#reference-data-from-papers). Against the
+  measured points of the bow, read from a figure and not stored, that
+  model deviates by 5 N to 6 N rms (provisional; the cause is not
+  established). The
   default limb (2.6 N/mm, 192 mm preload travel, 78 mm axle travel) is
   softer and more preloaded than the limbs fitted to measured bows
   (4.4 N/mm to 4.8 N/mm, 54 mm to 71 mm axle travel)

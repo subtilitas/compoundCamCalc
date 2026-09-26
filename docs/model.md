@@ -1523,6 +1523,31 @@ a 36 mm string groove (offset 6 mm, phase 45°, cable phase −30°, offset
 8 mm) wraps the string 396° at brace and reports `wrap-overlap` over the
 first 123 mm of the power stroke.
 
+### Reference bows
+
+`tests/unit/reference.test.js` runs every fixture in
+`tests/fixtures/reference/` through the harness `tests/reference/harness.js`;
+`npm run reference` prints the same checks as a table. A fixture holds the
+sources with their licence, the author's parameters as printed, the app
+inputs, the targets with their tolerances and forces of the author's model.
+The harness checks:
+
+- the app inputs against the author's parameters, mapped by the author's
+  model, to 1e-9 relative;
+- each target against the forward model of the app: brace draw, peak
+  force and its draw, the first force minimum after the peak (the valley)
+  and its force, the energy stored to the valley, and
+  q = V/(D_F·F_max), q_F = V/((D_F − D_0)·F_max);
+- the forces of the fixture against the app and against the author's
+  equations, and the app against those equations to 1e-9 N.
+
+A fixture with `enforced: false` is reported, not tested.
+
+| Fixture | Targets | Tolerance | Measured |
+|---|---|---|---|
+| `tiermas-b1`: Tiermas's round-wheel bow B1, parameters of Table 1 (2016, 2017), model Eqs. 1 to 17 (2016) in `tests/reference/tiermas-round-wheel.js` | Table 2 (2017): D_0 22.8 cm, D_F 67.3 cm, F(D_F) 73.1 N, V(D_F) 61.7 J, q_F 0.619, q 0.409; F_max 223.9 N | half a unit of the last printed digit | 22.815 cm, 67.337 cm, 73.059 N, 61.680 J, 0.6189, 0.4092; 223.856 N |
+| `tiermas-b1`, forces | 10 forces of the author's model, x = 0.25 m to 0.67 m | 1e-4 N; app against the author's equations 1e-9 N | 4.4e-5 N (printing); 6.8e-13 N |
+
 ## Numerical settings
 
 | Setting | Value |
@@ -1571,7 +1596,8 @@ first 123 mm of the power stroke.
   offset are ignored.
 - The forward model follows the solution branch that starts at brace; a
   fold of that branch (det = 0) ends the solve with `no-convergence`.
-- No reference-bow test runs yet. The forward model reproduces the
-  published model of Tiermas's round-wheel bow B1 to 2.3e-12 N; against the
+- One reference bow is tested: Tiermas's round-wheel bow B1, against the
+  author's model only ([Reference bows](#reference-bows)). Against the
   bow's measured points that model deviates by 5 N to 6 N rms, provisional
-  until the points are digitised ([research.md](research.md#tiermas-round-wheel-bow-b1)).
+  until the points are digitised and stored with their uncertainty
+  ([research.md](research.md#tiermas-round-wheel-bow-b1)).

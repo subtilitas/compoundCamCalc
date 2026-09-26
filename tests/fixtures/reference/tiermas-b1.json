@@ -1,0 +1,69 @@
+{
+  "id": "tiermas-b1",
+  "name": "Tiermas round-wheel bow B1 (JahtiJakt 55 lbs)",
+  "enforced": true,
+  "sources": [
+    {
+      "citation": "M. Tiermas, An advanced model of the round-wheel compound bow, Meccanica 51 (2016) 1201-1207",
+      "doi": "10.1007/s11012-015-0262-5",
+      "licence": "CC BY 4.0",
+      "used": "Eqs. 1 to 17 (the model), Table 1 (parameters)"
+    },
+    {
+      "citation": "M. Tiermas, The round-wheel compound bow model revisited: a new extension, Sports Engineering 20 (2017) 155-162",
+      "doi": "10.1007/s12283-017-0225-2",
+      "licence": "CC BY 4.0",
+      "used": "Table 1 (parameters of B1, h = 0), Table 2 (model outputs of B1) and its note (Fmax 223.9 N)"
+    }
+  ],
+  "model": "tiermas-round-wheel",
+  "symbols": {
+    "e0": [102.1, "cm"],
+    "g": [38.1, "cm"],
+    "thetaU": [20.5, "deg"],
+    "alpha0": [52.5, "deg"],
+    "L": [38.9, "cm"],
+    "A": [0.598, "1"],
+    "R": [26.8, "mm"],
+    "r": [19.9, "mm"],
+    "d": [13.7, "mm"],
+    "k": [1032, "N/rad"]
+  },
+  "inputs": {
+    "geometry": {
+      "ata": 1.021,
+      "braceHeight": 0.22815062493782687,
+      "drawLength": 0.71782,
+      "limbLength": 0.232622,
+      "limbAngleBrace": 0.8419646153475049
+    },
+    "stringTrack": { "kind": "eccentric", "radius": 0.0268, "offset": 0.0137, "phase": 4.057890510886816 },
+    "cableTrack": { "kind": "eccentric", "radius": 0.0199, "offset": 0.0137, "phase": 4.057890510886816 },
+    "limb": { "kind": "linear", "torsionalStiffness": 240.065904, "alpha0": 0.3710392147885541 }
+  },
+  "targets": [
+    { "quantity": "braceDraw", "value": 0.228, "tolerance": 0.0005, "source": "Table 2 (2017), D0 22.8 cm" },
+    { "quantity": "peakForce", "value": 223.9, "tolerance": 0.05, "source": "note of Table 2 (2017), Fmax 223.9 N" },
+    { "quantity": "valleyDraw", "value": 0.673, "tolerance": 0.0005, "source": "Table 2 (2017), DF 67.3 cm" },
+    { "quantity": "valleyForce", "value": 73.1, "tolerance": 0.05, "source": "Table 2 (2017), F(DF) 73.1 N" },
+    { "quantity": "energyToValley", "value": 61.7, "tolerance": 0.05, "source": "Table 2 (2017), V(DF) 61.7 J" },
+    { "quantity": "qF", "value": 0.619, "tolerance": 0.0005, "source": "Table 2 (2017), qF 0.619" },
+    { "quantity": "q", "value": 0.409, "tolerance": 0.0005, "source": "Table 2 (2017), q 0.409" }
+  ],
+  "forces": {
+    "source": "Eqs. 1 to 17 (2016) with the parameters above, evaluated by tests/reference/tiermas-round-wheel.js, printed to 0.1 mN",
+    "tolerance": 0.0001,
+    "points": [
+      [0.25, 21.8788],
+      [0.30, 75.5557],
+      [0.35, 137.6640],
+      [0.40, 195.6369],
+      [0.45, 223.3140],
+      [0.50, 210.7776],
+      [0.55, 171.0510],
+      [0.60, 121.7076],
+      [0.65, 80.4251],
+      [0.67, 73.2440]
+    ]
+  }
+}

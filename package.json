@@ -20,6 +20,7 @@
     "coverage:update": "vitest run --coverage && node scripts/coverage-readme.js --write",
     "e2e": "playwright test",
     "check:links": "node scripts/check-session-links.js",
+    "reference": "node scripts/reference-report.js",
     "check": "npm run lint && npm run typecheck && npm run check:links && npm run test:coverage && npm run coverage:check"
   },
   "devDependencies": {

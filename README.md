@@ -40,6 +40,7 @@ npm run check          # lint, typecheck, unit tests with coverage, README cover
 npm run build          # static site in dist/
 npm run e2e            # Playwright tests against the built site (run npm run build first)
 npm run coverage:update  # rewrite the coverage figure above
+npm run reference      # checks of the reference bows against published values
 node scripts/build-site.js site  # Pages site: main at the root, each v* tag in its folder
 ```
 
