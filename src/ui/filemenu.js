@@ -17,6 +17,7 @@ import {
 import { SAMPLES } from '../state/samples.js';
 import { toJSON } from '../state/schema.js';
 import { encodeShare } from '../state/share.js';
+import { KEY_PREFIX } from './autosave.js';
 import { confirmDialog, dialogLiveRegion, openDialog } from './dialog.js';
 import { h } from './dom.js';
 import { download } from './download.js';
@@ -28,9 +29,9 @@ import { download } from './download.js';
 /** @typedef {import('../state/library.js').Entry} Entry */
 
 /** localStorage key of the design library. */
-export const LIBRARY_KEY = 'compoundCamCalc.designs';
+export const LIBRARY_KEY = `${KEY_PREFIX}.designs`;
 /** localStorage key of a copy of a library that could not be read. */
-export const LIBRARY_BACKUP_KEY = 'compoundCamCalc.designs.unreadable';
+export const LIBRARY_BACKUP_KEY = `${KEY_PREFIX}.designs.unreadable`;
 
 /** Message when storage refuses a write. */
 export const STORAGE_FULL = 'The design was not saved: browser storage is full or blocked. Use Save to file.';

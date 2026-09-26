@@ -22,7 +22,7 @@ This file is the running record of the project. Each slice updates it.
 | Units | SI internally (m, N, rad, J, N·m/rad). Default display: draw length in in, force in N, part dimensions in mm, energy in J. Each quantity switchable |
 | Force curve editor | Free points: double-click or "Add point" + tap adds, right-click or select + Delete removes, drag moves, arrow keys nudge; numeric point table; peak and let-off sliders rescale |
 | String plan | Bow layout drawing: string and both cables at brace and full draw, axle positions, contact points, lengths |
-| Pages deployment | On every push to `main`; tags produce releases with a build archive |
+| Pages deployment | On every push to `main` and after every release: main at the site root, each release tag `vMAJOR.MINOR.PATCH` in a folder of its name, `versions.json` listing them; tags produce releases with a build archive |
 
 ## Coordinate conventions
 
@@ -581,6 +581,47 @@ Independent set; everything else is derived and shown read-only.
   prints unchanged. A print style sheet forces the light colours, keeps
   figures and table rows on one page, repeats table headers and sets 12 mm
   page margins without a page size, so A4 and Letter both work.
+
+## Hosted versions
+
+- `scripts/build-site.js [out]` builds the site: the checked-out tree at
+  the root with `APP_CHANNEL=main`, then every tag matching
+  vMAJOR.MINOR.PATCH (no leading zeros) from its own `git worktree` with
+  its own `npm ci` and `APP_CHANNEL=<tag>`, into `<out>/<tag>/`. It writes
+  `<out>/versions.json`: `{ versions: [{ id: "main", path: "" }, { id:
+  "v0.2.0", path: "v0.2.0/" }, …] }`, tags newest first. Measured: 10 s
+  for main plus one tag with a warm npm cache.
+- Vite injects `__APP_CHANNEL__` from `APP_CHANNEL` (default `main`) and
+  rejects any other value. `src/state/channel.js` holds the pure rules:
+  tag syntax and order, the manifest, `parseVersions` (each entry must be
+  main at '' or a tag at '<tag>/', no duplicates, at most 64 KB), the site
+  root ('./' for main, '../' for a release) and the storage prefix.
+- Storage (decision of the user): main keeps the keys
+  `compoundCamCalc.project`, `.current`, `.designs` and their backups; a
+  release built with this code uses `compoundCamCalc@<tag>.…`, so an older
+  release never reads or replaces data written by a newer schema, and the
+  named designs of main are not listed in a release. v0.1.0 predates the
+  rule and shares the keys of main (same schema version 1).
+- Version select (`src/ui/versions.js`) after the Help button: fetched
+  from `<site root>versions.json` (`cache: no-cache`); hidden when the
+  fetch fails, the list is invalid, has fewer than two entries or does
+  not name this build. Options "main, newest (<version>)" (on main) or
+  "main, newest", then the tags. A change navigates to `<site root><path>`
+  with `#design=` and the share payload of the open design and its name;
+  the target opens it as a shared design (it asks first when it has
+  unsaved changes). A note under the select says that releases keep their
+  own saved designs and that the open design goes along. v0.1.0 has no
+  select; the browser Back button returns.
+- Workflows: CI runs on `workflow_dispatch` as well; `pages-build` and
+  `deploy` run for a push to main or a dispatch on main. `pages-build`
+  checks out main with all tags (`fetch-depth: 0`) and uploads `site/`.
+  The release job (permission `actions: write`) runs `gh workflow run
+  ci.yml --ref main` after it creates the release, so the Pages
+  environment deploys from main only.
+- Limitation: a share link from a newer schema version opened in an older
+  release reads "The link was made with a newer version of the app;
+  reload the page", which is wrong advice on the versioned site (a reload
+  stays on the release). Planned fix in slice 9.
 
 ## User interface rules
 

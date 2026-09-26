@@ -8,7 +8,7 @@
 
 import { createStore } from '../state/store.js';
 import { parseCurrent, serializeCurrent } from '../state/library.js';
-import { LINK_DAMAGED, LINK_NEWER, decodeShare } from '../state/share.js';
+import { LINK_DAMAGED, LINK_NEWER, decodeShare, encodeShare } from '../state/share.js';
 import { loadCurrent, startAutosave, loadSaved } from './autosave.js';
 import { createFileMenu } from './filemenu.js';
 import { createHelpButton } from './help.js';
@@ -28,6 +28,7 @@ import { createScrubber } from './scrubber.js';
 import { createStringPlan } from './stringplan.js';
 import { attachReport } from './report.js';
 import { budgetFromSearch, createOptimise } from './optimise.js';
+import { createVersionSelect } from './versions.js';
 
 /** @typedef {import('../core/solve.js').SolveResult} SolveResult */
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
@@ -153,12 +154,23 @@ export function startApp() {
   const editor = createEditor(store);
   /** @type {{ saveNow: () => boolean } | null} */
   let autosave = null;
+  const versions = createVersionSelect({
+    channel: __APP_CHANNEL__,
+    version: __APP_VERSION__,
+    fragment: () => {
+      try {
+        return SHARE_PREFIX + encodeShare(store.getState(), fileMenu.current().name);
+      } catch {
+        return null;
+      }
+    },
+  });
   const fileMenu = createFileMenu(byId('file-area', HTMLDivElement), store, {
     // Unreadable saved data (text null) means the working copy is the
     // default design, whatever the stored current design says.
     current: parseCurrent(loadCurrent(), saved.text),
     persist: () => autosave?.saveNow() ?? false,
-    after: [createHelpButton()],
+    after: [createHelpButton(), versions.element],
   });
 
   const chart = createChart(byId('chart-wrap', HTMLDivElement), editor);

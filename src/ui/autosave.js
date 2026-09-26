@@ -5,18 +5,21 @@
  * @module ui/autosave
  */
 
+import { storagePrefix } from '../state/channel.js';
 import { defaultState } from '../state/presets.js';
 import { fromJSON, toJSON } from '../state/schema.js';
 
 /** @typedef {import('../state/schema.js').ProjectState} ProjectState */
 /** @typedef {import('../state/store.js').Store} Store */
 
+/** Prefix of the localStorage keys of this build: a release keeps its own. */
+export const KEY_PREFIX = storagePrefix(__APP_CHANNEL__);
 /** localStorage key of the saved project. */
-export const STORAGE_KEY = 'compoundCamCalc.project';
+export const STORAGE_KEY = `${KEY_PREFIX}.project`;
 /** localStorage key of the current design: id, name and source of the working copy. */
-export const CURRENT_KEY = 'compoundCamCalc.current';
+export const CURRENT_KEY = `${KEY_PREFIX}.current`;
 /** localStorage key of a copy of saved data that could not be loaded. */
-export const BACKUP_KEY = 'compoundCamCalc.project.unreadable';
+export const BACKUP_KEY = `${KEY_PREFIX}.project.unreadable`;
 /** Delay between the last change and the save, in ms. */
 export const SAVE_DELAY = 300;
 

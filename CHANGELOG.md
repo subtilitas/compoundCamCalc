@@ -6,6 +6,23 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- Version select in the header of the hosted site: "main, newest" at the
+  site root and every release tag in its own folder (for example
+  `/v0.1.0/`), listed in `versions.json`. Switching carries the open design
+  along as a share link. It is hidden when the list is missing, such as in
+  local development.
+- Each release built from this version on keeps its own browser storage
+  under keys starting with `compoundCamCalc@<tag>`; main keeps the keys
+  starting with `compoundCamCalc.`. Release v0.1.0 predates this and shares
+  the storage of main.
+- `scripts/build-site.js` builds the site: main at the root, each tag from
+  its own worktree with its own `npm ci`. CI runs it on every push to main
+  and after each release; the release workflow dispatches CI on main.
+
+## 0.1.0 — 2026-09-26
+
+### Added
+
 - Free-form string track (`src/core/freeform.js`): Shape → Free-form
   samples the current eccentric or elliptical track at 12 points (one
   undo step, the cam stays within 0.1 mm), or at up to 16 points for a

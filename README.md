@@ -5,7 +5,9 @@ compound bow. Input: bow geometry, limb stiffness and the draw force curve the
 bow should have. Output: the cam track shapes, the string and cable lengths,
 and cam plate files for CAD and CNC work (DXF and STEP). It runs in the
 browser without a server and is hosted on GitHub Pages:
-<https://subtilitas.github.io/compoundCamCalc/>.
+<https://subtilitas.github.io/compoundCamCalc/> (newest main), with each
+release in its own folder, for example `/v0.1.0/`, and a Version select in
+the header.
 
 Status: in development. The live page contains the force curve editor, the
 settings of the bow and the cam, the solver running in a Web Worker, the
@@ -38,6 +40,7 @@ npm run check          # lint, typecheck, unit tests with coverage, README cover
 npm run build          # static site in dist/
 npm run e2e            # Playwright tests against the built site (run npm run build first)
 npm run coverage:update  # rewrite the coverage figure above
+node scripts/build-site.js site  # Pages site: main at the root, each v* tag in its folder
 ```
 
 Playwright needs a Chromium build. In CI, `npx playwright install chromium`
