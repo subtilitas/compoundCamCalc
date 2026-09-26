@@ -1136,8 +1136,9 @@ tolerance (41 of 45).
 - No reference-bow test runs yet (slice 12 adds the fixtures); the
   reference values read from papers are in
   [research.md](research.md#reference-data-from-papers). The forward model reproduces the published model of
-  Tiermas's round-wheel bow B1 to 2.3e-12 N; that model runs 5 N to 6 N
-  (rms) from the measured points of the bow, mostly hysteresis. The
+  Tiermas's round-wheel bow B1 to 2.3e-12 N; against the measured points
+  of the bow, read from a figure and not yet stored, that model deviates by
+  5 N to 6 N rms (provisional; the cause is not established). The
   default limb (2.6 N/mm, 192 mm preload travel, 78 mm axle travel) is
   softer and more preloaded than the limbs fitted to measured bows
   (4.4 N/mm to 4.8 N/mm, 54 mm to 71 mm axle travel)
