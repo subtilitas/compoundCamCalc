@@ -21,8 +21,11 @@ pypi.org and registry.npmjs.org. Every other host was refused by its
 network policy (HTTP 403 on CONNECT), among them arxiv.org, d-nb.info,
 www.ias.ac.in, link.springer.com, doi.org, scispace.com, patents.google.com,
 ppubs.uspto.gov, www.virtualbow.org, www.bcyfibers.com, www.archerytalk.com,
-en.wikipedia.org and web.archive.org. The only primary data read is the
-VirtualBow repository on GitHub.
+en.wikipedia.org and web.archive.org. Primary data comes from the
+VirtualBow repository on GitHub and from copies of the papers listed under
+"Reference data from papers", provided by the user. The repository holds
+only values extracted from them, with their citation; it holds no copy of
+a paper and no figure.
 
 ## Measured data
 
@@ -51,14 +54,15 @@ BCY 8125 and X99 are not measured here.
 
 | Source | Content | Numeric data | Status |
 |---|---|---|---|
-| Tiermas, "A model of the twin-cam compound bow with cam design options", Meccanica 52 (2017) 421–429; author PDF d-nb.info/1110194862/34 | Measured F(x) of a commercial twin-cam bow ("Smoke"), spline cams, Hickman-type limb | Likely tabulated or plotted | Not opened |
-| Tiermas, "The limb deformation of the compound bow", Meccanica 52 (2017) 1475; d-nb.info/1106585151/34 | Limb second moment of area, fitted Young's modulus | Likely | Not opened |
-| Tiermas, round-wheel compound bow, Meccanica 51 (2016) 1201–1207; Sports Eng. 20 (2017) 155–162; PhD thesis, University of Helsinki, 2017 | Round-wheel twin cam, limb-tip path | Likely | Not opened |
-| "A systematic kinematic analysis and experimental verification of an eccentric twin-cam compound bow", Sādhanā 50 (2025) 167 | Eccentric round cams, rigid limbs with torsion springs (the model form of this app), experiment | Likely | Not opened |
+| Tiermas, "A model of the twin-cam compound bow with cam design options", Meccanica 52 (2017) 421–429; author PDF d-nb.info/1110194862/34 | Measured F(x) of a Hoyt "Smoke" twin-cam bow, cams and force curve as figures only | Table values; figures must be digitised | Read, CC BY 4.0 |
+| Tiermas, "The limb deformation of the compound bow", Meccanica 52 (2017) 1475; d-nb.info/1106585151/34 | Limb second moment of area (figure), fitted Young's modulus | Text values | Read, CC BY 4.0 |
+| Tiermas, round-wheel compound bow, Meccanica 51 (2016) 1201–1207; Sports Eng. 20 (2017) 155–162; PhD thesis, University of Helsinki, 2017 | Round-wheel twin cam "B1" (JahtiJakt 55 lbs): full parameter table, model outputs, measured F(x) as a figure | Tables | Meccanica and Sports Eng. read, CC BY 4.0; thesis summary read |
+| "A systematic kinematic analysis and experimental verification of an eccentric twin-cam compound bow", Sādhanā 50 (2025) 167 | Barnett Banshee youth bow: eccentric round cams, torsion-spring limbs (the model form of this app), measured F(x) as a figure | Text values; cam phase and limb angles not published | Read, not open access: numbers only |
 | Meyer, "Applications of Physics to Archery", arXiv:1511.02250 | F(x) with hysteresis; string compliance 5.6e-6 1/N from 100 N to 2000 N | Yes | Not opened |
-| Zanevskyy, "Compound archery bow asymmetry in the vertical plane", Sports Eng. 15 (2012) 167–175 | Measured cam angles of a twin-cam bow against a symmetric and an asymmetric model; about 7 % model error | Likely | Paywalled |
+| Zanevskyy, "Compound archery bow asymmetry in the vertical plane", Sports Eng. 15 (2012) 167–175 | Model of a twin-cam bow with measured limb angles at one pose (the "cam angles" of the abstract are limb angles); both cams forced to equal rotation | Tables | Read, CC BY |
 | Park, Proc. IMechE P 223 (2009) 139–150; 224 (2010) 141–154; Giulieri and Park, Proc. IMechE P (2025), doi 10.1177/17543371251360603 | Single-cam dynamic model, nocking-point locus, cam timing by bow rotation near full draw | Unknown | Paywalled |
 | ArcheryTalk reviews with Easton Bow Force Mapper curves (Mathews Lift X 29.5, Lift 29.5, V3X 29, Phase 4, ARC 30 with two cam modules, Triax, VXR 31.5) | Peak, holding weight, stored energy, power stroke, speed | Scalars; curves are images | Not opened |
+| Hanson, "Kinematic Analysis of Cam Profiles Used in Compound Bows", MS thesis, University of Missouri, 2009 | Measured F(x) tables of a PSE Firestorm Lite (hybrid) and a Bear Buckmaster BTR (single cam); limb stiffness 52 lbf/in at the tip | Tables | Read, no licence stated: numbers only |
 | PSE patents US 7,699,045 and US 7,891,349 (high limb preload) | Axle offset from unstrung 5.25 in at brace and 6.5 in at full draw; limb tip angle 75° and 100° | Yes | Not opened |
 
 Unverified or refuted items that the plan does not use:
@@ -73,38 +77,127 @@ Unverified or refuted items that the plan does not use:
   1.47 ft·lbf per lbf. Normalised by the power stroke,
   η = W / (F_peak · S) = 0.72 to 0.79.
 - Holding weight 11 to 13.6 lb at 69 to 71 lb peak: let-off 80 % to 84 %.
-- Axle travel brace to full draw: 32 mm to 50 mm (computed from the PSE
-  patent offsets; 32 mm is the straight-line lower bound, 50 mm an
-  arc fit). The patent tip angles are tangent angles of a bending limb,
-  not lever rotations.
+- Axle travel brace to full draw: 54 mm to 71 mm in the three model fits
+  to measured bows of 50 lbf to 58 lbf peak (see "Reference data from
+  papers"). The PSE patent offsets (reported) give 32 mm to 50 mm; they are
+  not used.
 - Cam rotation brace to full draw: 180° to 250° on classic designs, 270°
   to over 360° on newer designs (patent language).
 - Dynamic efficiency (arrow energy / stored energy): 80.7 % at a 360 gr
   arrow to 88.1 % at 700 gr. Hysteresis: 3 % to 4.5 %.
-- Limb stiffness at the axle: not found in any source.
+- Limb stiffness at the axle: 4.4 N/mm and 4.8 N/mm in Tiermas's fits
+  (computed from his tables); 9.1 N/mm (52 lbf/in) measured by Hanson at
+  the tip of an unidentified PSE limb.
 
 ### The app's default design against these ranges
 
-| Quantity | Default design | Range | Difference |
+| Quantity | Default design | Reference | Difference |
 |---|---|---|---|
-| Axle travel, brace to full draw | 78 mm | 32 mm to 50 mm | 1.6× to 2.4× |
-| Limb force at the axle, brace / full draw | 499 N / 702 N | about 930 N to 1450 N mean for the same energy over 32 mm to 50 mm | about 0.5× |
-| η = W / (F_peak · S) | 0.66 (samples 0.63 to 0.66) | 0.72 to 0.79 | 9 % to 16 % less energy |
-| Cam rotation | 224° | 180° to 360° | inside |
-| Let-off | 75 % | 80 % to 84 % | lower |
-| Power stroke at 29 in | 527 mm (20.75 in) | 20.3 in to 22.5 in | inside |
+| Axle travel, brace to full draw | 78 mm | 54 mm to 71 mm (model fits) | 1.1× to 1.4× |
+| Limb stiffness at the axle | 2.6 N/mm | 4.4 N/mm to 4.8 N/mm (model fits); 9.1 N/mm (Hanson, measured) | 0.3× to 0.6× |
+| Limb force at the axle, brace / full draw | 499 N / 702 N | 359 N to 506 N / 554 N to 849 N (model fits) | inside, higher preload share |
+| η = W / (F_peak · S) | 0.66 (samples 0.63 to 0.66) | 0.62 (B1), 0.73 (Smoke); 0.72 to 0.79 reported for current 70 lbf bows | inside the fitted range |
+| Cam rotation | 224° | 223° (B1); 180° to 360° reported | inside |
+| Let-off | 75 % | 67 % (B1), 66 % (Smoke), 80 % to 84 % reported | inside |
+| Power stroke at 29 in | 527 mm (20.75 in) | 445 mm (B1), 506 mm (Smoke); 20.3 in to 22.5 in reported | inside |
 
-The let-off ceiling in [PLAN.md](PLAN.md) explains the large axle travel.
-The cable lever arm at full draw must stay at or above
-p_min = r_bore + wall + d_cable/2 = 8.25 mm, and 75 % let-off then needs
-about 78 mm of axle travel. At 32 mm to 50 mm of travel and 85 % let-off,
-the ratio p_s,f / p_min must be 20 to 35. That means a cable lever arm of
-2 mm to 4 mm at full draw.
+The default limb is softer and more preloaded than the fitted limbs: it
+reaches similar axle forces with 2.6 N/mm and 192 mm of preload travel,
+where the fitted limbs use 4.4 N/mm to 4.8 N/mm and 86 mm to 105 mm. Its
+axle travel is 10 % to 40 % longer.
 
-This leads to an inference, unverified: on real cams the power cable leaves
-from a post or anchor whose line passes within a few millimetres of the
-axle. The present track rule, a convex groove outside the bore wall,
-forbids this.
+The let-off ceiling in [PLAN.md](PLAN.md) ties the axle travel to the cable
+lever arm at full draw, which must stay at or above
+p_min = r_bore + wall + d_cable/2 = 8.25 mm. A shorter travel at the same
+let-off needs a smaller cable lever arm at full draw. Open spiral tracks
+(slice 13) let the cable end at a post closer to the axle.
+
+## Reference data from papers
+
+Values below were read from the papers and checked against them a second
+time. "Model output" means a result of the author's model, fitted to the
+author's measurement; "derived" means computed here from the published
+values.
+
+### Tiermas round-wheel bow B1
+
+Sources: Tiermas, "An advanced model of the round-wheel compound bow",
+Meccanica 51 (2016) 1201–1207, doi 10.1007/s11012-015-0262-5, Table 1 and
+Fig. 7; Tiermas, Sports Engineering 20 (2017) 155–162, doi
+10.1007/s12283-017-0225-2, Tables 1 and 2; Tiermas, "The limb deformation
+of the compound bow", Meccanica 52 (2017) 1475, doi 10.1007/s11012-016-0485-0.
+All three CC BY 4.0. Bow: JahtiJakt 55 lbs.
+
+| Quantity | Value | Kind |
+|---|---|---|
+| Axle-to-axle at brace e0 | 102.1 cm | measured |
+| Riser g (limb base to limb base) | 38.1 cm | measured |
+| Limb length L; unstrung limb angle θU | 38.9 cm; 20.5° | measured |
+| Lever fraction A | 0.598 | fitted to the limb-tip path |
+| Spring constant k | 1032 N/rad; torque stiffness k·A·L = 240.07 N·m/rad | fitted to the measured F(x) |
+| String wheel R, cable wheel r, common offset d | 26.8 mm, 19.9 mm, 13.7 mm (cord centre lines) | measured |
+| Initial wheel angle α0 | 52.5° | measured |
+| Cable anchor | axle of the opposite wheel | model definition |
+| Draw at brace D0; full draw DF (from the limb-base line) | 22.8 cm; 67.3 cm | model output |
+| Peak; force at full draw; stored energy | 223.9 N; 73.1 N; 61.7 J | model output |
+| Limb Young's modulus | 33.75 GPa | fitted |
+| Axle travel; axle force brace → full draw | 59.8 mm; 383 N → 648 N | derived |
+| Measured F(x), draw and release | Fig. 7 of the 2016 paper, D 0.2 m to 0.8 m | measured, figure; forces read in steps of about 22 N |
+
+The forward model of this app reproduces B1 exactly (computed): mapped to
+ATA 1.021 m, brace height 0.2281506 m, full draw x 0.67337 m, lever
+0.232622 m at 90° − 41.759° at brace, torsional stiffness 240.0659 N·m/rad,
+preload rotation 0.371039 rad and two eccentric circles with phase
+232.5°, it gives peak 223.856 N at 0.45807 m, 73.059 N at full draw and
+61.680 J. On the author's draw grid the two models differ by at most
+2.3e-12 N. Against the measured points, the draw series lies 5.3 N above
+the model on average (rms 6.1 N) and the release series 4.3 N below (rms
+5.4 N): hysteresis, which neither model includes, and cord stretch near
+full draw.
+
+### Tiermas twin-cam bow "Smoke"
+
+Source: Tiermas, "A model of the twin-cam compound bow with cam design
+options", Meccanica 52 (2017), doi 10.1007/s11012-016-0395-1, Table 1,
+Figs. 8 and 9; PhD thesis summary, University of Helsinki, 2017, Table
+7.1. CC BY 4.0. Bow: Hoyt Smoke.
+
+| Quantity | Value | Kind |
+|---|---|---|
+| e0; g; L; θU | 102.0 cm; 42.0 cm; 39.2 cm; 23° | measured |
+| A; k | 0.601; 1135 N/rad (267.40 N·m/rad) | fitted |
+| Grip offset h | 9.5 cm | measured |
+| Brace and full draw from the grip | 16.3 cm; 66.9 cm | model output |
+| Peak; force at full draw; stored energy | 259.3 N; 86.9 N; 96.4 J | model output |
+| Axle travel; axle force brace → full draw | 71.2 mm; 506 N → 849 N | derived |
+| Cam shapes; measured F(x) | Figs. 8 and 9 | figures, must be digitised |
+
+The cams are published only as a figure, so this bow is no reference test
+until the figure is digitised.
+
+### Other sources
+
+- Sādhanā 50 (2025) 167, Barnett Banshee youth bow (not open access,
+  numbers only): axle-to-axle 840 mm, limb 300 mm, cam eccentricity 7.2 mm,
+  cam sizes 59.0 mm and 35.0 mm (diameters by the photograph and the
+  kinematics, though the text calls them radii), spring 145.68 N·m/rad and
+  preload 0.328 rad (fitted, from angles that are not self-consistent;
+  consistent angles give 143.3 N·m/rad), measured peak about 90 N. The cam
+  phase and the limb angles are not published, so the bow is no reference
+  test.
+- Zanevskyy, Sports Eng. 15 (2012) 167–175 (CC BY): measured limb angles
+  0.125 rad (top) and 0.106 rad (bottom) at one pose against 0.124 rad and
+  0.110 rad in his model; derived axle travel 53.7 mm at 359 N → 554 N.
+  No cam rotation is measured, and his model forces both cams to turn
+  equally, so the data checks one pose of a timing analysis at most.
+- Hanson, MS thesis, 2009 (numbers only): measured F(x) tables in 1 in
+  steps, PSE Firestorm Lite 56.2 lbf peak and 813.4 lbf·in (91.9 J), Bear
+  Buckmaster BTR 56 lbf and 814.6 lbf·in (92.0 J), draw measured from the
+  front of the arrow shelf, both ending before the valley; limb stiffness
+  52 lbf/in (9.11 N/mm) at the tip of an unidentified PSE limb. The thesis
+  gives no preload or axle travel: with its stiffness and energy, a
+  preload of 1 in gives 78 mm of travel, 3 in gives 50 mm and 5.6 in
+  gives 32 mm.
 
 ## Cam timing
 
@@ -333,6 +426,30 @@ Computed checks of the building blocks:
   inverse) and for the single cam by counting. It is not proven in
   general.
 
+## Open spiral tracks
+
+A cord touches its track only on the arc it wraps: from its post to the
+point where it leaves the track. The force curve depends on that working
+arc and on the lead-in and residual wrap at the posts, not on the rest of
+the outline. A track can therefore rise like a spiral over most of a turn
+and end in a step at its post, so the outline is not convex.
+
+- The working arc stays convex (ρ = p + p'' > 0); the contact solver and
+  the length identity need no change. The inverse model already builds the
+  cable track as an open spline over the working arc; only the outline
+  closes it with a blend.
+- A closed convex track ties opposite sides together: p(ψ) + p(ψ + π) is
+  the width of the track in that direction. An open spiral removes this
+  link, so the lever arm can change more within one turn and the cam can
+  turn further than the 224° of the default design.
+- The step replaces the closing blend, whose failure is the
+  `closing-blend` diagnostic.
+- The cable can end at a post close to the axle, below the present limit
+  p_min = r_bore + wall + d/2 (8.25 mm on the default design).
+- New checks: no free cord span may touch the step over the whole draw;
+  the minimum wall holds at the step corner; the cam overlap check and the
+  middle plate may no longer assume convex outlines.
+
 ## Delivery plan
 
 The design path stays symmetric and inextensible. The designed cam, its
@@ -349,31 +466,30 @@ design status, never dim the cam and never block exports.
 | 10b | Timing user interface. Settings group "Timing (analysis only)": top cable length change, bottom cable length change, string length change, nocking point above centre (mm). Results block: Δθ at full draw, first stop and gap at the other, nock travel, Δ brace height, Δ draw length, Δ peak, Δ let-off, dΔθ/dL. Timing chart: stacked nock height and Δθ over draw length. Glossary: timing, nock travel, draw stop. Results footnote, report note, user guide and Limitations updated. | Timing edits never change the cam, status or exports; one undo step per edit; share link keeps the offsets | Unit: glossary and guide text, defaults, ranges; Playwright: +1 mm top cable shows Δθ and the stop order, undo, share link, 320 px, axe | 0.4 |
 | 10c | String plan with both halves from the analysis pose (brace and x₂); CSV columns θ_t, θ_b, y, four tensions; print report timing section | Drawings match the analysis poses to 1e-9 m | Layout pose tests, DXF round trip, report | 0.25 |
 | 11 | Cord stiffness. EA per cord (string, top cable, bottom cable) with a rigid option (`cordModel: rigid | elastic`, no Infinity in JSON). Compliant closures: quasi-Newton before the stops, full Newton with ∂T/∂q at the wall. Free lengths L0 = L − C·T at brace. Wall stiffness; build lengths free and at 445 N (100 lbf). Material presets from measured data only (452X at 12.36 kN per strand). | EA → ∞ reproduces 10a; equal EA keeps y = 0; differential EA gives Δθ; wall stiffness within 1 % of the closed form | Rigid limit, energy balance with ½·C·T², wall at the stop, convergence at the wall, median below 60 ms | 0.4 |
-| 12 | Reference bows. Fixture format `tests/fixtures/reference/<id>.json`: source and permission, bow inputs, cam as free-form values, measured F(x) with its uncertainty, optional cam angles and nock height, tolerances, `enforced` flag. Report-only harness in continuous integration (CI). | Harness runs on one synthetic fixture | Harness test | 0.1 |
-| 13 | Binary cam forward analysis: two-track tangent contact with branch choice, `system.type`; schema version 2 written only for designs other than twin cam | Tangent length matches a polygon to 1e-12 m; binary equals a hand-built case | Contact branches, symmetry, energy | 0.6 |
-| 14 | Binary cam design: symmetric inverse with the let-out track set by the user, fit, outline, 7 plates | Binary sample with zero diagnostics | Round trip, exports | 1.0 |
-| 15 | Hybrid, then single cam: control track set by the user, power track solved, nock travel reported | Decided with the user per slice | – | 1.5 or more each |
+| 12 | Reference bows. Fixture format `tests/fixtures/reference/<id>.json`: citation, licence, bow inputs in the author's symbols and as app inputs, cam as eccentric circles or free-form values, targets (model outputs and measured points with their uncertainty), optional cam angles and nock height, tolerances, `enforced` flag. Harness in continuous integration (CI). First fixture: Tiermas's round-wheel bow B1 (table values and equations only, no figures). | B1 enforced against Table 2 to half a unit of the last printed digit and against 10 exact forces to 1e-4 N; measured points only when digitised with stated uncertainty | Harness test, B1 fixture | 0.15 |
+| 13 | Open spiral tracks. A track may end at a post with a step in the outline instead of the closing blend: the working arc stays convex, the outline is closed by a radial step and the post. Check that no free cord span touches the step over the whole draw, lead-in and residual wrap included. Minimum wall at the step corner. Middle plate and cam overlap without the convexity assumption (distance between outlines). DXF and STEP outlines with the step. The cable track may end at a post whose cord line passes closer to the axle than bore radius + wall + d/2 at full draw. | A spiral track with a step builds with zero diagnostics; convex tracks export unchanged | Step clearance, overlap on non-convex outlines, export round trips, cable lever arm below the bore-and-wall limit | 0.45 |
+| 14 | Default design and samples retuned towards real limbs: stiffer and less preloaded (4 N/mm to 5 N/mm at the axle instead of 2.6 N/mm), axle travel towards 55 mm to 70 mm, from the reference data above; open spiral tracks where the let-off needs them. | Default and samples build with zero diagnostics and zero warnings; limb parameters inside the verified range | Sample tests, performance budgets | 0.3 |
+| 15 | Binary cam forward analysis: two-track tangent contact with branch choice, `system.type`; schema version 2 written only for designs other than twin cam | Tangent length matches a polygon to 1e-12 m; binary equals a hand-built case | Contact branches, symmetry, energy | 0.6 |
+| 16 | Binary cam design: symmetric inverse with the let-out track set by the user, fit, outline, 7 plates | Binary sample with zero diagnostics | Round trip, exports | 1.0 |
+| 17 | Hybrid, then single cam: control track set by the user, power track solved, nock travel reported | Decided with the user per slice | – | 1.5 or more each |
 
-Slices 9 to 12 deliver cam timing and cord stiffness. Slices 13 to 15 each
-need a go-ahead.
+Slices 9 to 12 deliver cam timing and cord stiffness; slices 13 and 14
+deliver open spiral tracks and the retuned default. Slices 15 to 17 each
+need a go-ahead. The stiffness of the cam-to-cam timing cable of binary and
+hybrid systems belongs to slice 15.
 
 ### Not in the plan yet
 
 - Separate top and bottom limbs (limb bolt turns). The analysis kernel
   takes them without change; they need inputs and data.
-- A default design closer to real limbs (40 mm to 50 mm axle travel,
-  1000 N to 1500 N at the axle, η ≈ 0.72). It needs a cable lever arm
-  below the bore-and-wall rule at full draw (post or anchor case). That
-  rule is a design decision.
 - Limb stop, finite peg stiffness, cam lean, hysteresis and dynamics.
 
-### Open questions for the user
+### Decisions of the user
 
-- "Timing string stiffness":
-  - In the twin cam the cords that time the cams are the power cables.
-    Slice 11 covers their stiffness and its effect on timing.
-  - In binary and hybrid systems the timing cord is a separate cam-to-cam
-    cable. Its stiffness belongs to slice 13.
-- Reference data: a draw-board measurement (force, cam angles and nock
-  height against draw length) of a bow with known cams, or permission to
-  use data from the papers above once someone downloads them.
+- "Timing string stiffness" covers both cords: the power cables of the twin
+  cam first (slice 11), the cam-to-cam timing cable with the binary cam
+  (slice 15).
+- The default design moves towards real limbs (slice 14), after open
+  spiral tracks (slice 13).
+- Reference data comes from papers the user provides; the repository holds
+  only extracted values with their citation and licence, never the papers.

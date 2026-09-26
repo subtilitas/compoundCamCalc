@@ -1031,8 +1031,10 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 10b | Timing user interface: cable and string length changes, nocking point height, timing results block and chart |
 | 10c | String plan with both halves, CSV columns and print report section for the analysis |
 | 11 | Cord stiffness: EA per cord, compliant closures, wall stiffness, free and loaded build lengths |
-| 12 | Reference-bow fixture format and report-only harness |
-| 13 to 15 | Binary cam (forward, then design), then hybrid and single cam; each needs a go-ahead of the user |
+| 12 | Reference-bow fixture format and harness; first fixture Tiermas's round-wheel bow B1 |
+| 13 | Open spiral tracks: a track may end at a post with a step in the outline; step clearance, non-convex overlap check and exports (request of the user) |
+| 14 | Default design and samples retuned towards real limbs from verified reference data (decision of the user) |
+| 15 to 17 | Binary cam (forward, then design, with the stiffness of the cam-to-cam timing cable), then hybrid and single cam; each needs a go-ahead of the user |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter
@@ -1130,10 +1132,12 @@ tolerance (41 of 45).
 - Limb stop is not modelled; only a cable stop.
 - Hybrid, binary and single-cam systems are not modelled.
 - The model is not validated against measured bows; no reference data is in
-  the repository. The default limb has 78 mm of axle travel at 499 N to
-  702 N at the axle; the reported range of real bows is 32 mm to 50 mm at
-  about twice the force, and the default stores 9 % to 16 % less energy
-  than current flagship bows at the same peak and power stroke
+  the repository. The forward model reproduces the published model of
+  Tiermas's round-wheel bow B1 to 2.3e-12 N; that model runs 5 N to 6 N
+  (rms) from the measured points of the bow, mostly hysteresis. The
+  default limb (2.6 N/mm, 192 mm preload travel, 78 mm axle travel) is
+  softer and more preloaded than the limbs fitted to measured bows
+  (4.4 N/mm to 4.8 N/mm, 54 mm to 71 mm axle travel)
   ([research.md](research.md#the-apps-default-design-against-these-ranges)).
 
 ## Later
