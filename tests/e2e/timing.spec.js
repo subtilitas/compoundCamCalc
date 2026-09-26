@@ -94,12 +94,16 @@ test.describe('Timing', () => {
     await expect(page.getByTestId('timing-second-stop')).toHaveText('Both cams at the first stop');
     await expect(page.getByTestId('timing-wall-stiffness')).toHaveText('475.5 N/mm');
     await expect(page.getByTestId('timing-stretch-draw')).toHaveText('−0.66 mm');
+    await page.getByTestId('unit-stiffness').selectOption('lbf/in');
+    await expect(page.getByTestId('timing-wall-stiffness')).toHaveText('2715.0 lbf/in');
+    await page.getByTestId('unit-stiffness').selectOption('N/mm');
     await expect(page.getByTestId('plan-string-free')).toHaveText(/^\d+\.\d mm \(\d+\.\d{3} in\)$/);
     await expect(page.getByTestId('plan-top-cable-loaded')).toBeVisible();
 
     await setField(page, 'top-cable', '1');
     await solved(page);
     await expect(page.getByTestId('timing-second-stop')).toHaveText(/^Bottom cam, 5\.\d\d mm after the first$/);
+    await expect(page.getByTestId('legend-plan-full')).toHaveText('At the second stop (dotted)');
 
     // A custom material takes an EA instead of a strand count.
     await expect(page.getByTestId('field-top-cable-ea')).toBeHidden();

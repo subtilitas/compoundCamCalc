@@ -326,7 +326,7 @@ export function createTiming(container) {
       const coarse = result !== null && result.resolution === 'coarse';
       const next = coarse ? shown : result;
       const old = coarse || outdated;
-      const nextKey = `${u.dims}|${u.draw}|${u.force}|${stale}|${old}`;
+      const nextKey = `${u.dims}|${u.draw}|${u.force}|${u.stiffness}|${stale}|${old}`;
       if (next === shown && nextKey === key) return;
       shown = next;
       units = u;

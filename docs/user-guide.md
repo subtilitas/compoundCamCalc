@@ -515,8 +515,9 @@ the plan shows the changed bow of the [Timing](#timing) analysis instead,
 and the caption says "Bow with the timing settings; the cam and the
 lengths listed are those of the design". Each half is drawn from its own
 pose: the cams turn by different angles and the nock sits off the axis.
-The outlines show brace and the end of the draw of the changed bow (the
-first stop, or full draw when no stop is reached). The draw position
+The outlines show brace and the end of the draw of the changed bow: the
+first stop with rigid cords, the second stop with elastic cords, or the
+last pose drawn when no stop is reached. The legend names which. The draw position
 moves over that range at the same fraction of the draw: brace of the
 design shows brace of the changed bow, full draw of the design shows the
 end of its draw. The load arrows are left out; the line under the drawing
@@ -589,8 +590,11 @@ Soft cords can make the level nock unstable in the let-off drop; the panel
 then lists the problem "The free nock is unstable". With 16 strands of
 Dacron B50 on every cord the default design shows it.
 
-With unchanged cords the cams stay in time, the nock stays level, the
-draw ends at full draw and every change is 0. The chart shows the nock
+With unchanged rigid cords the cams stay in time, the nock stays level,
+the draw ends at full draw and every change is 0. With unchanged elastic
+cords of equal stiffness the cams stay in time and the nock stays level,
+but the draw ends at the stops, before full draw: the change of draw
+length by stretch gives the difference. The chart shows the nock
 height (top) and the cam timing (bottom) against the draw length; a
 dashed line marks full draw of the design. Problems of the analysis, for
 example a cord that runs off its track, are listed under the values; they

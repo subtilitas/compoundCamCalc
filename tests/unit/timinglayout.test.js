@@ -7,7 +7,7 @@ import { exportFiles } from '../../src/export/files.js';
 import { defaultState } from '../../src/state/presets.js';
 import { reportData } from '../../src/ui/report.js';
 import { timingCurrent } from '../../src/ui/exportpanel.js';
-import { planBounds, planDims, planLabel, timingHalves, timingPoseText, timingX } from '../../src/ui/stringplan.js';
+import { endLabel, planBounds, planDims, planLabel, timingHalves, timingPoseText, timingX } from '../../src/ui/stringplan.js';
 import { sampleState } from '../../src/state/samples.js';
 import { readDxf } from './dxf-reader.js';
 
@@ -267,5 +267,16 @@ describe('report of the timing settings', () => {
     const d = reportData({ result, state, now: state, name: 'Youth', version: '0.2.0', date });
     expect(d.timing.length).toBeGreaterThan(0);
     expect(d.timingProblems.map((p) => p.code)).toContain('analysis-no-stop');
+  });
+
+  it('name the end outline by the stop that ends the draw', () => {
+    /** @param {boolean} elastic @param {any} first @param {any} second */
+    const a = (elastic, first, second) => /** @type {any} */ ({ elastic, stops: { first, second } });
+    expect(endLabel(a(false, 'top', null))).toBe('At the first stop');
+    expect(endLabel(a(false, null, null))).toBe('At the end of the draw');
+    expect(endLabel(a(true, 'top', 'bottom'))).toBe('At the second stop');
+    expect(endLabel(a(true, 'both', 'both'))).toBe('At the first stop');
+    expect(endLabel(a(true, 'top', null))).toBe('At the end of the draw');
+    expect(endLabel(a(true, null, null))).toBe('At the end of the draw');
   });
 });

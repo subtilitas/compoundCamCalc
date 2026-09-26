@@ -218,6 +218,21 @@ export function timingX(ctx, tl, x) {
 }
 
 /**
+ * Legend of the end outline of the changed bow: the first stop with rigid
+ * cords, the second stop with elastic cords (the first when both cams stop
+ * together), else the end of the draw.
+ * @param {import('../core/analysis.js').AnalysisResult} a
+ */
+export function endLabel(a) {
+  const { first, second } = a.stops;
+  if (a.elastic) {
+    if (second === 'both') return 'At the first stop';
+    return second ? 'At the second stop' : 'At the end of the draw';
+  }
+  return first ? 'At the first stop' : 'At the end of the draw';
+}
+
+/**
  * Text under the plan of the changed bow at a draw position: draw length,
  * nock height and cam timing, positive with the top cam ahead.
  * @param {TimingPose} tp
@@ -503,9 +518,7 @@ export function createStringPlan(container) {
       full.group.style.display = hasFull ? '' : 'none';
       if (!timing) full.mirror.style.display = hasFull ? '' : 'none';
       fullItem.hidden = !hasFull;
-      fullText.data = timing
-        ? (tl?.analysis.stops.first ? 'At the first stop (dotted)' : 'At the end of the draw (dotted)')
-        : 'At full draw (dotted)';
+      fullText.data = timing ? `${endLabel(/** @type {TimingLayout} */ (tl).analysis)} (dotted)` : 'At full draw (dotted)';
       loadItem.hidden = timing;
       const base = viewBoxFor(planBounds([...braces, ...ends], radius), FIT_PADDING);
       size = base.size;
