@@ -77,6 +77,23 @@ export function chipText(status, problems) {
  * @typedef {{ result: SolveResult, state: T }} Solved
  */
 
+/**
+ * Whether two states hold the same inputs: the same object, or the same
+ * section objects apart from the display units (the store keeps unchanged
+ * sections).
+ * @param {unknown} a
+ * @param {unknown} b
+ */
+export function sameInputs(a, b) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const x = /** @type {Record<string, unknown>} */ (a);
+  const y = /** @type {Record<string, unknown>} */ (b);
+  const keys = new Set([...Object.keys(x), ...Object.keys(y)]);
+  keys.delete('units');
+  return [...keys].every((k) => x[k] === y[k]);
+}
+
 /** A solve running longer than this marks the shown result as outdated (ms). */
 export const PENDING_DELAY = 250;
 
@@ -88,15 +105,17 @@ export const PENDING_DELAY = 250;
  * (outdated), the status, the result drawn in the cam view, the result
  * whose achieved curve the chart shows and the result whose working arc the
  * track editor shows. The last valid cam can belong to another track, so the
- * editor gets the current result only, and none when it has no achieved
- * curve.
+ * editor gets the current result only, none when it has no achieved curve,
+ * and none while its inputs differ from the current inputs (a newer solve
+ * runs).
  * @template T
  * @param {Solved<T> | null} latest last delivered result
  * @param {Solved<T> | null} lastGood last delivered result with status ok
  * @param {'idle' | 'busy' | 'error'} solverStatus
  * @param {boolean} [pending] a solve has been running for PENDING_DELAY or longer
+ * @param {T} [now] current inputs; without them the inputs count as the same
  */
-export function solveView(latest, lastGood, solverStatus, pending = false) {
+export function solveView(latest, lastGood, solverStatus, pending = false, now = undefined) {
   // After a solver error only the last valid cam stays in view, dimmed.
   const failed = solverStatus === 'error';
   const current = failed ? null : latest;
@@ -112,7 +131,7 @@ export function solveView(latest, lastGood, solverStatus, pending = false) {
   const outdated = pending && solverStatus === 'busy' && current !== null;
   const shown = stale ? lastGood : current;
   const withCurve = current?.result.achieved ? current : stale ? lastGood : null;
-  const forEditor = current?.result.achieved ? current : null;
+  const forEditor = current?.result.achieved && (now === undefined || sameInputs(current.state, now)) ? current : null;
   return { current, stale, outdated, status, shown, withCurve, forEditor };
 }
 
@@ -307,8 +326,8 @@ export function startApp() {
 
   function showSolve() {
     const pending = solverStatus === 'busy' && performance.now() - busySince >= PENDING_DELAY;
-    const { current, stale, outdated, status, shown, withCurve, forEditor } = solveView(latest, lastGood, solverStatus, pending);
     const now = store.getState();
+    const { current, stale, outdated, status, shown, withCurve, forEditor } = solveView(latest, lastGood, solverStatus, pending, now);
     const shownResult = shown?.result ?? null;
     markerOnCurve = withCurve !== null && withCurve === shown;
     if (layoutOf.result !== shownResult) {

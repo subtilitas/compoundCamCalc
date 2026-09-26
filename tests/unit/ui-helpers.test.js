@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateCurve, pointMetrics } from '../../src/core/curve.js';
 import { INCH, toSI } from '../../src/core/units.js';
-import { chipText, meetsEveryCheck, solveView } from '../../src/ui/app.js';
+import { chipText, meetsEveryCheck, sameInputs, solveView } from '../../src/ui/app.js';
 import { moveLimitMessage, niceStep, ticks } from '../../src/ui/chart.js';
 import { amo, drawText, fixed, forceText, inward, lengthLabel, metricsOf, plain, pointLabel } from '../../src/ui/display.js';
 
@@ -128,6 +128,22 @@ describe('solve view selection', () => {
     }
     const bad = solved('infeasible');
     expect(solveView(bad, good, 'idle').forEditor).toBe(bad);
+  });
+
+  it('gives the track editor no working arc while a newer solve of changed inputs runs', () => {
+    const track = { shape: 'freeform' };
+    const before = { units: { dims: 'mm' }, stringTrack: track, geometry: {} };
+    const r = { result: solved('ok').result, state: before };
+    // The same inputs, also with other display units: the arc stays.
+    expect(solveView(r, r, 'busy', true, before).forEditor).toBe(r);
+    expect(solveView(r, r, 'idle', false, { ...before, units: { dims: 'in' } }).forEditor).toBe(r);
+    // An edited track: the arc belongs to the old track until the new solve arrives.
+    const edited = { ...before, stringTrack: { shape: 'freeform' } };
+    expect(solveView(r, r, 'busy', false, edited).forEditor).toBeNull();
+    expect(solveView(r, r, 'busy', true, edited).forEditor).toBeNull();
+    expect(sameInputs(before, edited)).toBe(false);
+    expect(sameInputs('a', 'a')).toBe(true);
+    expect(sameInputs(null, before)).toBe(false);
   });
 
   it('drops the older result after a solver error', () => {
