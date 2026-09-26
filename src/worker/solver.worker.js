@@ -6,6 +6,7 @@
  * @module worker/solver.worker
  */
 
+import { cordStiffness } from '../core/cords.js';
 import { diagnostic } from '../core/diagnostics.js';
 import { solve } from '../core/solve.js';
 
@@ -87,8 +88,13 @@ export function answer(request, solveFn = solve) {
   let result;
   try {
     // A full solve also runs the timing analysis with the cord length
-    // changes of the state; the solve ignores it at coarse resolution.
-    result = solveFn(request.state, { resolution, analysis: resolution === 'full' ? { offsets: request.state?.tuning } : false });
+    // changes and the cord stiffness of the state; the solve ignores it at
+    // coarse resolution.
+    const tuning = request.state?.tuning;
+    result = solveFn(request.state, {
+      resolution,
+      analysis: resolution === 'full' ? { offsets: tuning, stiffness: tuning ? cordStiffness(tuning) : null } : false,
+    });
   } catch (error) {
     result = failedResult(resolution, error);
   }

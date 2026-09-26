@@ -157,7 +157,13 @@ focus moves to the next useful button.
   change, string length change (whole string) and nocking point above the
   string centre, measured along the string. Positive values lengthen the
   cord or raise the nocking point. Ranges: cables −20 mm to 20 mm, string
-  and nocking point −50 mm to 50 mm; default 0. These values change the
+  and nocking point −50 mm to 50 mm; default 0. **Cord model**: Rigid
+  (default) or Elastic. With Elastic, each cord (string, top cable, bottom
+  cable) has a **material** and a **strand count** (5 to 200). The
+  materials carry measured stiffness per strand: BCY 452X 12360 N,
+  Fastflight Plus 10966 N, Dacron B50 2118 N. **Custom EA** takes the
+  axial stiffness EA directly, 10000 N to 1e8 N. The line under the fields
+  gives the EA of each cord. These values change the
   [Timing](#timing) panel, the [string plan](#string-plan) and two extra
   export files; the cam, its checks, the results above and the design
   export files stay the same.
@@ -498,13 +504,20 @@ The list under the drawing gives:
 The cord lengths show in both dimension units. They do not include the
 wrap around a post, loops, serving or stretch. Add these for the build.
 
+With the cord model Elastic the list adds, for the string, the top cable
+and the bottom cable, the **free length** at no tension and the length at
+**445 N (100 lbf)**, a common jig tension. Both come from the pitch-line
+length, the tension of the braced bow and the EA of the cord. The export
+README lists them too.
+
 **With timing settings.** When any value of the Timing settings is not 0,
 the plan shows the changed bow of the [Timing](#timing) analysis instead,
 and the caption says "Bow with the timing settings; the cam and the
 lengths listed are those of the design". Each half is drawn from its own
 pose: the cams turn by different angles and the nock sits off the axis.
-The outlines show brace and the end of the draw of the changed bow (the
-first stop, or full draw when no stop is reached). The draw position
+The outlines show brace and the end of the draw of the changed bow: the
+first stop with rigid cords, the second stop with elastic cords, or the
+last pose drawn when no stop is reached. The legend names which. The draw position
 moves over that range at the same fraction of the draw: brace of the
 design shows brace of the changed bow, full draw of the design shows the
 end of its draw. The load arrows are left out; the line under the drawing
@@ -538,29 +551,50 @@ outline.
 
 ## Timing
 
-The Timing panel analyses the built cam with the length changes of the
-Timing settings. Each half of the bow is solved on its own: the top and
-the bottom cam can turn by different angles, and the nock moves up or down
-until the archer's pull is horizontal. The cords stay rigid.
+The Timing panel analyses the built cam with the length changes and the
+cord model of the Timing settings. Each half of the bow is solved on its
+own: the top and the bottom cam can turn by different angles, and the nock
+moves up or down until the archer's pull is horizontal. With the cord model
+Rigid the cords do not stretch; with Elastic each cord stretches by
+L·T/EA, from its length in the braced bow.
 
 The list gives:
 
-- **Cam timing at the end of the draw**: θ top − θ bottom, in degrees, and
-  which cam is ahead.
+- **Cam timing at the first stop**: θ top − θ bottom, in degrees, and
+  which cam is ahead; at full draw when no stop is reached.
 - **First draw stop**: the cam whose draw stop touches its cable first, and
   the gap of the other cam's stop at that moment; or both cams together.
   With rigid cords the first stop ends the draw.
 - **Nock travel**: highest minus lowest nock height over the draw.
 - **Change of brace height**, **change of draw length** (end of the draw
-  against full draw of the design), **change of peak draw force** (to
-  0.1 N) and **change of let-off** (to 0.1 points), against the design.
-- **Timing change per mm of top cable** at the end of the draw, in
+  against the end of the draw of unchanged cords), **change of peak draw
+  force** (to 0.1 N) and **change of let-off** (to 0.1 points), against
+  unchanged cords of the same cord model.
+- **Timing change per mm of top cable** at the first stop, in
   degrees per millimetre in every unit system, with the nock free to
   follow: how far 1 mm of length change in the top cable, for example from
   twists, moves the timing there.
 
-With unchanged cords the cams stay in time, the nock stays level, the
-draw ends at full draw and every change is 0. The chart shows the nock
+With elastic cords the draw goes on past the first stop until the other
+cam reaches its stop, and three rows follow:
+
+- **Second draw stop**: the cam that stops second and how far the draw
+  goes past the first stop, or "Both cams at the first stop".
+- **Wall stiffness, both cams on their stops**: the rise of the draw force
+  per unit of draw at the second stop.
+- **Change of draw length by stretch, unchanged cords**: the end of the
+  draw with unchanged cords against full draw of the design. With 24
+  strands of 452X on every cord the default design stops 0.66 mm early.
+
+Soft cords can make the level nock unstable in the let-off drop; the panel
+then lists the problem "The free nock is unstable". With 16 strands of
+Dacron B50 on every cord the default design shows it.
+
+With unchanged rigid cords the cams stay in time, the nock stays level,
+the draw ends at full draw and every change is 0. With unchanged elastic
+cords of equal stiffness the cams stay in time and the nock stays level,
+but the draw ends at the stops, before full draw: the change of draw
+length by stretch gives the difference. The chart shows the nock
 height (top) and the cam timing (bottom) against the draw length; a
 dashed line marks full draw of the design. Problems of the analysis, for
 example a cord that runs off its track, are listed under the values; they
@@ -568,9 +602,12 @@ do not change the status of the cam.
 
 While an input is dragged, the panel keeps the values of the last full
 solve and says so. The [string plan](#string-plan) draws the changed bow,
-and the Export panel adds a timing string plan and a timing table. Limitations: the cords do not stretch, so the second
-stop and the wall stiffness are not computed, and the draw ends at the
-first stop.
+and the Export panel adds a timing string plan and a timing table.
+Limitations: with rigid cords the draw ends at the first stop, and the
+second stop and the wall stiffness are not computed. Stretch is linear: no
+creep, no hysteresis, no stiffness change with load. A cam on its stop may
+pull its cable below zero tension; the panel then lists "A cord goes
+slack".
 
 ## Export
 
@@ -915,6 +952,7 @@ dialog, word for word. A unit test keeps them the same.
 - Working arc: part of the string track the string leaves from between brace and full draw. The rest of the track only closes the cam outline.
 - Cam timing: difference of the rotations of the top and the bottom cam at the same draw position, Δθ = θ top − θ bottom. Cams in time turn together and reach their draw stops at the same draw position.
 - Nock travel: vertical movement of the nock point over the draw when the archer pulls only horizontally, from its highest to its lowest position.
+- Cord stiffness (EA): axial stiffness of a cord, the strand count times the stiffness per strand of its material; a cord of length L under tension T stretches by L·T/EA.
 - Draw stop: peg on the cam that touches the power cable at full draw and ends the draw. The gap is its clearance to the cable.
 
 Info buttons stand next to the settings, stats and results values with a

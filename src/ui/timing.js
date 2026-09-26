@@ -94,21 +94,26 @@ export function timingItems(result, units) {
 
   /** @type {TimingItem[]} */
   const items = [
-    { key: 'timing-end', label: 'Cam timing at the end of the draw', glossary: 'timing', text: MISSING },
+    { key: 'timing-end', label: 'Cam timing at the first stop', glossary: 'timing', text: MISSING },
     { key: 'first-stop', label: 'First draw stop', glossary: 'drawStop', text: MISSING },
     { key: 'nock-travel', label: 'Nock travel', glossary: 'nockTravel', text: MISSING },
     { key: 'brace-change', label: 'Change of brace height', text: MISSING },
     { key: 'draw-change', label: 'Change of draw length', text: MISSING },
     { key: 'peak-change', label: 'Change of peak draw force', text: MISSING },
     { key: 'letoff-change', label: 'Change of let-off', text: MISSING },
-    { key: 'sensitivity', label: 'Timing change per mm of top cable at the end of the draw', text: MISSING },
+    { key: 'sensitivity', label: 'Timing change per mm of top cable at the first stop', text: MISSING },
   ];
+  // Elastic cords: the second stop, the wall and the draw change of the stretch alone.
+  if (a?.elastic) items.push(...ELASTIC_ITEMS.map((i) => ({ ...i, text: MISSING })));
   if (!ok) return items;
   const set = (/** @type {string} */ key, /** @type {string} */ text) => {
     const item = items.find((i) => i.key === key);
     if (item) item.text = text;
   };
-  const dTheta = deg(a.dTheta[last]);
+  // The first stop, before any cam rests on its stop; the end of the draw without one.
+  const firstIndex = Number.isFinite(a.stops.x) ? a.x.indexOf(a.stops.x) : -1;
+  const atFirst = firstIndex >= 0 ? firstIndex : last;
+  const dTheta = deg(a.dTheta[atFirst]);
   const ahead = Math.abs(dTheta) < 0.005 ? 'cams in time' : dTheta > 0 ? 'top cam ahead' : 'bottom cam ahead';
   set('timing-end', `${signed(dTheta, 2)}${DEGREE}, ${ahead}`);
   const { first } = a.stops;
@@ -127,7 +132,19 @@ export function timingItems(result, units) {
   const xb = design.x[0];
   const xf = design.x[design.x.length - 1];
   set('brace-change', signedDims(/** @type {number} */ (a.brace?.x) - xb));
-  set('draw-change', signedDims(a.x[last] - xf));
+  // Against unchanged cords of the same cord model; with rigid cords their draw ends at x_f.
+  set('draw-change', signedDims(a.x[last] - reference.x[reference.end]));
+  if (a.elastic) {
+    const { second, x2, wallStiffness } = a.stops;
+    set('second-stop', second === 'both' ? 'Both cams at the first stop'
+      : second === 'top' || second === 'bottom'
+        ? `${second === 'top' ? 'Top' : 'Bottom'} cam, ${fixed(dims(x2 - a.stops.x), dimsDecimals)} ${units.dims} after the first`
+        : 'Not reached');
+    set('wall-stiffness', Number.isFinite(wallStiffness)
+      ? `${fixed(fromSI(wallStiffness, 'stiffness', units.stiffness), 1)} ${units.stiffness}`
+      : MISSING);
+    set('stretch-draw', signedDims(reference.x[reference.end] - xf));
+  }
   const changed = drawMetrics(a);
   const base = drawMetrics(reference);
   const dPeak = changed.peak - base.peak;
@@ -142,6 +159,13 @@ export function timingItems(result, units) {
   set('sensitivity', Number.isFinite(perMm) ? `${fixed(perMm, 2)}${DEGREE}/mm` : MISSING);
   return items;
 }
+
+/** Rows of the timing panel with elastic cords only. */
+export const ELASTIC_ITEMS = Object.freeze([
+  Object.freeze({ key: 'second-stop', label: 'Second draw stop' }),
+  Object.freeze({ key: 'wall-stiffness', label: 'Wall stiffness, both cams on their stops' }),
+  Object.freeze({ key: 'stretch-draw', label: 'Change of draw length by stretch, unchanged cords' }),
+]);
 
 /** Glossary entries with an info button in the timing panel. */
 export const TIMING_GLOSSARY = Object.freeze(/** @type {GlossaryKey[]} */ (['timing', 'drawStop', 'nockTravel']));
@@ -170,14 +194,18 @@ export function timingProblems(result) {
  */
 export function createTiming(container) {
   const list = h('dl', { class: 'results-metrics timing-metrics', 'data-testid': 'timing-metrics' });
-  /** @type {Map<string, { dd: HTMLElement }>} */
+  /** @type {Map<string, { dd: HTMLElement, row: HTMLElement }>} */
   const rows = new Map();
-  for (const item of timingItems(null, { draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' })) {
-    const dt = item.glossary ? h('dt', {}, item.label, timingInfo(item.glossary, item.key)) : h('dt', {}, item.label);
+  // Every row of rigid cords, then the rows of elastic cords, hidden until an elastic result shows.
+  for (const item of [...timingItems(null, { draw: 'in', force: 'N', dims: 'mm', energy: 'J', stiffness: 'N/mm' }), ...ELASTIC_ITEMS]) {
+    const glossary = 'glossary' in item ? item.glossary : undefined;
+    const dt = glossary ? h('dt', {}, item.label, timingInfo(glossary, item.key)) : h('dt', {}, item.label);
     const dd = h('dd', { 'data-testid': `timing-${item.key}` }, MISSING);
-    rows.set(item.key, { dd });
-    list.append(h('div', { class: 'results-metric' }, dt, dd));
+    const row = h('div', { class: 'results-metric' }, dt, dd);
+    rows.set(item.key, { dd, row });
+    list.append(row);
   }
+  for (const { key } of ELASTIC_ITEMS) /** @type {{ row: HTMLElement }} */ (rows.get(key)).row.hidden = true;
   const problemsHeading = h('h3', { class: 'results-diagnostics-heading', hidden: true }, 'Problems of the analysis');
   const problems = h('ol', { class: 'results-diagnostics', 'data-testid': 'timing-problems', hidden: true });
   const root = svg('svg', { class: 'chart timing-chart', 'data-testid': 'timing-chart', role: 'img', 'aria-label': 'Timing chart: no cam yet' });
@@ -278,7 +306,7 @@ export function createTiming(container) {
     const end = timingItems(shown, u).find((i) => i.key === 'timing-end')?.text ?? MISSING;
     setAttrs(root, {
       'aria-label': `Timing chart: nock height and cam timing against the draw, the dashed line marks full draw of the design; ` +
-        `cam timing at the end of the draw ${end}; the list above gives the values`,
+        `cam timing at the first stop ${end}; the list above gives the values`,
     });
   }
 
@@ -298,15 +326,19 @@ export function createTiming(container) {
       const coarse = result !== null && result.resolution === 'coarse';
       const next = coarse ? shown : result;
       const old = coarse || outdated;
-      const nextKey = `${u.dims}|${u.draw}|${u.force}|${stale}|${old}`;
+      const nextKey = `${u.dims}|${u.draw}|${u.force}|${u.stiffness}|${stale}|${old}`;
       if (next === shown && nextKey === key) return;
       shown = next;
       units = u;
       key = nextKey;
-      for (const item of timingItems(next, u)) {
+      const items = timingItems(next, u);
+      for (const item of items) {
         const row = rows.get(item.key);
         if (!row) continue;
         if (row.dd.textContent !== item.text) row.dd.textContent = item.text;
+      }
+      for (const { key: k } of ELASTIC_ITEMS) {
+        /** @type {{ row: HTMLElement }} */ (rows.get(k)).row.hidden = !items.some((i) => i.key === k);
       }
       const found = timingProblems(next);
       problemsHeading.hidden = found.length === 0;

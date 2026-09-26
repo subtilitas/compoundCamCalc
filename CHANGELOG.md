@@ -2,7 +2,7 @@
 
 All notable changes are listed here. Versions follow semantic versioning.
 
-## Unreleased
+## 0.3.0 — 2026-09-26
 
 ### Added
 
@@ -22,6 +22,13 @@ All notable changes are listed here. Versions follow semantic versioning.
   the four cord tensions per sample; names carry the design id and a
   timing id.
 - Print report: a Timing section with the values of the Timing panel.
+- Timing settings: a Cord model select (Rigid by default, Elastic) and per
+  cord a material (BCY 452X, Fastflight Plus, Dacron B50, or Custom EA)
+  with a strand count or an EA. With elastic cords the Timing panel adds
+  the second draw stop, the wall stiffness and the draw change of the
+  stretch alone, and the build lengths and the export README add the free
+  length and the length at 445 N (100 lbf) of each cord.
+- Glossary: cord stiffness (EA).
 - `src/core/analysis.js`: elastic cords with the input `stiffness` (EA of
   the string and of each cable). The free lengths come from the tensions
   of the design at brace, so unchanged cords brace at the design brace.
@@ -43,6 +50,9 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 - The results footnote and the report note name the Timing panel for cam
   timing.
+- Timing panel: cam timing and the timing change per mm of top cable are
+  given at the first stop; the change of draw length compares with the
+  end of the draw of unchanged cords.
 
 ## 0.2.0 — 2026-09-26
 

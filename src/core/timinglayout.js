@@ -15,6 +15,7 @@
  * @module core/timinglayout
  */
 
+import { cordStiffness } from './cords.js';
 import { createSupport } from './support.js';
 
 /** @typedef {import('./solve.js').SolveResult} SolveResult */
@@ -172,11 +173,15 @@ export function timingPoseAt(tl, x) {
 
 /**
  * Short id of the timing settings for file names: six hex digits of an
- * FNV-1a hash of the four values.
+ * FNV-1a hash of the four length changes and, with elastic cords, the EA
+ * of each cord.
  * @param {import('../state/schema.js').Tuning} tuning
  */
 export function timingId(tuning) {
-  const text = JSON.stringify([tuning.topCable, tuning.bottomCable, tuning.string, tuning.nockHeight]);
+  const values = [tuning.topCable, tuning.bottomCable, tuning.string, tuning.nockHeight];
+  const ea = cordStiffness(tuning);
+  if (ea) values.push(ea.string, ea.topCable, ea.bottomCable);
+  const text = JSON.stringify(values);
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {
     h ^= text.charCodeAt(i);

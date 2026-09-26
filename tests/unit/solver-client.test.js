@@ -503,11 +503,20 @@ describe('worker answer', () => {
     expect(solveFn).toHaveBeenCalledWith(st('s'), { resolution: 'coarse', analysis: false });
   });
 
-  it('asks a full solve for the timing analysis with the length changes of the state', () => {
+  it('asks a full solve for the timing analysis with the length changes and the cord stiffness of the state', () => {
     const solveFn = vi.fn(() => fake('ok'));
     const state = /** @type {any} */ ({ ...st('s'), tuning: { topCable: 0.001 } });
     answer({ id: 5, state, resolution: 'full' }, /** @type {any} */ (solveFn));
-    expect(solveFn).toHaveBeenCalledWith(state, { resolution: 'full', analysis: { offsets: { topCable: 0.001 } } });
+    expect(solveFn).toHaveBeenCalledWith(state, { resolution: 'full', analysis: { offsets: { topCable: 0.001 }, stiffness: null } });
+    const tuning = {
+      topCable: 0, cordModel: 'elastic', stringMaterial: '452x', stringStrands: 20, stringEA: 1e5,
+      topCableMaterial: 'custom', topCableStrands: 20, topCableEA: 2e5, bottomCableMaterial: 'dacron-b50', bottomCableStrands: 16, bottomCableEA: 1e5,
+    };
+    const elastic = /** @type {any} */ ({ ...st('s'), tuning });
+    answer({ id: 6, state: elastic, resolution: 'full' }, /** @type {any} */ (solveFn));
+    expect(solveFn).toHaveBeenLastCalledWith(elastic, {
+      resolution: 'full', analysis: { offsets: tuning, stiffness: { string: 20 * 12360, topCable: 2e5, bottomCable: 16 * 2118 } },
+    });
   });
 
   it('turns a thrown error into a no-convergence result', () => {
