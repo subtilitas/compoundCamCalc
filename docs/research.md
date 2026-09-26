@@ -82,21 +82,22 @@ Unverified or refuted items that the plan does not use:
 
 ### Parameter ranges (class given per item)
 
-- Stored energy per peak weight of current 70 lb flagship bows: 1.29 to
-  1.47 ft·lbf per lbf. Normalised by the power stroke,
-  η = W / (F_peak · S) = 0.72 to 0.79.
-- Holding weight 11 to 13.6 lb at 69 to 71 lb peak: let-off 80 % to 84 %.
-- Axle travel brace to full draw: 54 mm to 71 mm in the three model fits
-  to measured bows of 50 lbf to 58 lbf peak (see "Reference data from
-  papers"). The PSE patent offsets (reported) give 32 mm to 50 mm; they are
-  not used.
-- Cam rotation brace to full draw: 180° to 250° on classic designs, 270°
-  to over 360° on newer designs (patent language).
-- Dynamic efficiency (arrow energy / stored energy): 80.7 % at a 360 gr
-  arrow to 88.1 % at 700 gr. Hysteresis: 3 % to 4.5 %.
+- Stored energy per peak weight of current 70 lb flagship bows (reported):
+  1.29 to 1.47 ft·lbf per lbf. Normalised by the power stroke,
+  η = W / (F_peak · S) = 0.72 to 0.79 (derived from the reported values).
+- Holding weight 11 to 13.6 lb at 69 to 71 lb peak (reported): let-off
+  80 % to 84 % (derived).
+- Axle travel brace to full draw (derived): 54 mm to 71 mm in the three
+  model fits to measured bows of 50 lbf to 58 lbf peak (see "Reference data
+  from papers"). The PSE patent offsets (reported) give 32 mm to 50 mm;
+  they are not used.
+- Cam rotation brace to full draw (reported): 180° to 250° on classic
+  designs, 270° to over 360° on newer designs (patent language).
+- Dynamic efficiency, arrow energy / stored energy (reported): 80.7 % at a
+  360 gr arrow to 88.1 % at 700 gr. Hysteresis (reported): 3 % to 4.5 %.
 - Limb stiffness at the axle: 4.4 N/mm and 4.8 N/mm in Tiermas's fits
-  (computed from his tables); 9.1 N/mm (52 lbf/in) measured by Hanson at
-  the tip of an unidentified PSE limb.
+  (derived from his tables); 9.1 N/mm (52 lbf/in) at the tip of an
+  unidentified PSE limb (measured by Hanson).
 
 ### The app's default design against these ranges
 

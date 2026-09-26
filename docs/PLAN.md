@@ -1146,6 +1146,5 @@ tolerance (41 of 45).
 ## Later
 
 Cable guard 3D lengths and fleet angle, yoke legs, draw-length modules, limb
-bolt range sweep, separate top and bottom limbs, a cable lever arm below the
-bore-and-wall limit at full draw (post or anchor case), mass and inertia,
-import of an existing cam for analysis.
+bolt range sweep, separate top and bottom limbs, mass and inertia, import of
+an existing cam for analysis.
