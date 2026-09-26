@@ -150,10 +150,18 @@ ATA 1.021 m, brace height 0.2281506 m, full draw x 0.67337 m, lever
 preload rotation 0.371039 rad and two eccentric circles with phase
 232.5°, it gives peak 223.856 N at 0.45807 m, 73.059 N at full draw and
 61.680 J. On the author's draw grid the two models differ by at most
-2.3e-12 N. Against the measured points, the draw series lies 5.3 N above
-the model on average (rms 6.1 N) and the release series 4.3 N below (rms
-5.4 N): hysteresis, which neither model includes, and cord stretch near
-full draw.
+2.3e-12 N.
+
+Against the measured points the comparison is provisional. The points
+were read from the figure image of Fig. 7 (about 20 draw and 20 release
+points) with a reading uncertainty of about ±1 mm and ±0.5 N, ±3 mm where
+markers overlap; the measured forces themselves come in steps of about
+22 N, the resolution of the scale used. With these readings the draw
+series lies 5.3 N above the model on average (rms 6.1 N) and the release
+series 4.3 N below (rms 5.4 N), which points to hysteresis, included in
+neither model, and cord stretch near full draw. The readings are not
+stored; slice 12 stores digitised points with their uncertainty before
+any test uses them.
 
 ### Tiermas twin-cam bow "Smoke"
 
@@ -468,10 +476,10 @@ design status, never dim the cam and never block exports.
 | 11 | Cord stiffness. EA per cord (string, top cable, bottom cable) with a rigid option (`cordModel: rigid | elastic`, no Infinity in JSON). Compliant closures: quasi-Newton before the stops, full Newton with ∂T/∂q at the wall. Free lengths L0 = L − C·T at brace. Wall stiffness; build lengths free and at 445 N (100 lbf). Material presets from measured data only (452X at 12.36 kN per strand). | EA → ∞ reproduces 10a; equal EA keeps y = 0; differential EA gives Δθ; wall stiffness within 1 % of the closed form | Rigid limit, energy balance with ½·C·T², wall at the stop, convergence at the wall, median below 60 ms | 0.4 |
 | 12 | Reference bows. Fixture format `tests/fixtures/reference/<id>.json`: citation, licence, bow inputs in the author's symbols and as app inputs, cam as eccentric circles or free-form values, targets (model outputs and measured points with their uncertainty), optional cam angles and nock height, tolerances, `enforced` flag. Harness in continuous integration (CI). First fixture: Tiermas's round-wheel bow B1 (table values and equations only, no figures). | B1 enforced against Table 2 to half a unit of the last printed digit and against 10 exact forces to 1e-4 N; measured points only when digitised with stated uncertainty | Harness test, B1 fixture | 0.15 |
 | 13 | Open spiral tracks. A track may end at a post with a step in the outline instead of the closing blend: the working arc stays convex, the outline is closed by a radial step and the post. Check that no free cord span touches the step over the whole draw, lead-in and residual wrap included. Minimum wall at the step corner. Middle plate and cam overlap without the convexity assumption (distance between outlines). DXF and STEP outlines with the step. The cable track may end at a post whose cord line passes closer to the axle than bore radius + wall + d/2 at full draw. | A spiral track with a step builds with zero diagnostics; convex tracks export unchanged | Step clearance, overlap on non-convex outlines, export round trips, cable lever arm below the bore-and-wall limit | 0.45 |
-| 14 | Default design and samples retuned towards real limbs: stiffer and less preloaded (4 N/mm to 5 N/mm at the axle instead of 2.6 N/mm), axle travel towards 55 mm to 70 mm, from the reference data above; open spiral tracks where the let-off needs them. | Default and samples build with zero diagnostics and zero warnings; limb parameters inside the verified range | Sample tests, performance budgets | 0.3 |
-| 15 | Binary cam forward analysis: two-track tangent contact with branch choice, `system.type`; schema version 2 written only for designs other than twin cam | Tangent length matches a polygon to 1e-12 m; binary equals a hand-built case | Contact branches, symmetry, energy | 0.6 |
+| 14 | Default design and the adult compound-bow samples (target, target with optimised track, hunting, light hunting, short-brace hunting, long draw) retuned towards real limbs: stiffer and less preloaded (4 N/mm to 5 N/mm at the axle instead of 2.6 N/mm), axle travel towards 55 mm to 70 mm, from the reference data above, which covers bows of 50 lbf to 58 lbf peak; open spiral tracks where the let-off needs them. The youth bow, the crossbow and the FDM mini bow keep their limbs: no reference covers them (the Banshee youth bow of Sādhanā 2025 gives about 1.6 N/mm, 145.68 N·m/rad over a 300 mm lever). | Default and samples build with zero diagnostics and zero warnings; the retuned samples have limb parameters inside the verified range | Sample tests, performance budgets | 0.3 |
+| 15 | Binary cam forward analysis: two-track tangent contact with branch choice, `system.type`; schema version 2 written only for designs other than twin cam. Stiffness of the cam-to-cam timing cables: EA per cable with the compliant closures of slice 11 applied to the two-track contact; slice 17 reuses it for the control cable of the hybrid. | Tangent length matches a polygon to 1e-12 m; binary equals a hand-built case; EA → ∞ reproduces the rigid binary analysis; different EA on the two cables gives the timing difference of the linearised model | Contact branches, symmetry, energy with ½·C·T², rigid limit, differential stiffness | 0.75 |
 | 16 | Binary cam design: symmetric inverse with the let-out track set by the user, fit, outline, 7 plates | Binary sample with zero diagnostics | Round trip, exports | 1.0 |
-| 17 | Hybrid, then single cam: control track set by the user, power track solved, nock travel reported | Decided with the user per slice | – | 1.5 or more each |
+| 17 | Hybrid, then single cam: control track set by the user, power track solved, nock travel reported; the stiffness of the hybrid control cable reuses slice 15 | Decided with the user per slice | – | 1.5 or more each |
 
 Slices 9 to 12 deliver cam timing and cord stiffness; slices 13 and 14
 deliver open spiral tracks and the retuned default. Slices 15 to 17 each
