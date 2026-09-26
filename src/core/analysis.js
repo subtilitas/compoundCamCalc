@@ -1093,9 +1093,9 @@ function analyseChecked(input) {
     Fy: braceFy,
   };
   const grid = drawGrid(xBrace, bow.xFull, samples);
-  // The longest internal step: the largest spacing of the default grid.
-  const maxStep = (2 * (bow.xFull - xBrace)) / (ANALYSIS_SAMPLES - 1);
-  const march = marchDraw(ctx, pose, grid, bow.xFull + EXTENSION * (bow.xFull - bow.xBrace), maxStep);
+  // The march path: the default grid, whatever the sample count.
+  const path = samples === ANALYSIS_SAMPLES ? grid : drawGrid(xBrace, bow.xFull, ANALYSIS_SAMPLES);
+  const march = marchDraw(ctx, pose, grid, path, bow.xFull + EXTENSION * (bow.xFull - bow.xBrace));
   return finish(ctx, march, brace, nock, bow.xFull, input);
 }
 
@@ -1153,35 +1153,35 @@ function solveBrace(ctx, pose, x0, slope) {
  */
 
 /**
- * March from brace over the grid, then beyond full draw up to xLimit, until
- * the first stop; with elastic cords on with that cam on its stop until
- * the second stop. Internal steps split every grid interval longer than
- * `maxStep`, so the stop search does not depend on the sample count; only
- * grid points and the stop become samples. Beyond full draw the steps are
- * equal, at least MIN_EXTENSION_STEPS, and no longer than the last grid
- * spacing or `maxStep`.
+ * March from brace over the path, then beyond full draw up to xLimit,
+ * until the first stop; with elastic cords on with that cam on its stop
+ * until the second stop. The path is the same for every sample count, so
+ * the branch, the stops and the releases do not depend on it. Grid points
+ * on the path become samples; the others are solved from the path pose
+ * before them and do not feed the march. Beyond full draw the steps are
+ * equal, at least MIN_EXTENSION_STEPS, and no longer than the last path
+ * spacing; they are samples too.
  * @param {Context} ctx
  * @param {Pose} pose brace pose
- * @param {Float64Array} grid
+ * @param {Float64Array} grid requested samples, brace to full draw
+ * @param {Float64Array} path march points, brace to full draw
  * @param {number} xLimit last nock position of the stop search (m)
- * @param {number} maxStep longest internal step (m)
  * @returns {March}
  */
-function marchDraw(ctx, pose, grid, xLimit, maxStep) {
-  const n = grid.length;
+function marchDraw(ctx, pose, grid, path, xLimit) {
+  const n = path.length;
   const { stop } = ctx;
+  const wanted = new Set(grid);
+  const onPath = new Set(path);
+  // Requested samples off the path, in order.
+  const off = Array.from(grid.subarray(1)).filter((x) => !onPath.has(x));
   /** @type {{ x: number, sample: boolean }[]} */
   const points = [];
-  for (let i = 1; i < n; i++) {
-    const m = Math.ceil((grid[i] - grid[i - 1]) / maxStep);
-    for (let j = 1; j < m; j++) points.push({ x: grid[i - 1] + ((grid[i] - grid[i - 1]) * j) / m, sample: false });
-    points.push({ x: grid[i], sample: true });
-  }
+  for (let i = 1; i < n; i++) points.push({ x: path[i], sample: wanted.has(path[i]) });
   if (stop) {
-    const extension = xLimit - grid[n - 1];
-    const step = Math.min(grid[n - 1] - grid[n - 2], maxStep);
-    const steps = Math.max(MIN_EXTENSION_STEPS, Math.ceil(extension / step));
-    for (let k = 1; k <= steps; k++) points.push({ x: k === steps ? xLimit : grid[n - 1] + (k * extension) / steps, sample: true });
+    const extension = xLimit - path[n - 1];
+    const steps = Math.max(MIN_EXTENSION_STEPS, Math.ceil(extension / (path[n - 1] - path[n - 2])));
+    for (let k = 1; k <= steps; k++) points.push({ x: k === steps ? xLimit : path[n - 1] + (k * extension) / steps, sample: true });
   }
   /** @type {March} */
   const march = {
@@ -1198,6 +1198,29 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
   let last = march.samples[0];
   /** @type {{ x: number, pose: Pose } | null} */
   let before = null;
+  let r = 0;
+  /**
+   * The requested samples off the path before xEnd, each solved from the
+   * path pose before it, else by continuation from it or from the next.
+   * @param {number} xEnd
+   * @param {{ x: number, pose: Pose }} next path pose at or after xEnd
+   * @returns {boolean} false on a failure, recorded in the march
+   */
+  const offPath = (xEnd, next) => {
+    for (; r < off.length && off[r] < xEnd; r++) {
+      const x = off[r];
+      const p = copyPose(last.pose);
+      const reason = x > last.x ? solveAt(ctx, p, x) : '';
+      const pose = reason ? solveFrom(ctx, last, x) ?? solveFrom(ctx, next, x) : p;
+      if (!pose) {
+        march.failure = reason;
+        march.failedAt = x;
+        return false;
+      }
+      march.samples.push({ x, pose });
+    }
+    return true;
+  };
   for (let k = 0; k < points.length; k++) {
     const { x, sample } = points[k];
     if (x <= last.x) continue;
@@ -1232,6 +1255,7 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
         march.failedAt = x;
         return march;
       }
+      if (!offPath(ev.x, ev)) return march;
       const free = copyPose(ev.pose);
       free.active[releasing] = 0;
       free.lambda[releasing] = 0;
@@ -1258,6 +1282,7 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     }
     if (!hitTop && !hitBottom) {
       if (ctx.elastic && march.first === null) peak = Math.max(peak, /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, trial)).F);
+      if (!offPath(x, { x, pose: trial })) return march;
       if (sample) march.samples.push({ x, pose: trial });
       before = last;
       last = { x, pose: trial };
@@ -1291,6 +1316,7 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     const again = march.first !== null && !second;
     const both = march.first === null && ((events.length === 2 && events[1].x - e.x <= SIMULTANEOUS) ||
       stopGap(/** @type {NonNullable<Context['stop']>} */ (stop), other) <= SIMULTANEOUS);
+    if (!offPath(e.x, e)) return march;
     // A stop on the last sample replaces it.
     const lastSample = march.samples[march.samples.length - 1];
     if (e.x - lastSample.x <= SIMULTANEOUS && march.samples.length > 1 && march.samples.length - 1 !== march.firstIndex) {

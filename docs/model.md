@@ -1047,15 +1047,16 @@ gap = p_c(ψ_c) − C·n(ψ_c) − (r_peg + d_c/2)
 reaches 0, while the foot of C on the cable line lies on the free span,
 from the contact to the anchor. A peg that does not face the free span
 cannot touch it; its gap is +∞. Both gaps are 0 at x_f on the design,
-where the peg is placed. The march takes internal steps no longer than the
-largest spacing of the 300-sample grid, 2·(x_f − x_b)/299, whatever the
-sample count; only grid points and the stop become samples. When a gap
+where the peg is placed. The march steps over the 300-sample grid
+whatever the sample count, so the branch, the stops and the releases do
+not depend on it. A requested sample off that grid is solved from the
+march pose before it and does not feed the march. When a gap
 falls to 1e-12 m or below between two steps, the Illinois method locates
 the stop to a gap below 1e-12 m or a bracket below 1e-11 m. The
 other cam counts as stopped at the same time when its gap there is at
 most 1e-9 m. Without a stop by full draw the march continues in equal
-steps, at least 10 and none longer than the last grid spacing or the
-internal step, to 10 % of
+steps, at least 10 and none longer than the last spacing of the
+300-sample grid, to 10 % of
 the design draw beyond x_f; without a stop there the result reports
 `analysis-no-stop`.
 

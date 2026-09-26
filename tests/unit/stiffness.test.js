@@ -282,6 +282,25 @@ describe('elastic cords', () => {
     expect(Math.min(...ky)).toBeGreaterThan(0.25 * Math.max(...ky));
   });
 
+  it('follow the same branch at any sample count', () => {
+    // Soft cables with two branches past brace: one with the top cam ahead, one with the bottom cam ahead.
+    const input = {
+      ...base,
+      stiffness: { string: 7539877.9, topCable: 17778.162, bottomCable: 22589.592 },
+      offsets: { topCable: 5.935004 * MM, bottomCable: 6.82752 * MM, string: 3.103243 * MM, nockHeight: -4.555196 * MM },
+    };
+    const ref = analyseTiming(input);
+    expect(ref.status).toBe('ok');
+    expect(ref.stops.first).toBe('top');
+    for (const samples of [2, 3, 5, 10, 1000]) {
+      const a = analyseTiming({ ...input, samples });
+      expect(a.stops.first).toBe(ref.stops.first);
+      expect(a.stops.x).toBeCloseTo(ref.stops.x, 9);
+      expect(a.dTheta[firstIndex(a)]).toBeCloseTo(ref.dTheta[firstIndex(ref)], 6);
+      expect(a.stops.x2).toBeCloseTo(ref.stops.x2, 9);
+    }
+  });
+
   it('give the same stops and wall stiffness at any sample count', () => {
     /** @type {[import('../../src/core/analysis.js').AnalysisInput['stiffness'], import('../../src/core/analysis.js').TimingOffsets][]} */
     const cases = [
