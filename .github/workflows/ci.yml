@@ -8,6 +8,12 @@ on:
   # site picks up the new tag.
   workflow_dispatch:
   workflow_call:
+    inputs:
+      ref:
+        description: Commit to test; empty for the ref of the caller
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -23,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-node@v7
@@ -40,6 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
@@ -61,6 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
@@ -81,6 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
@@ -121,6 +131,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
@@ -145,7 +156,7 @@ jobs:
 
   pages-build:
     name: pages-build
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && inputs.ref == ''
     needs: [lint, unit, build, e2e, export]
     runs-on: ubuntu-latest
     permissions:
@@ -170,7 +181,7 @@ jobs:
 
   deploy:
     name: deploy
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && inputs.ref == ''
     needs: pages-build
     runs-on: ubuntu-latest
     permissions:

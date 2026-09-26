@@ -6,6 +6,10 @@ All notable changes are listed here. Versions follow semantic versioning.
 
 ### Added
 
+- The release workflow also starts by hand (workflow_dispatch) with a tag
+  name and a commit of main. It tests that commit and creates the tag
+  together with the release on GitHub, so a release needs no git push of
+  a tag.
 - Version select in the header of the hosted site: "main, newest" at the
   site root and every release tag in its own folder (for example
   `/v0.1.0/`), listed in `versions.json`. Switching carries the open design

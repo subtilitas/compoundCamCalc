@@ -985,8 +985,15 @@ Node.js 24; `actions/checkout@v7`, `actions/setup-node@v7`, `actions/cache@v6`,
   to `main` only, needs all other jobs).
 - Docs CI (push to `main` touching `docs/**`, manual dispatch): syncs `docs/`
   to the wiki repository.
-- Release CI (tags `v*`): runs tests, checks tag against `package.json`
-  version, creates a GitHub release with the build archive.
+- Release CI (a pushed tag `v*`, or a manual run with the inputs `tag` and
+  `target`): a `prepare` job checks the tag format (vMAJOR.MINOR.PATCH),
+  and for a manual run that `target` is a full SHA on main and the tag
+  does not exist yet. CI runs on that commit (`workflow_call` input `ref`;
+  the Pages jobs skip a call with a ref). The release job checks the tag
+  against `package.json` at the commit, builds the archive and creates the
+  release: with `--verify-tag` for a pushed tag, with `--target <sha>` for
+  a manual run, which creates the tag on GitHub without a git push. Then it
+  dispatches CI on main to rebuild the site.
 - Vite `base: './'`.
 - Coverage figure in README: line coverage of `src/core`, `src/state`,
   `src/export`, floor to integer percent, between
