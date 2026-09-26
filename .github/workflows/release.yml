@@ -1,15 +1,76 @@
 name: Release
 
+# A release starts in one of two ways:
+# - a pushed tag vMAJOR.MINOR.PATCH;
+# - a manual run (workflow_dispatch) with a tag name and a commit of main.
+#   The release step then creates the tag on GitHub, so no git push is needed.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, vMAJOR.MINOR.PATCH; must match package.json at the commit
+        type: string
+        required: true
+      target:
+        description: Full SHA of the commit to release; must be on main
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      sha: ${{ steps.pick.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: pick
+        name: Check the tag and the commit
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_TARGET: ${{ inputs.target }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            tag="$INPUT_TAG"
+            sha="$INPUT_TARGET"
+            if ! printf '%s' "$sha" | grep -Eq '^[0-9a-f]{40}$'; then
+              echo "::error::target must be a full 40-character commit SHA"
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$sha" origin/main; then
+              echo "::error::Commit $sha is not on main"
+              exit 1
+            fi
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "::error::Tag $tag exists already"
+              exit 1
+            fi
+          else
+            tag="$GITHUB_REF_NAME"
+            sha="$GITHUB_SHA"
+          fi
+          if ! printf '%s' "$tag" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
+            echo "::error::Tag $tag is not vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   ci:
+    needs: prepare
     uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
     # The called workflow declares a Pages deploy job that runs only on pushes
     # to main; its permissions must still be grantable by this caller.
     permissions:
@@ -19,15 +80,19 @@ jobs:
 
   release:
     name: release
-    needs: ci
+    needs: [prepare, ci]
     runs-on: ubuntu-latest
     permissions:
       contents: write
       # Dispatch CI on main, which rebuilds the site with this release.
       actions: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      SHA: ${{ needs.prepare.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
@@ -36,15 +101,15 @@ jobs:
       - name: Check tag matches package version
         run: |
           expected="v$(node -p "require('./package.json').version")"
-          if [ "$expected" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $expected"
+          if [ "$expected" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match package.json version $expected"
             exit 1
           fi
       - run: npm ci
       - run: npm run build
       - name: Pack build archive
         run: |
-          name="compound-cam-calc-${GITHUB_REF_NAME}"
+          name="compound-cam-calc-${TAG}"
           cp -r dist "$name"
           zip -r "$name.zip" "$name"
           echo "ARCHIVE=$name.zip" >> "$GITHUB_ENV"
@@ -55,7 +120,13 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "$ARCHIVE" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$GITHUB_REF_NAME"
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # Creates the tag at the checked commit.
+            gh release create "$TAG" "$ARCHIVE" --repo "$GITHUB_REPOSITORY" --target "$SHA" --generate-notes --title "$TAG"
+          else
+            gh release create "$TAG" "$ARCHIVE" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG"
+          fi
       - name: Rebuild the site with this release
         env:
           GH_TOKEN: ${{ github.token }}
