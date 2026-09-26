@@ -1122,7 +1122,10 @@ Jᵀ·T = −∇E − Σ_i λ_i·∇gap_i
 
 A cam whose stop gap reaches zero rests on its stop: the closure
 gap_i(q) = 0 joins the system with its stop force λ_i. The stop force
-does no work, since the gap stays 0.
+does no work, since the gap stays 0. A stop only pushes on its cable,
+λ_i ≤ 0: where λ_i turns positive, located by the Illinois method, the cam
+leaves its stop and its gap opens; once the gap has opened above 1e-12 m
+the cam can reach its stop again. `stops.releases` counts the releases.
 
 - **Newton.** The unknowns are q and the λ of the cams on their stops.
   The Jacobian is J_rigid(q) + D: the rigid closure Jacobian, exact at each
@@ -1537,8 +1540,8 @@ first 123 mm of the power stroke.
   design path keeps the nock on y = 0 midway between the axles; cam timing
   comes from the asymmetric analysis. With rigid cords its draw ends at the
   first stop; with elastic cords at the second.
-- A cam on its stop is held by the closure gap = 0 with a stop force of
-  either sign; the tension of the cable it presses on can fall below zero,
+- A cam on its stop is held by the closure gap = 0 with a stop force that
+  only pushes; the tension of the cable it presses on can fall below zero,
   which the analysis reports as `analysis-slack` instead of letting the
   cable go slack.
 - The cable anchor is the bottom axle centre: yoke legs and cable guard

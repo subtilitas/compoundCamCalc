@@ -211,12 +211,13 @@ export const ANALYSIS_CODES = /** @type {Record<AnalysisCode, string>} */ ({
  * @property {{ x: number, y: number, thetaTop: number, thetaBottom: number, alphaTop: number,
  *   alphaBottom: number, Fy: number } | null} brace
  * @property {{ first: 'top' | 'bottom' | 'both' | null, x: number, gapTop: number, gapBottom: number,
- *   second: 'top' | 'bottom' | 'both' | null, x2: number, wallStiffness: number }} stops
+ *   second: 'top' | 'bottom' | 'both' | null, x2: number, wallStiffness: number, releases: number }} stops
  *   first stop and its nock position x₁; both gaps there (m); first null
  *   and x NaN when no stop is reached. Elastic cords only: the cam that
  *   reaches its stop second ('both' when both stop at x₁), its nock
  *   position x₂, the last sample, and the wall stiffness dF/dx there with
- *   both cams on their stops (N/m); null and NaN otherwise
+ *   both cams on their stops (N/m); null and NaN otherwise; releases:
+ *   how often a cam left its stop because its stop force turned to pull
  * @property {boolean} elastic the cords stretch
  * @property {number} fullDraw design full draw x_f (m)
  * @property {number} end index of the last sample of the draw: the first
@@ -776,7 +777,7 @@ function failed(code, detail, iterations = 0) {
     stringTop: e(), stringBottom: e(), cableTop: e(), cableBottom: e(), gapTop: e(), gapBottom: e(),
     psiStringTop: e(), psiStringBottom: e(), psiCableTop: e(), psiCableBottom: e(), ky: e(), dThetaDL: e(),
     brace: null,
-    stops: { first: null, x: NaN, gapTop: NaN, gapBottom: NaN, second: null, x2: NaN, wallStiffness: NaN },
+    stops: { first: null, x: NaN, gapTop: NaN, gapBottom: NaN, second: null, x2: NaN, wallStiffness: NaN, releases: 0 },
     elastic: false,
     fullDraw: NaN,
     end: -1,
@@ -965,6 +966,7 @@ function solveBrace(ctx, pose, x0, slope) {
  * @property {boolean} capped the second-stop search ended at FORCE_CAP
  * @property {number} wallStiffness dF/dx with both cams on their stops (N/m)
  * @property {string} wallFailure why the wall stiffness could not be solved, '' otherwise
+ * @property {number} releases times a cam left its stop because its stop force turned to pull
  */
 
 /**
@@ -1001,8 +1003,10 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
   /** @type {March} */
   const march = {
     samples: [{ x: grid[0], pose: copyPose(pose) }], failure: '', failedAt: NaN, noStop: false, fold: false, first: null,
-    firstIndex: -1, second: null, noSecond: false, capped: false, wallStiffness: NaN, wallFailure: '',
+    firstIndex: -1, second: null, noSecond: false, capped: false, wallStiffness: NaN, wallFailure: '', releases: 0,
   };
+  // Cams that left their stop and whose gap has not opened yet.
+  const leaving = [false, false];
   // Draw force limit of the second-stop search (N), from the peak over every
   // solved pose before the first stop, sampled or not.
   let cap = Infinity;
@@ -1028,9 +1032,40 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
       march.fold = before !== null && foldAhead(before, last, x);
       return march;
     }
+    // A stop only pushes on its cable (λ ≤ 0): where the stop force of a
+    // held cam turns positive, the cam leaves its stop.
+    const releasing = /** @type {(0 | 1)[]} */ ([0, 1]).find((w) => trial.active[w] && trial.lambda[w] > 0);
+    if (releasing !== undefined) {
+      const ev = locateRelease(ctx, last, x, releasing);
+      if (typeof ev === 'string') {
+        march.failure = ev;
+        march.failedAt = x;
+        return march;
+      }
+      const free = copyPose(ev.pose);
+      free.active[releasing] = 0;
+      free.lambda[releasing] = 0;
+      free.jac = null;
+      leaving[releasing] = true;
+      march.releases++;
+      last = { x: ev.x, pose: free };
+      before = null;
+      // The point past the release again, the cam free.
+      k--;
+      continue;
+    }
+    // A cam that left its stop can touch it again once its gap has opened.
+    for (const w of /** @type {const} */ ([0, 1])) {
+      if (leaving[w] && stop !== null && stopGap(stop, w === 0 ? trial.top : trial.bottom) > GAP_TOLERANCE) leaving[w] = false;
+    }
     // A gap within GAP_TOLERANCE of zero is contact; a cam on its stop keeps it.
-    const hitTop = stop !== null && !trial.active[0] && stopGap(stop, trial.top) <= GAP_TOLERANCE;
-    const hitBottom = stop !== null && !trial.active[1] && stopGap(stop, trial.bottom) <= GAP_TOLERANCE;
+    const hitTop = stop !== null && !trial.active[0] && !leaving[0] && stopGap(stop, trial.top) <= GAP_TOLERANCE;
+    const hitBottom = stop !== null && !trial.active[1] && !leaving[1] && stopGap(stop, trial.bottom) <= GAP_TOLERANCE;
+    if (stop !== null && [0, 1].some((w) => leaving[w] && stopGap(stop, w === 0 ? trial.top : trial.bottom) < -GAP_TOLERANCE)) {
+      march.failure = 'a cam that leaves its stop presses into it again at once';
+      march.failedAt = x;
+      return march;
+    }
     if (!hitTop && !hitBottom) {
       if (ctx.elastic && march.first === null) peak = Math.max(peak, /** @type {NonNullable<ReturnType<typeof statics>>} */ (statics(ctx, trial)).F);
       if (sample) march.samples.push({ x, pose: trial });
@@ -1060,8 +1095,11 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
     events.sort((a, b) => a.x - b.x);
     const e = events[0];
     const other = e.which === 'top' ? e.pose.bottom : e.pose.top;
-    const second = march.first !== null;
-    const both = !second && ((events.length === 2 && events[1].x - e.x <= SIMULTANEOUS) ||
+    const w = e.which === 'top' ? 0 : 1;
+    // After the first stop a contact is the second stop when it leaves both cams held.
+    const second = march.first !== null && e.pose.active[1 - w] === 1;
+    const again = march.first !== null && !second;
+    const both = march.first === null && ((events.length === 2 && events[1].x - e.x <= SIMULTANEOUS) ||
       stopGap(/** @type {NonNullable<Context['stop']>} */ (stop), other) <= SIMULTANEOUS);
     // A stop on the last sample replaces it.
     const lastSample = march.samples[march.samples.length - 1];
@@ -1069,6 +1107,16 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
       march.samples.pop();
     }
     march.samples.push({ x: e.x, pose: e.pose });
+    if (again) {
+      // A cam back on its stop after a release, the other still free.
+      const held = copyPose(e.pose);
+      held.active[w] = 1;
+      held.jac = null;
+      last = { x: e.x, pose: held };
+      before = null;
+      k--;
+      continue;
+    }
     if (second) {
       march.second = e.which;
       setWall(march, wallStiffness(ctx, march.samples[march.samples.length - 1]));
@@ -1096,6 +1144,52 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
   if (march.first === null) march.noStop = Boolean(stop);
   else if (ctx.elastic) march.noSecond = true;
   return march;
+}
+
+/**
+ * Nock position in (last.x, xb] where the stop force of a held cam reaches
+ * zero, by the Illinois variant of regula falsi, the stop held.
+ * @param {Context} ctx
+ * @param {{ x: number, pose: Pose }} last pose with the stop pushing (λ ≤ 0)
+ * @param {number} xb nock position where the stop pulls (λ > 0) (m)
+ * @param {0 | 1} which
+ * @returns {{ x: number, pose: Pose } | string}
+ */
+function locateRelease(ctx, last, xb, which) {
+  /** @param {number} x */
+  const at = (x) => {
+    const p = copyPose(last.pose);
+    return solveAt(ctx, p, x) ? null : p;
+  };
+  let a = last.x;
+  let fa = last.pose.lambda[which];
+  let b = xb;
+  const pb = at(b);
+  if (!pb) return 'the closures did not converge where a cam leaves its stop';
+  let fb = pb.lambda[which];
+  let best = { x: b, pose: pb, f: fb };
+  let side = 0;
+  for (let it = 0; it < EVENT_ITERATIONS && b - a > EVENT_WIDTH; it++) {
+    let m = (a * fb - b * fa) / (fb - fa);
+    if (!(m > a && m < b)) m = 0.5 * (a + b);
+    const pm = at(m);
+    if (!pm) return 'the closures did not converge where a cam leaves its stop';
+    const fm = pm.lambda[which];
+    if (Math.abs(fm) < Math.abs(best.f)) best = { x: m, pose: pm, f: fm };
+    if (fm > 0) {
+      b = m;
+      fb = fm;
+      if (side === -1) fa /= 2;
+      side = -1;
+    } else {
+      a = m;
+      fa = fm;
+      if (side === 1) fb /= 2;
+      side = 1;
+    }
+    if (Math.abs(fm) <= FORCE_TOLERANCE * Math.max(1, Math.abs(/** @type {Float64Array} */ (pm.T)[1]))) break;
+  }
+  return { x: best.x, pose: best.pose };
 }
 
 /**
@@ -1356,6 +1450,7 @@ function finish(ctx, march, brace, nock, xFull, input) {
       second: march.second,
       x2: march.second ? r.x[n - 1] : NaN,
       wallStiffness: march.wallStiffness,
+      releases: march.releases,
     },
     elastic: ctx.elastic,
     fullDraw: xFull,

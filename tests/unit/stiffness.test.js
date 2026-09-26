@@ -221,6 +221,25 @@ describe('elastic cords', () => {
     expect(codes(sparse)).not.toContain('analysis-no-second-stop');
   });
 
+  it('let a cam leave its stop when its stop force would pull, and hold it again when it returns', () => {
+    const a = analyseTiming({
+      ...base,
+      stiffness: { string: 1.9235e6, topCable: 28649.7, bottomCable: 45049.2 },
+      offsets: { topCable: 3.296 * MM, bottomCable: 3.622 * MM, string: 4.106 * MM, nockHeight: -1.567 * MM },
+    });
+    expect(a.status).toBe('ok');
+    expect(a.stops.first).toBe('top');
+    expect(a.stops.releases).toBe(1);
+    expect(a.stops.second).toBe('bottom');
+    // Past the first stop the top gap opens to more than 1 mm, then closes again; it never goes below zero.
+    const gaps = Array.from(a.gapTop.subarray(firstIndex(a)));
+    for (const g of gaps) expect(g).toBeGreaterThanOrEqual(-1e-12);
+    expect(Math.max(...gaps)).toBeGreaterThan(1 * MM);
+    expect(Math.abs(a.gapTop[a.end])).toBeLessThanOrEqual(1e-12);
+    // The usual case keeps the cam on its stop.
+    expect(analyseTiming({ ...base, stiffness: equal, offsets: { topCable: 1 * MM } }).stops.releases).toBe(0);
+  });
+
   it('report a wall stiffness that cannot be solved', () => {
     const a = analyseTiming({ ...base, stiffness: { string: 8.04e10, topCable: 2.62e4, bottomCable: 1.31e13 } });
     expect(a.stops.second).not.toBeNull();
