@@ -77,7 +77,7 @@ describe('timing results', () => {
       'brace-change': '0.00 mm',
       'draw-change': '0.00 mm',
       'peak-change': '0.0 N',
-      'letoff-change': '0.00 points',
+      'letoff-change': '0.0 points',
       // Free nock: 6.91 °/mm at full draw (docs/research.md).
       sensitivity: '6.91°/mm',
     });
@@ -94,7 +94,7 @@ describe('timing results', () => {
       'brace-change': '−0.16 mm',
       'draw-change': '−5.45 mm',
       'peak-change': '−0.7 N',
-      'letoff-change': '−0.30 points',
+      'letoff-change': '−0.3 points',
       sensitivity: '6.84°/mm',
     });
     const inch = texts(timingItems(result, { ...state.units, dims: 'in', force: 'lbf' }));
@@ -113,7 +113,7 @@ describe('timing results', () => {
       expect(result.analysisReference, id).toBe(result.analysis);
       const t = texts(timingItems(result, state.units));
       expect(t['peak-change'], id).toMatch(/^0\.0+ (N|lbf)$/);
-      expect(t['letoff-change'], id).toBe('0.00 points');
+      expect(t['letoff-change'], id).toBe('0.0 points');
       expect(t['draw-change'], id).toMatch(/^0\.0+ (mm|in)$/);
     }
   });

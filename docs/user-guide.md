@@ -536,8 +536,8 @@ The list gives:
   With rigid cords the first stop ends the draw.
 - **Nock travel**: highest minus lowest nock height over the draw.
 - **Change of brace height**, **change of draw length** (end of the draw
-  against full draw of the design), **change of peak draw force** and
-  **change of let-off**, against the design.
+  against full draw of the design), **change of peak draw force** (to
+  0.1 N) and **change of let-off** (to 0.1 points), against the design.
 - **Timing change per mm of top cable** at the end of the draw, in
   degrees per millimetre in every unit system, with the nock free to
   follow: how far 1 mm of length change in the top cable, for example from

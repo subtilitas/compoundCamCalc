@@ -133,7 +133,9 @@ export function timingItems(result, units) {
   const dPeak = changed.peak - base.peak;
   const dLetOff = changed.letOff - base.letOff;
   set('peak-change', Number.isFinite(dPeak) ? `${signed(fromSI(dPeak, 'force', units.force), units.force === 'N' ? 1 : 2)} ${units.force}` : MISSING);
-  set('letoff-change', Number.isFinite(dLetOff) ? `${signed(dLetOff * 100, 2)} points` : MISSING);
+  // The 300-sample grids of the two analyses differ: up to 0.02 points
+  // and 0.02 N of sampling error (docs/model.md), below the shown digits.
+  set('letoff-change', Number.isFinite(dLetOff) ? `${signed(dLetOff * 100, 1)} points` : MISSING);
   // Per millimetre in every unit system: a twist changes a cord by about 1 mm.
   // In the nock mode of the analysis: with a free nock the nock follows.
   const perMm = deg(a.sensitivity) * 1e-3;

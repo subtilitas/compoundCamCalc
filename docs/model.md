@@ -1086,8 +1086,12 @@ solve only: `analysis: true` for unchanged cords and a free nock, or
 holds the result, `timings.analysis` its time; without the option, in a
 coarse solve or without a cam it is null. `result.analysisReference` holds
 the analysis with unchanged cords and the same options, the reference of
-the changes of peak and let-off on one grid; with unchanged cords it is
-`result.analysis` itself.
+the changes of peak and let-off; with unchanged cords it is
+`result.analysis` itself. The two analyses re-solve their own brace, so
+their 300-sample grids differ slightly: over the default design, the nine
+samples and five sets of changes, the peak and let-off changes differ from
+those of 3000-sample grids by at most 0.02 N and 0.02 points. The Timing
+panel shows them to 0.1 N and 0.1 points.
 
 ### Diagnostics of the analysis
 
