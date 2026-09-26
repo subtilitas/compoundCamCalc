@@ -258,6 +258,9 @@ function emptyResult(resolution) {
   };
 }
 
+/** Marks an analysis option that cannot be read; the analysis reports invalid input. */
+const UNREADABLE_ANALYSIS = Object.freeze({});
+
 /**
  * Options of the asymmetric analysis: cord length changes and the nock mode.
  * @typedef {{ offsets?: import('./analysis.js').TimingOffsets, nock?: 'free' | 'board', samples?: number }} AnalysisOption
@@ -284,16 +287,22 @@ export function solve(state, options = {}) {
   /** @type {unknown} */
   let maxIterations;
   /** @type {AnalysisOption | null} */
-  let analysis = null;
+  let analysis;
   try {
     resolution = o.resolution === 'coarse' ? 'coarse' : 'full';
     maxIterations = o.maxIterations;
-    const a = o.analysis;
-    analysis = a === true ? {} : a !== null && typeof a === 'object' ? a : null;
   } catch {
     // An options object whose fields cannot be read: an invalid iteration
     // limit, so the solve reports invalid-input.
     maxIterations = NaN;
+  }
+  // The analysis option has its own guard: an unreadable one gives an
+  // invalid analysis, never a changed solve.
+  try {
+    const a = o.analysis;
+    analysis = a === true ? {} : a !== null && typeof a === 'object' ? a : null;
+  } catch {
+    analysis = UNREADABLE_ANALYSIS;
   }
   return guardedSolve(state, resolution, /** @type {number | undefined} */ (maxIterations), true, analysis);
 }
@@ -941,6 +950,7 @@ function solveState(state, resolution, maxIterations, trials, analysis) {
     /** @type {AnalysisOption | null} */
     let fields;
     try {
+      if (analysis === UNREADABLE_ANALYSIS) throw new Error('unreadable analysis option');
       fields = { offsets: analysis.offsets, nock: analysis.nock, samples: analysis.samples };
     } catch {
       fields = null;
