@@ -199,6 +199,19 @@ wall; a later edit of those must not make a saved design fail to load.
 Validation checks the structure only: 8 to 16 finite values from 2 mm to
 150 mm.
 
+### Optimise search directions
+
+Optimise (`src/core/optimise.js`) changes the values along Fourier modes,
+not one value at a time. Mode k of amplitude δ (δ·cos kψ or δ·sin kψ in p)
+changes ρ by (1 − k²)·δ·cos kψ (or sin kψ): the constant raises ρ by δ,
+k = 1 moves the track without changing ρ, and higher modes bend it more.
+The search scales the step of mode k by 1/max(1, k² − 1), so one step
+changes ρ by about the same amount in every mode. A single value cannot
+make a round track smaller: p(ψ) + p(ψ + π) is the width of the track in
+direction ψ, and raising one value widens it on that side only. The
+spline prescreen (value range, pitch-line ρ ≥ ρ_lim + max(1 mm, 10 %),
+groove clearance to the bore) rejects a candidate before the solve.
+
 ## Cord contact and length
 
 A cord wraps a track and leaves it tangentially towards a point B in the cam

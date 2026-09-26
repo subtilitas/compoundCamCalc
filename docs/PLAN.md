@@ -191,6 +191,56 @@ results are in `docs/model.md`.
   step reverts it. The panel says that a preset can make the design fail
   and that the solve shows why.
 
+### Optimise
+
+A search for a free-form string track that improves one goal of a design
+that meets every check (`src/core/optimise.js`, run by
+`src/worker/optimise.worker.js`, a second module worker; the solver
+client's latest-request-wins scheduler would drop the solves of a search).
+
+- Goals: "Smallest cam, force curve no worse than now" (largest cam
+  dimension) and "Closest force curve, cam no larger than now" (largest
+  force difference; without a fit, the largest difference between the
+  achieved and the target samples). A third goal, the gentlest cable
+  track, is left out: the constrained fit pins the smallest cable ρ at its
+  limit on every sample design.
+- Constraints with margins: status ok, no diagnostic, no warning; pitch
+  string ρ ≥ ρ_lim + max(1 mm, 10 % of ρ_lim); string and cable wrap ≤ 350°;
+  for the cam goal a force difference ≤ max(start, 0.8 × tolerance); for
+  the force goal a cam size ≤ start; every value in 2 mm to 150 mm.
+- Search space: the constant and cos kψ, sin kψ of the N values for
+  k = 1 … min(4, N/2); the modes up to N/2 join once the step is below
+  0.2 mm. Moving single values stalls: on a round track p(ψ) + p(ψ + π) is
+  the same in every direction, so a single value makes the cam larger on
+  one side (146 solves left the crossbow at 86.0 mm and the mini bow at
+  26.4 mm; modes reached 70.4 mm and 18.5 mm).
+- Compass search: poll order low mode first, + before −, the last
+  successful direction first; opportunistic (the first improvement by
+  more than 1e-9 is accepted). The step starts at 5 % of the mean value,
+  scaled per mode by 1/max(1, k² − 1) (mode k of amplitude δ changes ρ by
+  (1 − k²)·δ), halves after a poll without improvement and ends below
+  0.05 mm.
+- Each candidate is rounded to 0.1 µm and prescreened on the spline (value
+  range, pitch-line ρ with its margin, bore clearance); a rejected
+  candidate is not solved. Solves are cached on the rounded values. The
+  cam goal solves coarse (the cam size agrees with a full solve to
+  0.001 mm) and confirms each improvement with a full solve; the force
+  goal solves full throughout (a coarse force difference reads 0.03 N to
+  0.6 N low).
+- Budget: 600 solves, plus the full (and for the cam goal the coarse)
+  solve of the current design, which also warms up the worker; 120 s
+  wall-clock as a safety stop. The default design with the cam goal
+  converges after 493 solves in 16 s (Node.js), 98.2 mm → 90.8 mm at a
+  force difference of 6.4 N (limit 6.4 N); the force goal uses all 600
+  solves in 23 s, 3.71 N → 2.48 N at a cam of 98.1 mm.
+- The worker posts the start figures, progress after each solve, every
+  confirmed improvement and the outcome. Stop terminates the worker and
+  keeps the last improvement. A change of the design (units aside) or
+  another design stops the run and discards its result. Apply dispatches
+  one `setStringTrack` with the free-form values: one undo step.
+- Test hook: the query parameter `optimise-budget` (1 to 600) lowers the
+  budget of a run for the browser tests.
+
 ### Inverse model (target force curve → cable track)
 
 Explicit per sample, no marching (`src/core/inverse.js`):
@@ -823,9 +873,15 @@ Committed as tests with stated tolerances:
 - DXF: round trip with an own reader (`tests/unit/dxf-reader.js`); `ezdxf audit` in CI; header units; end-to-end
   test that parses the exported DXF, rebuilds the tracks, runs the forward
   model and matches the target.
+- Optimise: a synthetic objective with a known minimum, determinism,
+  constraint handling (prescreen, warnings, wraps, force and cam limits,
+  full-solve confirmation), budget and time stops; the default design with
+  a budget of 30 solves makes the cam smaller, keeps every check and the
+  margins, and repeats the same values.
 - Playwright: load, drag, keyboard edit, touch add/delete in a mobile
   viewport, unit switch, undo/redo, infeasible input message, export
-  downloads; axe accessibility check.
+  downloads, Optimise with a small budget (Stop, Apply, Discard, undo,
+  discard on a change); axe accessibility check.
 
 ## Repository layout
 
@@ -834,7 +890,7 @@ src/core/     units, interpolation, support functions, geometry, limb,
               forward and inverse solvers, B-spline fitting (no DOM)
 src/state/    ProjectState schema, defaults, presets, validation, JSON/URL codec
 src/export/   DXF and STEP writers: (result, options) => string
-src/worker/   solver worker wrapper
+src/worker/   solver and optimise worker wrappers
 src/ui/       editor, views, forms, downloads
 scripts/      coverage-readme.js and other tooling
 tests/unit/   Vitest
@@ -892,7 +948,7 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 5 | B-spline fitting, DXF export (plates, reference, string plan), CSV export. Hand-written R2000 writer, five plate profiles with post holes in the flange plates, ZIP of all files, no mirror option (decisions of the user); exports use the last cam that met every check |
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
 | 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
-| 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`) |
+| 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`). Optimise part: the search in `src/core/optimise.js`, the optimise worker and the Optimise section of the String track group |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter
