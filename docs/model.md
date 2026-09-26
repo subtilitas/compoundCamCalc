@@ -1131,6 +1131,9 @@ does no work, since the gap stays 0. A stop only pushes on its cable,
 λ_i ≤ 0: where λ_i turns positive, located by the Illinois method, the cam
 leaves its stop and its gap opens; once the gap has opened above 1e-12 m
 the cam can reach its stop again. `stops.releases` counts the releases.
+x₂ is the first position with both cams on their stops together.
+`stops.second` names the cam other than the first, also when the first cam
+leaves its stop and returns to it after the second cam has arrived.
 
 - **Newton.** The unknowns are q and the λ of the cams on their stops.
   The Jacobian is J_rigid(q) + D: the rigid closure Jacobian, exact at each

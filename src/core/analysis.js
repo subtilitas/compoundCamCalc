@@ -232,8 +232,9 @@ export const ANALYSIS_CODES = /** @type {Record<AnalysisCode, string>} */ ({
  *   second: 'top' | 'bottom' | 'both' | null, x2: number, wallStiffness: number, releases: number }} stops
  *   first stop and its nock position x₁; both gaps there (m); first null
  *   and x NaN when no stop is reached. Elastic cords only: the cam that
- *   reaches its stop second ('both' when both stop at x₁), its nock
- *   position x₂, the last sample, and the wall stiffness dF/dx there with
+ *   reaches its stop second ('both' when both stop at x₁); the nock
+ *   position x₂ where both cams first stand on their stops together, the
+ *   last sample; and the wall stiffness dF/dx there with
  *   both cams on their stops (N/m); null and NaN otherwise; releases:
  *   how often a cam left its stop because its stop force turned to pull
  * @property {boolean} elastic the cords stretch
@@ -908,7 +909,15 @@ function secantNock(ctx, pose, x) {
     y0 = y1;
     f0 = s1.Fy;
   }
-  if (best.f <= NOISE_TOLERANCE * best.scale && forceAt(ctx, pose, x, best.y)) return '';
+  if (best.f <= NOISE_TOLERANCE * best.scale) {
+    const at = forceAt(ctx, pose, x, best.y);
+    if (at) {
+      // k_y of the accepted pose, not of the last trial.
+      const probe = forceAt(ctx, copyPose(pose), x, best.y + KY_STEP);
+      pose.ky = probe ? (probe.Fy - at.Fy) / KY_STEP : NaN;
+      return '';
+    }
+  }
   return 'the vertical nock force did not reach zero';
 }
 
@@ -1299,7 +1308,9 @@ function marchDraw(ctx, pose, grid, xLimit, maxStep) {
       continue;
     }
     if (second) {
-      march.second = e.which;
+      // The other cam than the first reaches its stop second, even when
+      // the first cam left its stop and returns to it last.
+      march.second = march.first === 'top' ? 'bottom' : 'top';
       setWall(ctx, march);
       return march;
     }

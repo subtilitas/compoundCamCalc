@@ -255,6 +255,33 @@ describe('elastic cords', () => {
     expect(analyseTiming({ ...base, stiffness: equal, offsets: { topCable: 1 * MM } }).stops.releases).toBe(0);
   });
 
+  it('name the other cam second when the first cam returns to its stop last', () => {
+    const a = analyseTiming({
+      ...base,
+      stiffness: { string: 654460.33, topCable: 41047.94, bottomCable: 14300.7 },
+      offsets: { topCable: 0.68444 * MM, bottomCable: -5.70923 * MM, string: 0.67001 * MM, nockHeight: -3.99618 * MM },
+    });
+    expect(a.status).toBe('ok');
+    expect(a.stops.releases).toBe(1);
+    expect(a.stops.first).toBe('top');
+    expect(a.stops.second).toBe('bottom');
+    // The top cam is the last to arrive at x₂.
+    expect(Math.abs(a.gapTop[a.end])).toBeLessThanOrEqual(1e-12);
+    expect(Math.abs(a.gapBottom[a.end])).toBeLessThanOrEqual(1e-12);
+  });
+
+  it('give k_y of the accepted pose when the nock search ends in the noise', () => {
+    const a = analyseTiming({
+      ...base,
+      stiffness: { string: 33293.5458, topCable: 602016002.28, bottomCable: 30313.2209 },
+      offsets: { topCable: -9.79591 * MM, bottomCable: -7.99803 * MM, string: 0.21681 * MM, nockHeight: -4.53143 * MM },
+    });
+    expect(a.status).toBe('ok');
+    // k_y varies within 1.5 kN/m to 4.2 kN/m over the draw; the slope at the last trial of the search is about 80 times smaller.
+    const ky = Array.from(a.ky.subarray(0, a.end + 1));
+    expect(Math.min(...ky)).toBeGreaterThan(0.25 * Math.max(...ky));
+  });
+
   it('give the same stops and wall stiffness at any sample count', () => {
     /** @type {[import('../../src/core/analysis.js').AnalysisInput['stiffness'], import('../../src/core/analysis.js').TimingOffsets][]} */
     const cases = [
