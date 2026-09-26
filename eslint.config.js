@@ -25,7 +25,7 @@ export default [
     files: ['src/**/*.js'],
     ignores: pureDirs,
     languageOptions: {
-      globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
+      globals: { ...globals.browser, __APP_VERSION__: 'readonly', __APP_CHANNEL__: 'readonly' },
     },
   },
   {

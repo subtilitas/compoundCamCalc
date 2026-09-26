@@ -22,7 +22,7 @@ This file is the running record of the project. Each slice updates it.
 | Units | SI internally (m, N, rad, J, N·m/rad). Default display: draw length in in, force in N, part dimensions in mm, energy in J. Each quantity switchable |
 | Force curve editor | Free points: double-click or "Add point" + tap adds, right-click or select + Delete removes, drag moves, arrow keys nudge; numeric point table; peak and let-off sliders rescale |
 | String plan | Bow layout drawing: string and both cables at brace and full draw, axle positions, contact points, lengths |
-| Pages deployment | On every push to `main`; tags produce releases with a build archive |
+| Pages deployment | On every push to `main` and after every release: main at the site root, each release tag `vMAJOR.MINOR.PATCH` in a folder of its name, `versions.json` listing them; tags produce releases with a build archive |
 
 ## Coordinate conventions
 
@@ -582,6 +582,47 @@ Independent set; everything else is derived and shown read-only.
   figures and table rows on one page, repeats table headers and sets 12 mm
   page margins without a page size, so A4 and Letter both work.
 
+## Hosted versions
+
+- `scripts/build-site.js [out]` builds the site: the checked-out tree at
+  the root with `APP_CHANNEL=main`, then every tag matching
+  vMAJOR.MINOR.PATCH (no leading zeros) from its own `git worktree` with
+  its own `npm ci` and `APP_CHANNEL=<tag>`, into `<out>/<tag>/`. It writes
+  `<out>/versions.json`: `{ versions: [{ id: "main", path: "" }, { id:
+  "v0.2.0", path: "v0.2.0/" }, …] }`, tags newest first. Measured: 10 s
+  for main plus one tag with a warm npm cache.
+- Vite injects `__APP_CHANNEL__` from `APP_CHANNEL` (default `main`) and
+  rejects any other value. `src/state/channel.js` holds the pure rules:
+  tag syntax and order, the manifest, `parseVersions` (each entry must be
+  main at '' or a tag at '<tag>/', no duplicates, at most 64 KB), the site
+  root ('./' for main, '../' for a release) and the storage prefix.
+- Storage (decision of the user): main keeps the keys
+  `compoundCamCalc.project`, `.current`, `.designs` and their backups; a
+  release built with this code uses `compoundCamCalc@<tag>.…`, so an older
+  release never reads or replaces data written by a newer schema, and the
+  named designs of main are not listed in a release. v0.1.0 predates the
+  rule and shares the keys of main (same schema version 1).
+- Version select (`src/ui/versions.js`) after the Help button: fetched
+  from `<site root>versions.json` (`cache: no-cache`); hidden when the
+  fetch fails, the list is invalid, has fewer than two entries or does
+  not name this build. Options "main, newest (<version>)" (on main) or
+  "main, newest", then the tags. A change navigates to `<site root><path>`
+  with `#design=` and the share payload of the open design and its name;
+  the target opens it as a shared design (it asks first when it has
+  unsaved changes). A note under the select says that releases keep their
+  own saved designs and that the open design goes along. v0.1.0 has no
+  select; the browser Back button returns.
+- Workflows: CI runs on `workflow_dispatch` as well; `pages-build` and
+  `deploy` run for a push to main or a dispatch on main. `pages-build`
+  checks out main with all tags (`fetch-depth: 0`) and uploads `site/`.
+  The release job (permission `actions: write`) runs `gh workflow run
+  ci.yml --ref main` after it creates the release, so the Pages
+  environment deploys from main only.
+- Limitation: a share link from a newer schema version opened in an older
+  release reads "The link was made with a newer version of the app;
+  reload the page", which is wrong advice on the versioned site (a reload
+  stays on the release). Planned fix in slice 9.
+
 ## User interface rules
 
 - Validation on Enter, blur or stepper; sliders update live. Every field has
@@ -977,6 +1018,13 @@ are addressed; CI is green; the Codex review is addressed; `docs/` and
 | 6 | STEP export: flange thickness and groove clearance settings, a stacked STEP file and one STEP file per plate (decisions of the user), Part 21 checker and `occt-import-js` checks. File menu: named designs in the browser, JSON project files, reset to default, sample designs (compound bows, crossbow, FDM mini bow) with wider input ranges (requests and decisions of the user) |
 | 7 | Share link (`#design=` fragment, `src/state/share.js`), glossary and help, print report, wiki user guide |
 | 8 | Free-form string track plus Optimise (request of the user): free-form representation, shape modifiers presented as shape presets that apply to the current track, a free-form editor, Optimise with two goals ("Smallest cam, force curve no worse than now" and "Closest force curve, cam no larger than now") and more sample designs. First part: the representation, the solver branches, the pure functions of `src/core/freeform.js`, the Shape select option and exports. Second part: the free-form editor and the shape presets (`src/ui/trackeditor.js`). Optimise part: the search in `src/core/optimise.js`, the optimise worker and the Optimise section of the String track group. Sample part: light hunting, short-brace hunting (free-form track with a rounded triangle), long draw and youth compound bows, and the target with an optimised track |
+| 9 | Forward compatibility before new inputs: dropped unknown keys reported, newer-version messages pointing to the Version select, design id ignoring analysis-only inputs, `solve` option `analysis` (off by default). Details in [research.md](research.md#delivery-plan) |
+| 10a | Asymmetric rigid analysis `src/core/analysis.js` (cam timing, nock travel, stop order), no user interface |
+| 10b | Timing user interface: cable and string length changes, nocking point height, timing results block and chart |
+| 10c | String plan with both halves, CSV columns and print report section for the analysis |
+| 11 | Cord stiffness: EA per cord, compliant closures, wall stiffness, free and loaded build lengths |
+| 12 | Reference-bow fixture format and report-only harness |
+| 13 to 15 | Binary cam (forward, then design), then hybrid and single cam; each needs a go-ahead of the user |
 
 Default preset: ATA (axle-to-axle length) 33 in, brace height 6.5 in, draw
 length 29 in, peak 267 N (60 lbf), let-off 75 %, string and cable diameter
@@ -1074,10 +1122,15 @@ tolerance (41 of 45).
 - Limb stop is not modelled; only a cable stop.
 - Hybrid, binary and single-cam systems are not modelled.
 - The model is not validated against measured bows; no reference data is in
-  the repository.
+  the repository. The default limb has 78 mm of axle travel at 499 N to
+  702 N at the axle; the reported range of real bows is 32 mm to 50 mm at
+  about twice the force, and the default stores 9 % to 16 % less energy
+  than current flagship bows at the same peak and power stroke
+  ([research.md](research.md#the-apps-default-design-against-these-ranges)).
 
 ## Later
 
 Cable guard 3D lengths and fleet angle, yoke legs, draw-length modules, limb
-bolt range sweep, mass and inertia, import of an existing cam for analysis,
-reference bows from measured data, tuning sensitivities.
+bolt range sweep, separate top and bottom limbs, a cable lever arm below the
+bore-and-wall limit at full draw (post or anchor case), mass and inertia,
+import of an existing cam for analysis.

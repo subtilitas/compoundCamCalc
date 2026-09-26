@@ -758,8 +758,9 @@ or at once when the page is hidden or closed, and restored when the page
 opens again. When saved data cannot be read, for example data from a newer
 version of the app, the default project is shown and a notice explains why.
 A copy of the unreadable data stays in localStorage under the key
-`compoundCamCalc.project.unreadable`; the next change replaces the saved
-project. A browser that blocks storage shows a notice that changes are lost
+`compoundCamCalc.project.unreadable` (in a release:
+`compoundCamCalc@<release>.project.unreadable`); the next change replaces
+the saved project. A browser that blocks storage shows a notice that changes are lost
 when the page closes.
 
 ## Stats
@@ -790,6 +791,25 @@ The focus starts on the dialog heading. The page behind the dialog does not
 respond while it is open. **Close** at the top or the bottom, or Escape,
 closes the dialog, and the focus returns to the Help button. The dialog
 scrolls within 90 % of the window height.
+
+## Versions
+
+The hosted site serves the newest state of the main branch at
+<https://subtilitas.github.io/compoundCamCalc/> and each release in its
+own folder, for example
+<https://subtilitas.github.io/compoundCamCalc/v0.1.0/>. The **Version**
+select after the Help button lists them: "main, newest" first, then the
+releases, newest first. Choosing one opens that version with the open
+design, carried as a share link; a version with unsaved changes asks
+before it replaces them.
+
+Each release keeps its own working copy and its own named designs in the
+browser, so an older release never changes a design saved by a newer
+one. Designs saved in main are not listed in a release; use the Version
+select, Save to file or a share link to move a design. Release v0.1.0 is
+the exception: it shares the saved designs of main and has no Version
+select (use the browser Back button). The select is hidden when the list
+of versions cannot be loaded, for example in local development.
 
 ## Terms
 

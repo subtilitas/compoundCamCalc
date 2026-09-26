@@ -1909,3 +1909,21 @@ body.printing-report [popover] {
 .optimise-table tbody th {
   font-weight: 400;
 }
+
+/* Version select next to the File menu and Help. */
+.version-area {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.version-area select {
+  min-height: 44px;
+  max-width: 100%;
+}
+
+.version-note {
+  flex-basis: 100%;
+  margin: 0;
+}
