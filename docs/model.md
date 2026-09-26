@@ -1256,4 +1256,7 @@ first 123 mm of the power stroke.
   offset are ignored.
 - The forward model follows the solution branch that starts at brace; a
   fold of that branch (det = 0) ends the solve with `no-convergence`.
-- The model is not validated against measured bows.
+- No reference-bow test runs yet. The forward model reproduces the
+  published model of Tiermas's round-wheel bow B1 to 2.3e-12 N; against the
+  bow's measured points that model deviates by 5 N to 6 N rms, provisional
+  until the points are digitised ([research.md](research.md#tiermas-round-wheel-bow-b1)).

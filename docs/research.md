@@ -7,12 +7,21 @@ and the feasibility of cam systems other than the twin cam. The model as
 built is in [model.md](model.md); the delivery slices are in
 [PLAN.md](PLAN.md).
 
-Every number on this page falls into one of three classes:
+Every number on this page falls into one of these classes:
 
-- **measured**: read from a primary source;
-- **computed**: computed from the model code on the default design;
+- **measured**: a measurement read from a primary source;
+- **fitted**: a parameter the source's author fitted to a measurement;
+- **model output**: a result of the source author's model, run on fitted
+  parameters;
+- **derived**: computed here by hand from published values, with the
+  arithmetic in the text;
+- **computed**: computed with the model code of this app;
 - **reported**: taken from a search-engine summary of a source that could not
   be opened, and unverified until someone opens the source.
+
+A reference test compares against measured values with their uncertainty
+and against model outputs of the same model form; the two kinds are kept
+apart in every fixture.
 
 ## Source access
 
@@ -50,7 +59,7 @@ SK75 and 33 % Vectran (reported), the fibre-level bound is 18.8 kN per
 strand; the braided strand keeps about 66 % of it. Stiffness values for
 BCY 8125 and X99 are not measured here.
 
-### Bow data (reported)
+### Bow data sources
 
 | Source | Content | Numeric data | Status |
 |---|---|---|---|
@@ -71,7 +80,7 @@ Unverified or refuted items that the plan does not use:
 - A per-strand break of 110 lb for 452X contradicts the 309 N (69.5 lbf) measured by DITF.
 - US 9,453,698 is not confirmed as the Prime parallel-cam patent.
 
-### Parameter ranges (reported unless marked)
+### Parameter ranges (class given per item)
 
 - Stored energy per peak weight of current 70 lb flagship bows: 1.29 to
   1.47 ft·lbf per lbf. Normalised by the power stroke,
@@ -453,7 +462,9 @@ and end in a step at its post, so the outline is not convex.
 - The step replaces the closing blend, whose failure is the
   `closing-blend` diagnostic.
 - The cable can end at a post close to the axle, below the present limit
-  p_min = r_bore + wall + d/2 (8.25 mm on the default design).
+  p_min = r_bore + wall + d/2 (8.25 mm on the default design). The free
+  cable span keeps its centreline at least r_bore + d/2 plus a clearance
+  from the axle centre, so the cord never touches the axle.
 - New checks: no free cord span may touch the step over the whole draw;
   the minimum wall holds at the step corner; the cam overlap check and the
   middle plate may no longer assume convex outlines.
@@ -475,7 +486,7 @@ design status, never dim the cam and never block exports.
 | 10c | String plan with both halves from the analysis pose (brace and x₂); CSV columns θ_t, θ_b, y, four tensions; print report timing section | Drawings match the analysis poses to 1e-9 m | Layout pose tests, DXF round trip, report | 0.25 |
 | 11 | Cord stiffness. EA per cord (string, top cable, bottom cable) with a rigid option (`cordModel: rigid | elastic`, no Infinity in JSON). Compliant closures: quasi-Newton before the stops, full Newton with ∂T/∂q at the wall. Free lengths L0 = L − C·T at brace. Wall stiffness; build lengths free and at 445 N (100 lbf). Material presets from measured data only (452X at 12.36 kN per strand). | EA → ∞ reproduces 10a; equal EA keeps y = 0; differential EA gives Δθ; wall stiffness within 1 % of the closed form | Rigid limit, energy balance with ½·C·T², wall at the stop, convergence at the wall, median below 60 ms | 0.4 |
 | 12 | Reference bows. Fixture format `tests/fixtures/reference/<id>.json`: citation, licence, bow inputs in the author's symbols and as app inputs, cam as eccentric circles or free-form values, targets (model outputs and measured points with their uncertainty), optional cam angles and nock height, tolerances, `enforced` flag. Harness in continuous integration (CI). First fixture: Tiermas's round-wheel bow B1 (table values and equations only, no figures). | B1 enforced against Table 2 to half a unit of the last printed digit and against 10 exact forces to 1e-4 N; measured points only when digitised with stated uncertainty | Harness test, B1 fixture | 0.15 |
-| 13 | Open spiral tracks. A track may end at a post with a step in the outline instead of the closing blend: the working arc stays convex, the outline is closed by a radial step and the post. Check that no free cord span touches the step over the whole draw, lead-in and residual wrap included. Minimum wall at the step corner. Middle plate and cam overlap without the convexity assumption (distance between outlines). DXF and STEP outlines with the step. The cable track may end at a post whose cord line passes closer to the axle than bore radius + wall + d/2 at full draw. | A spiral track with a step builds with zero diagnostics; convex tracks export unchanged | Step clearance, overlap on non-convex outlines, export round trips, cable lever arm below the bore-and-wall limit | 0.45 |
+| 13 | Open spiral tracks. A track may end at a post with a step in the outline instead of the closing blend: the working arc stays convex, the outline is closed by a radial step and the post. Check that no free cord span touches the step over the whole draw, lead-in and residual wrap included. Minimum wall at the step corner. Middle plate and cam overlap without the convexity assumption (distance between outlines). DXF and STEP outlines with the step. The cable track may end at a post whose cord line passes closer to the axle than bore radius + wall + d/2 at full draw, but every free cord span keeps its centreline at least bore radius + d/2 plus a set clearance from the axle centre over the whole draw, so no cord touches the axle. | A spiral track with a step builds with zero diagnostics; convex tracks export unchanged | Step clearance, free-span clearance to the axle with a boundary case on each side of the limit, overlap on non-convex outlines, export round trips, cable lever arm below the bore-and-wall limit | 0.45 |
 | 14 | Default design and the adult compound-bow samples (target, target with optimised track, hunting, light hunting, short-brace hunting, long draw) retuned towards real limbs: stiffer and less preloaded (4 N/mm to 5 N/mm at the axle instead of 2.6 N/mm), axle travel towards 55 mm to 70 mm, from the reference data above, which covers bows of 50 lbf to 58 lbf peak; open spiral tracks where the let-off needs them. The youth bow, the crossbow and the FDM mini bow keep their limbs: no reference covers them (the Banshee youth bow of Sādhanā 2025 gives about 1.6 N/mm, 145.68 N·m/rad over a 300 mm lever). | Default and samples build with zero diagnostics and zero warnings; the retuned samples have limb parameters inside the verified range | Sample tests, performance budgets | 0.3 |
 | 15 | Binary cam forward analysis: two-track tangent contact with branch choice, `system.type`; schema version 2 written only for designs other than twin cam. Stiffness of the cam-to-cam timing cables: EA per cable with the compliant closures of slice 11 applied to the two-track contact; slice 17 reuses it for the control cable of the hybrid. | Tangent length matches a polygon to 1e-12 m; binary equals a hand-built case; EA → ∞ reproduces the rigid binary analysis; different EA on the two cables gives the timing difference of the linearised model | Contact branches, symmetry, energy with ½·C·T², rigid limit, differential stiffness | 0.75 |
 | 16 | Binary cam design: symmetric inverse with the let-out track set by the user, fit, outline, 7 plates | Binary sample with zero diagnostics | Round trip, exports | 1.0 |

@@ -1045,8 +1045,10 @@ diagnostics:
   78 mm, rotation limit 30°; achieved axle travel 77.5 mm. The limb is soft
   and heavily preloaded: the preload travel turns the 11 in lever 39° from
   unstrung to brace, and the limb pushes on the axle with 499 N at brace
-  and 701 N at full draw. These values are not checked against measured
-  limbs; the repository has no limb data.
+  and 701 N at full draw. Limbs fitted to measured bows of 50 lbf to
+  58 lbf are stiffer (4.4 N/mm to 4.8 N/mm) with 54 mm to 71 mm of axle
+  travel ([research.md](research.md#the-apps-default-design-against-these-ranges));
+  slice 14 retunes the default towards them.
 - String track: eccentric circle, radius 45 mm, offset 22 mm towards −122°;
   string lever arm 63.6 mm at full draw.
 - Hub: bore 8 mm, wall 3 mm; the cable lever arm stays at or above
@@ -1131,8 +1133,9 @@ tolerance (41 of 45).
 - Yoke legs, cam lean, axle friction and limb twist are not modelled.
 - Limb stop is not modelled; only a cable stop.
 - Hybrid, binary and single-cam systems are not modelled.
-- The model is not validated against measured bows; no reference data is in
-  the repository. The forward model reproduces the published model of
+- No reference-bow test runs yet (slice 12 adds the fixtures); the
+  reference values read from papers are in
+  [research.md](research.md#reference-data-from-papers). The forward model reproduces the published model of
   Tiermas's round-wheel bow B1 to 2.3e-12 N; that model runs 5 N to 6 N
   (rms) from the measured points of the bow, mostly hysteresis. The
   default limb (2.6 N/mm, 192 mm preload travel, 78 mm axle travel) is
