@@ -2,6 +2,23 @@
 
 All notable changes are listed here. Versions follow semantic versioning.
 
+## Unreleased
+
+### Added
+
+- `docs/research.md`: reference data read from six papers and a thesis
+  (Tiermas, Sādhanā 2025, Zanevskyy, Hanson), checked a second time
+  against the sources, with citation and licence; the forward model
+  reproduces Tiermas's round-wheel bow B1 exactly. Open spiral tracks and
+  the default design retune join the delivery plan as slices 13 and 14;
+  the binary, hybrid and single-cam slices become 15 to 17.
+
+### Changed
+
+- `docs/research.md`: the default design compares against limbs fitted to
+  measured bows (54 mm to 71 mm axle travel, 4.4 N/mm to 4.8 N/mm) instead
+  of the reported 32 mm to 50 mm, which no source read so far supports.
+
 ## 0.1.0 — 2026-09-26
 
 ### Added
